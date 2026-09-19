@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -9,8 +10,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/config"
 	"github.com/msoldin/porty/internal/httpapi"
+	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
 	"github.com/msoldin/porty/web"
 )
@@ -28,11 +31,7 @@ func main() {
 	}
 	defer db.Close()
 
-	api := httpapi.NewMux(func(ctx context.Context) error { return db.PingContext(ctx) })
-	root := http.NewServeMux()
-	root.Handle("/healthz", api)
-	root.Handle("/readyz", api)
-	root.Handle("/", web.Handler())
+	root := buildHandler(db, cfg)
 
 	server := &http.Server{
 		Addr:              cfg.Server.Listen,
@@ -52,4 +51,19 @@ func main() {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func buildHandler(db *sql.DB, cfg config.Config) http.Handler {
+	authService := application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
+	api := httpapi.NewRouter(httpapi.RouterOptions{
+		Readiness:  func(ctx context.Context) error { return db.PingContext(ctx) },
+		Auth:       authService,
+		SecureHTTP: cfg.Server.TLSCert != "",
+	})
+	root := http.NewServeMux()
+	root.Handle("/healthz", api)
+	root.Handle("/readyz", api)
+	root.Handle("/api/", api)
+	root.Handle("/", web.Handler())
+	return root
 }
