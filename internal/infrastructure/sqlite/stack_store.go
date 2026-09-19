@@ -23,6 +23,10 @@ func (s *StackStore) ByDirectory(ctx context.Context, directory string) (domain.
 	return scanStack(s.db.QueryRowContext(ctx, `SELECT id, directory_name, compose_project_name, archived_at, created_at, updated_at FROM stacks WHERE directory_name=?`, directory))
 }
 
+func (s *StackStore) ByID(ctx context.Context, id domain.StackID) (domain.Stack, error) {
+	return scanStack(s.db.QueryRowContext(ctx, `SELECT id, directory_name, compose_project_name, archived_at, created_at, updated_at FROM stacks WHERE id=?`, id))
+}
+
 func (s *StackStore) Active(ctx context.Context) ([]domain.Stack, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, directory_name, compose_project_name, archived_at, created_at, updated_at FROM stacks WHERE archived_at IS NULL ORDER BY directory_name`)
 	if err != nil {

@@ -24,6 +24,7 @@ func NewRouter(options RouterOptions) http.Handler {
 	})
 	if options.Auth != nil {
 		registerAuthRoutes(mux, options)
+		registerAPIRoutes(mux, options)
 	}
 	return requestIDMiddleware(mux)
 }

@@ -22,6 +22,7 @@ type StackFiles interface {
 
 type StackRepository interface {
 	Create(context.Context, domain.Stack) error
+	ByID(context.Context, domain.StackID) (domain.Stack, error)
 	ByDirectory(context.Context, string) (domain.Stack, error)
 	Active(context.Context) ([]domain.Stack, error)
 	Rename(context.Context, domain.StackID, string, time.Time) error

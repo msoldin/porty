@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,35 @@ import (
 	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
 )
+
+func TestOversizedJSONBodyIsRejected(t *testing.T) {
+	handler := newAuthRouter(t)
+	csrf, setupCookie := setupToken(t, handler)
+	body := `{"username":"admin","password":"` + strings.Repeat("x", (1<<20)+1) + `"}`
+	request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", strings.NewReader(body))
+	request.Header.Set("Origin", "http://porty.local")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.AddCookie(setupCookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("oversized body status = %d", response.Code)
+	}
+}
+
+func TestTrailingJSONValueIsRejected(t *testing.T) {
+	handler := newAuthRouter(t)
+	csrf, setupCookie := setupToken(t, handler)
+	request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", strings.NewReader(`{"username":"admin","password":"correct horse battery staple"}{}`))
+	request.Header.Set("Origin", "http://porty.local")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.AddCookie(setupCookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("trailing JSON status = %d", response.Code)
+	}
+}
 
 func newAuthRouter(t *testing.T) http.Handler {
 	t.Helper()

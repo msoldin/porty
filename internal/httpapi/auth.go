@@ -7,11 +7,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"strings"
 
 	"github.com/msoldin/porty/internal/application"
+	"github.com/msoldin/porty/internal/domain"
 )
 
 const (
@@ -21,10 +23,66 @@ const (
 )
 
 type RouterOptions struct {
-	Readiness  func(context.Context) error
-	Auth       *application.AuthService
-	PublicURL  string
-	SecureHTTP bool
+	Readiness   func(context.Context) error
+	Auth        *application.AuthService
+	PublicURL   string
+	SecureHTTP  bool
+	Stacks      StackAPI
+	Files       FileAPI
+	Environment EnvironmentAPI
+	Repository  RepositoryAPI
+	Actions     ActionAPI
+	Operations  OperationQueryAPI
+	Deployments DeploymentQueryAPI
+	Stream      http.Handler
+}
+
+type StackAPI interface {
+	ListStacks(context.Context) ([]domain.Stack, error)
+	CreateStack(context.Context, string) (domain.Stack, error)
+	RenameStack(context.Context, domain.StackID, string) (domain.Stack, error)
+	DeleteStack(context.Context, domain.StackID) error
+	PurgeStack(context.Context, domain.StackID) error
+}
+
+type FileAPI interface {
+	Tree(context.Context, domain.StackID) ([]domain.FileEntry, error)
+	ReadFile(context.Context, domain.StackID, string) (domain.FileContent, error)
+	WriteFile(context.Context, domain.StackID, string, []byte, string) (domain.FileContent, error)
+}
+
+type FileMutationAPI interface {
+	CreateFile(context.Context, domain.StackID, string, []byte) (domain.FileContent, error)
+	CreateDirectory(context.Context, domain.StackID, string) error
+	MoveFile(context.Context, domain.StackID, string, string) error
+	RemoveFile(context.Context, domain.StackID, string) error
+}
+
+type EnvironmentAPI interface {
+	EnvironmentKeys(context.Context, domain.StackID) ([]string, error)
+	SetEnvironment(context.Context, domain.StackID, string, string) error
+	DeleteEnvironment(context.Context, domain.StackID, string) error
+}
+
+type RepositoryAPI interface {
+	RepositoryStatus(context.Context) (domain.GitStatus, error)
+	RepositoryHistory(context.Context, int) ([]domain.GitCommit, error)
+	StackDiff(context.Context, domain.StackID) (string, error)
+	CommitStack(context.Context, domain.StackID, string) (string, error)
+}
+
+type ActionAPI interface {
+	StartAction(context.Context, domain.StackID, string) (domain.Operation, error)
+	StartRepositoryAction(context.Context, string) (domain.Operation, error)
+}
+
+type OperationQueryAPI interface {
+	Operation(context.Context, string) (domain.Operation, error)
+	Operations(context.Context, int) ([]domain.Operation, error)
+}
+
+type DeploymentQueryAPI interface {
+	Deployments(context.Context, domain.StackID, int) ([]domain.Deployment, error)
 }
 
 type SetupStatusResponse struct {
@@ -181,7 +239,16 @@ func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
 func decodeJSON(r *http.Request, value any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(value)
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("request body must contain one JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 func validOrigin(r *http.Request, publicURL string) bool {
