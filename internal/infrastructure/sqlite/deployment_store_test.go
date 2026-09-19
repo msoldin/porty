@@ -1,0 +1,46 @@
+package sqlite_test
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/msoldin/porty/internal/domain"
+	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
+)
+
+func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
+	ctx := context.Background()
+	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	stacks := portysqlite.NewStackStore(db)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	stack := domain.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway-123", CreatedAt: now, UpdatedAt: now}
+	if err := stacks.Create(ctx, stack); err != nil {
+		t.Fatal(err)
+	}
+	store := portysqlite.NewDeploymentStore(db)
+	deployment := domain.Deployment{
+		ID: "dep_1", StackID: stack.ID, OperationID: "op_1", GitCommit: "abc123", Dirty: true,
+		ComposeDigest: "sha256:desired", Status: domain.DeploymentSucceeded,
+		StartedAt: now, CompletedAt: now.Add(time.Second), Duration: time.Second,
+	}
+	if err := store.SaveDeployment(ctx, deployment); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := store.LatestDeployment(ctx, stack.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.ID != deployment.ID || latest.ComposeDigest != deployment.ComposeDigest || latest.Duration != time.Second {
+		t.Fatalf("LatestDeployment() = %#v", latest)
+	}
+	history, err := store.Deployments(ctx, stack.ID, 20)
+	if err != nil || len(history) != 1 {
+		t.Fatalf("Deployments() = %#v, %v", history, err)
+	}
+}
