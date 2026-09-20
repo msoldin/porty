@@ -153,7 +153,7 @@ export function Dashboard({
                   <td>
                     <span class="runtime">
                       <i />
-                      Unknown
+                      {stack.state?.runtime || "Unknown"}
                     </span>
                   </td>
                   <td>
@@ -173,13 +173,18 @@ export function Dashboard({
                     </Badge>
                   </td>
                   <td>
+                    <Badge>
+                      {stack.state?.freshness?.replaceAll("_", " ") ||
+                        (active ? `${active.kind}…` : "Unverified")}
+                    </Badge>
+                  </td>
+                  <td>
                     {active ? (
                       <Badge tone="blue">{active.kind}…</Badge>
                     ) : (
                       <span class="muted">Not checked</span>
                     )}
                   </td>
-                  <td class="muted">—</td>
                   <td class="muted">—</td>
                   <td>
                     <Icon name="Chevron" />

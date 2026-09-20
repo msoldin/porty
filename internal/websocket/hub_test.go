@@ -42,3 +42,13 @@ func TestHubDropsSlowSubscriptionWithoutBlockingPublisher(t *testing.T) {
 		// A buffered event may remain, but the subscription must be closed.
 	}
 }
+
+func TestHubReportsGapWhenClientCursorIsAheadAfterRestart(t *testing.T) {
+	hub := portyws.NewHub(4)
+	hub.PublishOperation(domain.Operation{ID: "op_after_restart"})
+	subscription := hub.Subscribe("operations", 1000, 1)
+	defer subscription.Cancel()
+	if !subscription.Gap {
+		t.Fatal("Subscribe() did not report cursor-ahead restart gap")
+	}
+}

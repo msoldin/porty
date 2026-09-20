@@ -9,6 +9,8 @@ import {
   type Repository,
   type Operation,
   type Commit,
+  type AuditEvent,
+  type StackState,
 } from "./api";
 import { Auth } from "./Auth";
 import { Dashboard } from "./Dashboard";
@@ -96,6 +98,7 @@ function Workspace({
   const [repo, setRepo] = useState<Repository | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [operations, setOperations] = useState<Operation[]>([]);
+  const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState(location.hash.slice(1) || "/");
@@ -108,10 +111,26 @@ function Workspace({
   const [busy, setBusy] = useState(false);
   async function refresh() {
     const result = await Promise.allSettled([
-      api<Stack[] | null>("/stacks"),
+      api<Stack[] | null>("/stacks").then(async (items) =>
+        Promise.all(
+          (items || []).map(async (stack) => {
+            try {
+              return {
+                ...stack,
+                state: await api<StackState>(
+                  `/stacks/${encodeURIComponent(stack.id)}/state`,
+                ),
+              };
+            } catch {
+              return stack;
+            }
+          }),
+        ),
+      ),
       api<Repository>("/repository/status"),
       api<Commit[] | null>("/repository/history?limit=50"),
       api<Operation[] | null>("/operations?limit=50"),
+      api<AuditEvent[] | null>("/audit?limit=50"),
     ]);
     if (
       result.some(
@@ -128,7 +147,10 @@ function Workspace({
     if (result[1].status === "fulfilled") setRepo(result[1].value);
     if (result[2].status === "fulfilled") setCommits(result[2].value || []);
     if (result[3].status === "fulfilled") setOperations(result[3].value || []);
-    const failed = result.find((value) => value.status === "rejected");
+    if (result[4].status === "fulfilled") setAudit(result[4].value || []);
+    const failed = result
+      .slice(0, 4)
+      .find((value) => value.status === "rejected");
     setError(failed?.status === "rejected" ? message(failed.reason) : "");
     setLoading(false);
   }
@@ -368,6 +390,7 @@ function Workspace({
                 </article>
               ))}
               {!commits.length && <Empty>No commits available.</Empty>}
+              {!repo && <RepositorySetup refresh={refresh} />}
             </div>
           ) : route === "/operations" ? (
             <Operations
@@ -379,7 +402,19 @@ function Workspace({
           ) : route === "/audit" ? (
             <div class="detail-content">
               <h1>Audit</h1>
-              <Empty>The audit API is not available on this server.</Empty>
+              {audit.map((event) => (
+                <article class="commit-row" key={event.id}>
+                  <code>{event.outcome}</code>
+                  <div>
+                    <strong>{event.action}</strong>
+                    <p class="muted">
+                      {event.targetId || event.targetType} ·{" "}
+                      {new Date(event.occurredAt).toLocaleString()}
+                    </p>
+                  </div>
+                </article>
+              ))}
+              {!audit.length && <Empty>No audit events recorded.</Empty>}
             </div>
           ) : (
             <div class="detail-content">
@@ -396,5 +431,59 @@ function Workspace({
         />
       )}
     </div>
+  );
+}
+
+function RepositorySetup({ refresh }: { refresh: () => void }) {
+  const [error, setError] = useState("");
+  return (
+    <form
+      class="inline-form"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        setError("");
+        try {
+          await api("/repository/setup", "POST", {
+            mode: data.get("mode"),
+            remote: data.get("remote"),
+            branch: data.get("branch"),
+            username: data.get("username"),
+            secret: data.get("secret"),
+          });
+          refresh();
+        } catch (failure) {
+          setError(message(failure));
+        }
+      }}
+    >
+      <h2>Configure repository</h2>
+      {error && <Notice>{error}</Notice>}
+      <label>
+        Mode
+        <select name="mode">
+          <option value="init">Initialize</option>
+          <option value="clone">Clone</option>
+          <option value="adopt">Adopt existing</option>
+        </select>
+      </label>
+      <label>
+        Branch
+        <input name="branch" defaultValue="main" required />
+      </label>
+      <label>
+        Remote URL
+        <input name="remote" placeholder="https://example.com/team/repo.git" />
+      </label>
+      <label>
+        HTTPS username
+        <input name="username" autocomplete="username" />
+      </label>
+      <label>
+        HTTPS secret
+        <input name="secret" type="password" autocomplete="new-password" />
+      </label>
+      <button class="primary">Save repository</button>
+    </form>
   );
 }

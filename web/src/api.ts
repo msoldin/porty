@@ -5,7 +5,9 @@ export type Stack = {
   archivedAt?: string;
   createdAt: string;
   updatedAt: string;
+  state?: StackState;
 };
+export type StackState = { runtime: string; freshness: string };
 export type Repository = {
   branch: string;
   dirty: boolean;
@@ -52,6 +54,15 @@ export type Deployment = {
   errorCode?: string;
 };
 export type Session = { username: string; csrfToken: string };
+export type AuditEvent = {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  outcome: string;
+  requestId: string;
+  occurredAt: string;
+};
 
 export class APIError extends Error {
   constructor(

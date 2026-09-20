@@ -8,12 +8,12 @@ import (
 func TestSerializeEnvironmentIsDeterministicAndEscapesValues(t *testing.T) {
 	got, err := SerializeEnvironment(map[string]string{
 		"Z_LAST":  "line one\nline two",
-		"A_FIRST": `quote " and slash \\`,
+		"A_FIRST": `quote ' and slash \\ and $UNSET`,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `A_FIRST="quote \" and slash \\\\"` + "\n" + `Z_LAST="line one\nline two"` + "\n"
+	want := `A_FIRST='quote \' and slash \\\\ and $UNSET'` + "\n" + `Z_LAST='line one\nline two'` + "\n"
 	if string(got) != want {
 		t.Fatalf("SerializeEnvironment() = %q, want %q", got, want)
 	}

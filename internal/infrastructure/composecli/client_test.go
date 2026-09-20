@@ -91,7 +91,7 @@ func (r *composeRunner) Run(ctx context.Context, request portyprocess.Request) (
 			r.t.Fatalf("environment mode = %o", info.Mode().Perm())
 		}
 		contents, _ := os.ReadFile(path)
-		if string(contents) != "TOKEN=\"very-secret\"\n" {
+		if string(contents) != "TOKEN='very-secret'\n" {
 			r.t.Fatalf("environment contents = %q", contents)
 		}
 	}

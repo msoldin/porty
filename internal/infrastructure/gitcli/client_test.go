@@ -53,9 +53,9 @@ func TestNetworkCommandsUseFixedArgumentsAndHardenedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := [][]string{
-		{"-c", "core.hooksPath=/dev/null", "fetch", "--no-tags", "--prune", "origin", "main"},
-		{"-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "origin/main"},
-		{"-c", "core.hooksPath=/dev/null", "push", "--", "origin", "HEAD:refs/heads/main"},
+		hardened("fetch", "--no-tags", "--prune", "origin", "main"),
+		hardened("merge", "--ff-only", "origin/main"),
+		hardened("push", "--", "origin", "HEAD:refs/heads/main"),
 	}
 	if !reflect.DeepEqual(runner.args(), want) {
 		t.Fatalf("commands = %#v, want %#v", runner.args(), want)
@@ -98,12 +98,16 @@ func TestCloneInitAndAdoptContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := [][]string{
-		{"-c", "core.hooksPath=/dev/null", "clone", "--no-tags", "--single-branch", "--branch", "main", "--", "https://example.com/team/repo.git", "repository"},
-		{"-c", "core.hooksPath=/dev/null", "init", "-b", "main", "new-repository"},
+		hardened("clone", "--no-tags", "--single-branch", "--branch", "main", "--", "https://example.com/team/repo.git", "repository"),
+		hardened("init", "-b", "main", "new-repository"),
 	}
 	if !reflect.DeepEqual(runner.args(), want) {
 		t.Fatalf("commands = %#v, want %#v", runner.args(), want)
 	}
+}
+
+func hardened(arguments ...string) []string {
+	return append([]string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "diff.external=", "-c", "commit.gpgSign=false"}, arguments...)
 }
 
 func TestHTTPSCredentialsStayOutOfArgumentsAndAreRedacted(t *testing.T) {
@@ -196,6 +200,27 @@ func TestAdoptRejectsHostileLocalConfiguration(t *testing.T) {
 	}
 	if err := client.ValidateSafety(context.Background()); !errors.Is(err, gitcli.ErrUnsafeRepository) {
 		t.Fatalf("ValidateSafety() = %v, want ErrUnsafeRepository", err)
+	}
+}
+
+func TestAdoptRejectsTextconvAndDiffBoundsOversizedUntrackedFiles(t *testing.T) {
+	repository := initRepository(t)
+	runGit(t, repository, "config", "diff.hostile.textconv", "/tmp/evil")
+	client, err := gitcli.New(portyprocess.NewRunner(), repository, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ValidateSafety(context.Background()); !errors.Is(err, gitcli.ErrUnsafeRepository) {
+		t.Fatalf("ValidateSafety(textconv) = %v, want ErrUnsafeRepository", err)
+	}
+	runGit(t, repository, "config", "--unset", "diff.hostile.textconv")
+	write(t, filepath.Join(repository, "alpha", "huge.txt"), strings.Repeat("x", 2<<20))
+	diff, err := client.Diff(context.Background(), "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diff) > 4<<20 || strings.Contains(diff, strings.Repeat("x", 1<<20)) {
+		t.Fatalf("oversized diff was not bounded: %d bytes", len(diff))
 	}
 }
 

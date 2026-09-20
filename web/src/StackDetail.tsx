@@ -35,6 +35,8 @@ export function StackDetail({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [logOutput, setLogOutput] = useState("");
+  const [logGap, setLogGap] = useState(false);
   const active = operations.find(
     (operation) =>
       operation.scopeId === stack.id &&
@@ -53,6 +55,36 @@ export function StackDetail({
         .then((value) => setDeployments(value || []))
         .catch((error) => setError(message(error)));
   }, [stack.id, tab, operations]);
+  useEffect(() => {
+    if (tab !== "Logs") return;
+    const socket = new WebSocket(
+      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/v1/stream`,
+    );
+    socket.onopen = () =>
+      socket.send(
+        JSON.stringify({
+          type: "subscribe",
+          subscriptionId: "logs",
+          topic: `logs:${stack.id}`,
+          since: 0,
+        }),
+      );
+    socket.onmessage = (event) => {
+      try {
+        const value = JSON.parse(event.data);
+        if (value.subscriptionId !== "logs") return;
+        if (value.type === "gap") setLogGap(true);
+        else if (
+          value.type === "log" &&
+          typeof value.payload?.output === "string"
+        )
+          setLogOutput(value.payload.output.slice(-65536));
+      } catch {
+        setLogGap(true);
+      }
+    };
+    return () => socket.close();
+  }, [stack.id, tab]);
   async function action(kind: string) {
     if (dirty) {
       setError(
@@ -128,7 +160,7 @@ export function StackDetail({
           <div>
             <span class="runtime">
               <i />
-              Unknown
+              {stack.state?.runtime || "Unknown"}
             </span>
             <small>Refresh status to inspect runtime</small>
           </div>
@@ -147,7 +179,10 @@ export function StackDetail({
             <small>Repository remote</small>
           </div>
           <div>
-            <Badge>{active ? `${active.kind}…` : "Unverified"}</Badge>
+            <Badge>
+              {stack.state?.freshness?.replaceAll("_", " ") ||
+                (active ? `${active.kind}…` : "Unverified")}
+            </Badge>
             <small>Deployment freshness</small>
           </div>
         </div>
@@ -231,12 +266,12 @@ export function StackDetail({
           </div>
           <p class="muted">Latest 500 lines. Reload to refresh the snapshot.</p>
           <pre class="output">
-            {logs?.output ||
+            {logOutput ||
               (logs
                 ? logs.status
                 : "Load logs to inspect recent container output.")}
           </pre>
-          {logs?.outputTruncated && <Notice>Output was truncated.</Notice>}
+          {logGap && <Notice>Some log output was missed. Reload logs.</Notice>}
         </div>
       )}
       {tab === "History" && (

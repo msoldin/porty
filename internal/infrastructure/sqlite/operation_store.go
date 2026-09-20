@@ -37,10 +37,17 @@ func (s *OperationStore) Operation(ctx context.Context, id string) (domain.Opera
 }
 
 func (s *OperationStore) Operations(ctx context.Context, limit int) ([]domain.Operation, error) {
+	return s.OperationsPage(ctx, limit, 0)
+}
+
+func (s *OperationStore) OperationsPage(ctx context.Context, limit, offset int) ([]domain.Operation, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx, operationSelect+` ORDER BY COALESCE(started_at,'') DESC, rowid DESC LIMIT ?`, limit)
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := s.db.QueryContext(ctx, operationSelect+` ORDER BY COALESCE(started_at,'') DESC, rowid DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +61,12 @@ func (s *OperationStore) Operations(ctx context.Context, limit int) ([]domain.Op
 		result = append(result, operation)
 	}
 	return result, rows.Err()
+}
+
+func (s *OperationStore) FailInterrupted(ctx context.Context, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE operations SET status=?,completed_at=?,error_code=? WHERE status IN (?,?)`,
+		domain.OperationFailed, encodeTime(at), "server_restarted", domain.OperationQueued, domain.OperationRunning)
+	return err
 }
 
 const operationSelect = `SELECT id,kind,scope_type,scope_id,request_key,status,started_at,completed_at,exit_code,error_code,output_tail,output_truncated,initiated_by FROM operations`

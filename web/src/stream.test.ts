@@ -7,7 +7,7 @@ it("marks explicit stream gaps without claiming output is complete", () => {
     { type: "gap", sequence: 0, payload: { since: 5 } },
   );
   expect(next.gap).toBe(true);
-  expect(next.sequence).toBe(5);
+  expect(next.sequence).toBe(0);
   expect(next.output).toBe("before\n");
 });
 it("ignores replay duplicates and caps operation output", () => {

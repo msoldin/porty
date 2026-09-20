@@ -2,10 +2,13 @@ package application_test
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/msoldin/porty/internal/application"
+	"github.com/msoldin/porty/internal/domain"
 	portyfs "github.com/msoldin/porty/internal/infrastructure/filesystem"
 	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
 )
@@ -39,4 +42,60 @@ func TestWorkspaceResolvesOpaqueStackIDForFileAndEnvironmentOperations(t *testin
 	if err != nil || len(keys) != 1 || keys[0] != "TOKEN" {
 		t.Fatalf("keys = %#v, %v", keys, err)
 	}
+}
+
+func TestWorkspaceCoordinatesMutationsAndStopsComposeBeforeDelete(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	files, err := portyfs.Open(root, portyfs.Limits{MaxEditableBytes: 1 << 20, MaxDepth: 32, MaxEntries: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer files.Close()
+	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := portysqlite.NewStackStore(db)
+	coordinator := application.NewCoordinator()
+	runtime := &deletionRuntime{t: t}
+	workspace := application.NewCoordinatedWorkspaceService(application.NewStackService(files, store), store, files, application.NewEnvironmentService(store), coordinator, runtime, root)
+	stack, err := workspace.CreateStack(ctx, "gateway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release, err := coordinator.Try(false, string(stack.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = workspace.WriteFile(ctx, stack.ID, "docker-compose.yml", []byte("services: {}\n"), "wrong")
+	release()
+	if !errors.Is(err, application.ErrOperationConflict) {
+		t.Fatalf("WriteFile() during operation = %v, want conflict", err)
+	}
+	runtime.wantCompose = filepath.Join(root, "gateway", "docker-compose.yml")
+	if err := workspace.DeleteStack(ctx, stack.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !runtime.downCalled {
+		t.Fatal("DeleteStack() did not stop Compose")
+	}
+}
+
+type deletionRuntime struct {
+	t           *testing.T
+	wantCompose string
+	downCalled  bool
+}
+
+func (r *deletionRuntime) Down(_ context.Context, request domain.ComposeRequest) error {
+	r.downCalled = true
+	if request.StackDir != filepath.Dir(r.wantCompose) {
+		r.t.Fatalf("Down() stack dir = %q", request.StackDir)
+	}
+	if _, err := os.Stat(r.wantCompose); err != nil {
+		r.t.Fatalf("compose file was removed before Down(): %v", err)
+	}
+	return nil
 }

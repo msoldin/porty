@@ -23,11 +23,13 @@ func SerializeEnvironment(values map[string]string) ([]byte, error) {
 	sort.Strings(keys)
 	var result strings.Builder
 	for _, key := range keys {
-		value := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "\t", `\t`).Replace(values[key])
+		// Compose treats single-quoted dotenv values literally, so credentials
+		// containing '$' cannot be reinterpreted as interpolation expressions.
+		value := strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\r", `\r`, "\t", `\t`).Replace(values[key])
 		result.WriteString(key)
-		result.WriteString("=\"")
+		result.WriteString("='")
 		result.WriteString(value)
-		result.WriteString("\"\n")
+		result.WriteString("'\n")
 	}
 	return []byte(result.String()), nil
 }

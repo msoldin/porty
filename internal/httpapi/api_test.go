@@ -94,6 +94,41 @@ func TestLongRunningActionReturnsAcceptedOperationResource(t *testing.T) {
 	}
 }
 
+func TestRepositorySetupAuditStateAndPaginationContracts(t *testing.T) {
+	setup := &fakeRepositorySetup{}
+	audit := &fakeAuditAPI{events: []domain.AuditEvent{{ID: "aud_1", Action: "stack.delete"}}}
+	state := &fakeStateAPI{}
+	operations := &fakePagedOperations{}
+	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup, Audit: audit, State: state, Operations: operations})
+
+	request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/repository/setup", bytes.NewBufferString(`{"mode":"init","branch":"main"}`))
+	request.Header.Set("Origin", "http://porty.local")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.AddCookie(sessionCookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || setup.request.Mode != "init" {
+		t.Fatalf("setup response = %d %s request=%#v", response.Code, response.Body.String(), setup.request)
+	}
+
+	for path, want := range map[string]string{
+		"/api/v1/audit?limit=20&offset=40":      "aud_1",
+		"/api/v1/stacks/stk_gateway/state":      "current",
+		"/api/v1/operations?limit=20&offset=40": "op_page",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "http://porty.local"+path, nil)
+		req.AddCookie(sessionCookie)
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		if res.Code != http.StatusOK || !bytes.Contains(res.Body.Bytes(), []byte(want)) {
+			t.Fatalf("GET %s = %d %s", path, res.Code, res.Body.String())
+		}
+	}
+	if operations.offset != 40 || audit.offset != 40 {
+		t.Fatalf("pagination offsets: operations=%d audit=%d", operations.offset, audit.offset)
+	}
+}
+
 func authenticatedAPIRouter(t *testing.T, extra RouterOptions) (http.Handler, *http.Cookie, string) {
 	t.Helper()
 	db, err := portysqlite.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
@@ -148,6 +183,43 @@ type fakeActionAPI struct{}
 
 func (*fakeActionAPI) StartAction(context.Context, domain.StackID, string) (domain.Operation, error) {
 	return domain.Operation{ID: "op_1", Status: domain.OperationQueued}, nil
+}
+
+type fakeRepositorySetup struct{ request domain.RepositorySetupRequest }
+
+func (f *fakeRepositorySetup) SetupRepository(_ context.Context, request domain.RepositorySetupRequest) error {
+	f.request = request
+	return nil
+}
+
+type fakeAuditAPI struct {
+	events []domain.AuditEvent
+	offset int
+}
+
+func (f *fakeAuditAPI) AuditEvents(_ context.Context, _ int, offset int) ([]domain.AuditEvent, error) {
+	f.offset = offset
+	return f.events, nil
+}
+func (f *fakeAuditAPI) RecordAudit(context.Context, domain.AuditEvent) error { return nil }
+
+type fakeStateAPI struct{}
+
+func (*fakeStateAPI) StackState(context.Context, domain.StackID) (domain.StackState, error) {
+	return domain.StackState{Runtime: domain.RuntimeRunning, Freshness: domain.DeploymentCurrent}, nil
+}
+
+type fakePagedOperations struct{ offset int }
+
+func (f *fakePagedOperations) Operation(context.Context, string) (domain.Operation, error) {
+	return domain.Operation{}, nil
+}
+func (f *fakePagedOperations) Operations(context.Context, int) ([]domain.Operation, error) {
+	return nil, nil
+}
+func (f *fakePagedOperations) OperationsPage(_ context.Context, _, offset int) ([]domain.Operation, error) {
+	f.offset = offset
+	return []domain.Operation{{ID: "op_page"}}, nil
 }
 func (*fakeActionAPI) StartRepositoryAction(context.Context, string) (domain.Operation, error) {
 	return domain.Operation{ID: "op_2", Status: domain.OperationQueued}, nil

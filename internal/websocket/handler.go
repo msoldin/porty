@@ -39,7 +39,13 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writerDone := make(chan struct{})
 	go func() {
 		defer close(writerDone)
-		for message := range outgoing {
+		for {
+			var message envelope
+			select {
+			case <-ctx.Done():
+				return
+			case message = <-outgoing:
+			}
 			writeCtx, writeCancel := context.WithTimeout(ctx, 5*time.Second)
 			err := wsjson.Write(writeCtx, connection, message)
 			writeCancel()
@@ -51,6 +57,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	var mu sync.Mutex
+	var forwarders sync.WaitGroup
 	subscriptions := make(map[string]*Subscription)
 	defer func() {
 		cancel()
@@ -59,7 +66,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			subscription.Cancel()
 		}
 		mu.Unlock()
-		close(outgoing)
+		forwarders.Wait()
 		<-writerDone
 	}()
 
@@ -91,7 +98,11 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			go forward(ctx, outgoing, input.SubscriptionID, subscription)
+			forwarders.Add(1)
+			go func() {
+				defer forwarders.Done()
+				forward(ctx, cancel, outgoing, input.SubscriptionID, subscription)
+			}()
 		case "unsubscribe":
 			mu.Lock()
 			if subscription := subscriptions[input.SubscriptionID]; subscription != nil {
@@ -106,13 +117,22 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func forward(ctx context.Context, outgoing chan<- envelope, id string, subscription *Subscription) {
+func forward(ctx context.Context, fail context.CancelFunc, outgoing chan<- envelope, id string, subscription *Subscription) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case event, open := <-subscription.Events:
-			if !open || !sendEvent(ctx, outgoing, id, event) {
+			if !open {
+				select {
+				case <-subscription.Dropped:
+					fail()
+				default:
+				}
+				return
+			}
+			if !sendEvent(ctx, outgoing, id, event) {
+				fail()
 				return
 			}
 		}

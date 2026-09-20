@@ -41,6 +41,11 @@ type Client struct {
 	env    []string
 }
 
+const (
+	maxUntrackedFileBytes = 1 << 20
+	maxDiffBytes          = 4 << 20
+)
+
 func New(runner Runner, repository, branch string) (*Client, error) {
 	if runner == nil || !filepath.IsAbs(repository) {
 		return nil, errors.New("absolute repository path and runner are required")
@@ -78,6 +83,44 @@ func Init(ctx context.Context, runner Runner, target, branch string) error {
 	return err
 }
 
+func InitExisting(ctx context.Context, runner Runner, target, branch string) error {
+	if err := ValidateBranch(branch); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(target) {
+		return errors.New("repository target must be absolute")
+	}
+	info, err := os.Lstat(target)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ErrUnsafeRepository
+	}
+	_, err = runAt(ctx, runner, filepath.Clean(target), nil, nil, "init", "-b", branch)
+	return err
+}
+
+func (c *Client) CloneInto(ctx context.Context, remote string) error {
+	if err := ValidateRemoteURL(remote); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(c.repo)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 0 {
+		return errors.New("repository directory must be empty for clone")
+	}
+	_, err = runAt(ctx, c.runner, c.repo, c.redact, c.env, "clone", "--no-tags", "--single-branch", "--branch", c.branch, "--", remote, ".")
+	return err
+}
+
+func (c *Client) SetOrigin(ctx context.Context, remote string) error {
+	if err := ValidateRemoteURL(remote); err != nil {
+		return err
+	}
+	_, err := c.run(ctx, "remote", "add", "origin", remote)
+	return err
+}
+
 func Adopt(ctx context.Context, runner Runner, repository, branch string) (*Client, error) {
 	client, err := New(runner, repository, branch)
 	if err != nil {
@@ -106,6 +149,7 @@ func (c *Client) WithHTTPSCredentials(helper, username, secret string) (*Client,
 	copy := *c
 	copy.redact = append(append([]string(nil), c.redact...), secret)
 	copy.env = append(append([]string(nil), c.env...),
+		"PORTY_GIT_ASKPASS=1",
 		"GIT_ASKPASS="+filepath.Clean(helper),
 		"GIT_ASKPASS_REQUIRE=force",
 		"PORTY_GIT_USERNAME="+username,
@@ -152,17 +196,19 @@ func (c *Client) ValidateSafety(ctx context.Context) error {
 }
 
 func unsafeConfigKey(key string) bool {
-	if strings.HasPrefix(key, "alias.") || strings.HasPrefix(key, "filter.") || strings.HasPrefix(key, "credential.") || strings.HasPrefix(key, "submodule.") {
+	if strings.HasPrefix(key, "alias.") || strings.HasPrefix(key, "filter.") || strings.HasPrefix(key, "credential.") || strings.HasPrefix(key, "submodule.") || strings.HasPrefix(key, "url.") || strings.HasPrefix(key, "http.") {
 		return true
 	}
-	if strings.HasPrefix(key, "diff.") && strings.HasSuffix(key, ".command") {
+	if strings.HasPrefix(key, "diff.") && (strings.HasSuffix(key, ".command") || strings.HasSuffix(key, ".textconv") || strings.HasSuffix(key, ".cachetextconv")) {
 		return true
 	}
 	switch key {
-	case "core.fsmonitor", "core.sshcommand", "core.hookspath", "core.attributesfile", "core.excludesfile":
+	case "core.fsmonitor", "core.sshcommand", "core.hookspath", "core.attributesfile", "core.excludesfile", "core.editor", "sequence.editor", "commit.gpgsign", "tag.gpgsign":
 		return true
 	}
-	return strings.HasPrefix(key, "protocol.") && strings.HasSuffix(key, ".allow")
+	return (strings.HasPrefix(key, "protocol.") && strings.HasSuffix(key, ".allow")) ||
+		(strings.HasPrefix(key, "merge.") && strings.HasSuffix(key, ".driver")) ||
+		(strings.HasPrefix(key, "gpg.") && strings.HasSuffix(key, ".program"))
 }
 
 func (c *Client) Status(ctx context.Context) (Status, error) {
@@ -237,6 +283,9 @@ func (c *Client) Diff(ctx context.Context, stack string) (string, error) {
 	}
 	var output strings.Builder
 	output.WriteString(result.Output)
+	if output.Len() > maxDiffBytes {
+		return output.String()[:maxDiffBytes], nil
+	}
 	for _, name := range strings.Split(strings.TrimSuffix(untracked.Output, "\x00"), "\x00") {
 		if name == "" {
 			continue
@@ -247,16 +296,23 @@ func (c *Client) Diff(ctx context.Context, stack string) (string, error) {
 		if relErr != nil || !filepath.IsLocal(relative) || statErr != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		contents, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return "", readErr
-		}
 		mode := 100644
 		if info.Mode().Perm()&0o111 != 0 {
 			mode = 100755
 		}
 		fmt.Fprintf(&output, "diff --git a/%s b/%s\nnew file mode %06d\n--- /dev/null\n+++ b/%s\n", name, name, mode, name)
-		if len(contents) > 1<<20 || strings.IndexByte(string(contents), 0) >= 0 {
+		if info.Size() > maxUntrackedFileBytes {
+			fmt.Fprintf(&output, "Binary files /dev/null and b/%s differ\n", name)
+			if output.Len() >= maxDiffBytes {
+				break
+			}
+			continue
+		}
+		contents, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return "", readErr
+		}
+		if strings.IndexByte(string(contents), 0) >= 0 {
 			fmt.Fprintf(&output, "Binary files /dev/null and b/%s differ\n", name)
 			continue
 		}
@@ -266,12 +322,21 @@ func (c *Client) Diff(ctx context.Context, stack string) (string, error) {
 		}
 		fmt.Fprintf(&output, "@@ -0,0 +1,%d @@\n", len(lines))
 		for _, line := range lines {
+			if output.Len()+len(line)+2 > maxDiffBytes {
+				output.WriteString("... diff truncated ...\n")
+				return output.String(), nil
+			}
 			output.WriteString("+")
 			output.WriteString(line)
 			output.WriteString("\n")
 		}
 	}
 	return output.String(), nil
+}
+
+func (c *Client) Head(ctx context.Context) (string, error) {
+	result, err := c.run(ctx, "rev-parse", "HEAD")
+	return strings.TrimSpace(result.Output), err
 }
 
 func (c *Client) Commit(ctx context.Context, stack, message string) (string, error) {
@@ -290,10 +355,17 @@ func (c *Client) Commit(ctx context.Context, stack, message string) (string, err
 }
 
 func (c *Client) History(ctx context.Context, limit int) ([]Commit, error) {
+	return c.HistoryPage(ctx, limit, 0)
+}
+
+func (c *Client) HistoryPage(ctx context.Context, limit, offset int) ([]Commit, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	result, err := c.run(ctx, "log", "--date=iso-strict", "--format=%H%x00%s%x00%an%x00%aI%x00", "-n", strconv.Itoa(limit))
+	if offset < 0 {
+		offset = 0
+	}
+	result, err := c.run(ctx, "log", "--date=iso-strict", "--format=%H%x00%s%x00%an%x00%aI%x00", "--skip", strconv.Itoa(offset), "-n", strconv.Itoa(limit))
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +397,7 @@ func (c *Client) run(ctx context.Context, arguments ...string) (portyprocess.Res
 }
 
 func runAt(ctx context.Context, runner Runner, directory string, redact, extraEnv []string, arguments ...string) (portyprocess.Result, error) {
-	hardened := append([]string{"-c", "core.hooksPath=/dev/null"}, arguments...)
+	hardened := append([]string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "diff.external=", "-c", "commit.gpgSign=false"}, arguments...)
 	environment := []string{"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "GIT_OPTIONAL_LOCKS=0"}
 	environment = append(environment, extraEnv...)
 	return runner.Run(ctx, portyprocess.Request{

@@ -28,7 +28,7 @@ The service creates `/var/lib/porty` with mode `0700`. Porty tightens its config
 
 ## Repository setup
 
-Porty v1 uses `/var/lib/porty/repository`, branch `main`, and remote `origin`. Initialize, clone, or adopt that repository before using Git actions in the UI. Configure the commit identity locally:
+Porty v1 uses `/var/lib/porty/repository` and remote `origin`. After registering the administrator, open **Repository** in the UI to initialize that directory, clone an HTTPS/SSH remote, or adopt an existing worktree. The selected branch is persisted. HTTPS credentials are write-only in the UI, stored in the mode-restricted database, and supplied through Porty's non-interactive askpass mode. Configure the commit identity locally:
 
 ```sh
 sudo -u porty git -C /var/lib/porty/repository config user.name Porty
@@ -36,6 +36,16 @@ sudo -u porty git -C /var/lib/porty/repository config user.email porty@localhost
 ```
 
 Only HTTPS and `ssh://` remotes are accepted by the Git adapter. Porty disables interactive prompts, global/system Git configuration, hooks, pagers, external diffs, filters, submodules, and credential helpers when it invokes Git.
+
+If the administrator password is lost, stop the service and run the offline reset command. Supplying the password through the environment keeps it out of the process argument list:
+
+```sh
+sudo systemctl stop porty
+sudo -u porty env PORTY_RESET_PASSWORD='a new long password' /usr/local/bin/porty reset-password --config /etc/porty/config.yaml
+sudo systemctl start porty
+```
+
+The reset revokes every existing session.
 
 ## Backup and restore
 

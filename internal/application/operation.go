@@ -19,12 +19,14 @@ type OperationPublisher interface {
 }
 
 type OperationRequest struct {
-	Kind        string
-	ScopeType   string
-	ScopeID     string
-	RequestKey  string
-	InitiatedBy string
-	Secrets     []string
+	ID            string
+	Kind          string
+	ScopeType     string
+	ScopeID       string
+	RequestKey    string
+	InitiatedBy   string
+	Secrets       []string
+	DiscardOutput bool
 }
 
 type OperationService struct {
@@ -46,19 +48,23 @@ func NewOperationService(store OperationRepository, publisher OperationPublisher
 }
 
 func (s *OperationService) Start(requestCtx context.Context, request OperationRequest, run func(context.Context) (string, error)) (domain.Operation, error) {
+	operationID := request.ID
+	if operationID == "" {
+		operationID = NewOperationID()
+	}
 	operation := domain.Operation{
-		ID: "op_" + randomID(12), Kind: request.Kind, ScopeType: request.ScopeType, ScopeID: request.ScopeID,
+		ID: operationID, Kind: request.Kind, ScopeType: request.ScopeType, ScopeID: request.ScopeID,
 		RequestKey: request.RequestKey, InitiatedBy: request.InitiatedBy, Status: domain.OperationQueued,
 	}
 	if err := s.store.CreateOperation(requestCtx, operation); err != nil {
 		return domain.Operation{}, err
 	}
 	s.publish(operation)
-	go s.execute(operation, request.Secrets, run)
+	go s.execute(operation, request.Secrets, request.DiscardOutput, run)
 	return operation, nil
 }
 
-func (s *OperationService) execute(operation domain.Operation, secrets []string, run func(context.Context) (string, error)) {
+func (s *OperationService) execute(operation domain.Operation, secrets []string, discardOutput bool, run func(context.Context) (string, error)) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 	operation.Status = domain.OperationRunning
@@ -75,7 +81,9 @@ func (s *OperationService) execute(operation domain.Operation, secrets []string,
 		output = output[:s.maxOutput]
 		operation.OutputTruncated = true
 	}
-	operation.Output = output
+	if !discardOutput {
+		operation.Output = output
+	}
 	operation.CompletedAt = s.now().UTC()
 	switch {
 	case err == nil:
@@ -91,6 +99,8 @@ func (s *OperationService) execute(operation domain.Operation, secrets []string,
 	_ = s.store.UpdateOperation(context.Background(), operation)
 	s.publish(operation)
 }
+
+func NewOperationID() string { return "op_" + randomID(12) }
 
 func (s *OperationService) publish(operation domain.Operation) {
 	if s.publisher != nil {

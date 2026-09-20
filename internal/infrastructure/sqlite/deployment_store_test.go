@@ -24,6 +24,10 @@ func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := portysqlite.NewDeploymentStore(db)
+	operations := portysqlite.NewOperationStore(db)
+	if err := operations.CreateOperation(ctx, domain.Operation{ID: "op_1", Kind: "deploy", ScopeType: "stack", ScopeID: string(stack.ID), Status: domain.OperationRunning}); err != nil {
+		t.Fatal(err)
+	}
 	deployment := domain.Deployment{
 		ID: "dep_1", StackID: stack.ID, OperationID: "op_1", GitCommit: "abc123", Dirty: true,
 		ComposeDigest: "sha256:desired", Status: domain.DeploymentSucceeded,
@@ -42,5 +46,11 @@ func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
 	history, err := store.Deployments(ctx, stack.ID, 20)
 	if err != nil || len(history) != 1 {
 		t.Fatalf("Deployments() = %#v, %v", history, err)
+	}
+	if err := stacks.Archive(ctx, stack.ID, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := stacks.Purge(ctx, stack.ID); err != nil {
+		t.Fatalf("Purge() with deployment history = %v", err)
 	}
 }

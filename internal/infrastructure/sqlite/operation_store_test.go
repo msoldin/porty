@@ -37,3 +37,33 @@ func TestOperationStoreTracksLifecycle(t *testing.T) {
 		t.Fatalf("Operation() = %#v", loaded)
 	}
 }
+
+func TestOperationStoreFailsInterruptedWorkOnStartup(t *testing.T) {
+	ctx := context.Background()
+	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := portysqlite.NewOperationStore(db)
+	for _, operation := range []domain.Operation{
+		{ID: "op_queued", Kind: "pull", ScopeType: "repository", Status: domain.OperationQueued},
+		{ID: "op_running", Kind: "deploy", ScopeType: "stack", ScopeID: "stk_1", Status: domain.OperationRunning},
+	} {
+		if err := store.CreateOperation(ctx, operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.FailInterrupted(ctx, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"op_queued", "op_running"} {
+		operation, err := store.Operation(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if operation.Status != domain.OperationFailed || operation.ErrorCode != "server_restarted" || operation.CompletedAt.IsZero() {
+			t.Fatalf("recovered %s = %#v", id, operation)
+		}
+	}
+}

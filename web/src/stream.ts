@@ -8,7 +8,7 @@ export function reduceStream(
   state: StreamState,
   event: StreamEvent,
 ): StreamState {
-  if (event.type === "gap") return { ...state, gap: true };
+  if (event.type === "gap") return { ...state, sequence: 0, gap: true };
   if (event.sequence <= state.sequence) return state;
   return {
     sequence: event.sequence,
@@ -62,6 +62,7 @@ export function useOperationStream(
           };
           if (value.subscriptionId !== "operations") return;
           if (value.type === "gap") {
+            sequence = 0;
             setGap(true);
             refreshRef.current();
             return;

@@ -36,6 +36,25 @@ func TestOperationContinuesAfterRequestDisconnectAndRedactsOutput(t *testing.T) 
 	}
 }
 
+func TestOperationCanDiscardSensitiveOutput(t *testing.T) {
+	store := &memoryOperationStore{completed: make(chan domain.Operation, 1)}
+	service := application.NewOperationService(store, nil, time.Second, 64)
+	_, err := service.Start(context.Background(), application.OperationRequest{Kind: "logs", ScopeType: "stack", DiscardOutput: true}, func(context.Context) (string, error) {
+		return "container secret output", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case completed := <-store.completed:
+		if completed.Output != "" {
+			t.Fatalf("discarded output persisted as %q", completed.Output)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("operation did not complete")
+	}
+}
+
 type memoryOperationStore struct {
 	mu        sync.Mutex
 	operation domain.Operation

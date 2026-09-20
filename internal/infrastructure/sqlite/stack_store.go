@@ -66,7 +66,15 @@ func (s *StackStore) Archive(ctx context.Context, id domain.StackID, at time.Tim
 }
 
 func (s *StackStore) Purge(ctx context.Context, id domain.StackID) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM stacks WHERE id=? AND archived_at IS NOT NULL`, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM deployments WHERE stack_id=?`, id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM stacks WHERE id=? AND archived_at IS NOT NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -74,7 +82,7 @@ func (s *StackStore) Purge(ctx context.Context, id domain.StackID) error {
 	if rows != 1 {
 		return errors.New("archived stack not found")
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *StackStore) Rename(ctx context.Context, id domain.StackID, directory string, at time.Time) error {

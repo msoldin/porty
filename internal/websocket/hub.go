@@ -16,11 +16,12 @@ type Event struct {
 }
 
 type Subscription struct {
-	Replay []Event
-	Gap    bool
-	Events <-chan Event
-	cancel func()
-	once   sync.Once
+	Replay  []Event
+	Gap     bool
+	Events  <-chan Event
+	Dropped <-chan struct{}
+	cancel  func()
+	once    sync.Once
 }
 
 func (s *Subscription) Cancel() {
@@ -30,8 +31,9 @@ func (s *Subscription) Cancel() {
 }
 
 type subscriber struct {
-	topic  string
-	events chan Event
+	topic   string
+	events  chan Event
+	dropped chan struct{}
 }
 
 type Hub struct {
@@ -54,6 +56,10 @@ func (h *Hub) PublishOperation(operation domain.Operation) {
 	h.publish(Event{Type: "operation", Topic: "operations", Timestamp: time.Now().UTC(), Payload: operation})
 }
 
+func (h *Hub) PublishLog(stackID, output string) {
+	h.publish(Event{Type: "log", Topic: "logs:" + stackID, Timestamp: time.Now().UTC(), Payload: map[string]string{"output": output}})
+}
+
 func (h *Hub) publish(event Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -71,6 +77,7 @@ func (h *Hub) publish(event Event) {
 		case subscription.events <- event:
 		default:
 			delete(h.subscribers, id)
+			close(subscription.dropped)
 			close(subscription.events)
 		}
 	}
@@ -85,9 +92,10 @@ func (h *Hub) Subscribe(topic string, since uint64, buffer int) *Subscription {
 	h.nextID++
 	id := h.nextID
 	channel := make(chan Event, buffer)
-	h.subscribers[id] = &subscriber{topic: topic, events: channel}
-	result := &Subscription{Events: channel}
-	if len(h.replay) > 0 && since < h.replay[0].Sequence-1 {
+	dropped := make(chan struct{})
+	h.subscribers[id] = &subscriber{topic: topic, events: channel, dropped: dropped}
+	result := &Subscription{Events: channel, Dropped: dropped}
+	if since > h.sequence || (len(h.replay) > 0 && since < h.replay[0].Sequence-1) {
 		result.Gap = true
 	}
 	for _, event := range h.replay {

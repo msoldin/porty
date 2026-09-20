@@ -18,14 +18,6 @@ func (s *DeploymentStore) SaveDeployment(ctx context.Context, deployment domain.
 		return err
 	}
 	defer tx.Rollback()
-	operationStatus := "succeeded"
-	if deployment.Status != domain.DeploymentSucceeded {
-		operationStatus = "failed"
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO operations(id,kind,scope_type,scope_id,status,started_at,completed_at,error_code,output_truncated) VALUES(?,?,?,?,?,?,?,?,0)`,
-		deployment.OperationID, "deploy", "stack", deployment.StackID, operationStatus, encodeTime(deployment.StartedAt), encodeTime(deployment.CompletedAt), nullableString(deployment.ErrorCode)); err != nil {
-		return err
-	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO deployments(id,stack_id,operation_id,git_commit,dirty,diff_digest,compose_digest,status,started_at,completed_at,duration_ms,error_code) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
 		deployment.ID, deployment.StackID, deployment.OperationID, nullableString(deployment.GitCommit), deployment.Dirty, nullableString(deployment.DiffDigest), nullableString(deployment.ComposeDigest), deployment.Status,
 		encodeTime(deployment.StartedAt), encodeTime(deployment.CompletedAt), deployment.Duration.Milliseconds(), nullableString(deployment.ErrorCode))
@@ -40,10 +32,17 @@ func (s *DeploymentStore) LatestDeployment(ctx context.Context, stackID domain.S
 }
 
 func (s *DeploymentStore) Deployments(ctx context.Context, stackID domain.StackID, limit int) ([]domain.Deployment, error) {
+	return s.DeploymentsPage(ctx, stackID, limit, 0)
+}
+
+func (s *DeploymentStore) DeploymentsPage(ctx context.Context, stackID domain.StackID, limit, offset int) ([]domain.Deployment, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx, deploymentSelect+` WHERE stack_id=? ORDER BY started_at DESC LIMIT ?`, stackID, limit)
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := s.db.QueryContext(ctx, deploymentSelect+` WHERE stack_id=? ORDER BY started_at DESC LIMIT ? OFFSET ?`, stackID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

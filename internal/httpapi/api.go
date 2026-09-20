@@ -1,11 +1,16 @@
 package httpapi
 
 import (
+	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
@@ -133,6 +138,31 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 	registerEnvironmentRoutes(mux, options)
 	registerRepositoryRoutes(mux, options)
 	registerOperationRoutes(mux, options)
+	if options.RepositorySetup != nil {
+		mux.HandleFunc("POST /api/v1/repository/setup", mutationRoute(options, func(w http.ResponseWriter, r *http.Request) {
+			var input domain.RepositorySetupRequest
+			if decodeBody(w, r, &input) != nil {
+				return
+			}
+			if err := options.RepositorySetup.SetupRepository(r.Context(), input); err != nil {
+				writeAPIError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]string{"status": "configured"})
+		}))
+	}
+	if options.State != nil {
+		mux.HandleFunc("GET /api/v1/stacks/{id}/state", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
+			value, err := options.State.StackState(r.Context(), domain.StackID(r.PathValue("id")))
+			writeResult(w, r, value, err, http.StatusOK)
+		}))
+	}
+	if options.Audit != nil {
+		mux.HandleFunc("GET /api/v1/audit", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
+			value, err := options.Audit.AuditEvents(r.Context(), queryLimit(r), queryOffset(r))
+			writeResult(w, r, value, err, http.StatusOK)
+		}))
+	}
 	if options.Stream != nil {
 		mux.HandleFunc("GET /api/v1/stream", func(w http.ResponseWriter, r *http.Request) {
 			if _, _, ok := authenticate(w, r, options.Auth); ok {
@@ -179,7 +209,15 @@ func registerRepositoryRoutes(mux *http.ServeMux, options RouterOptions) {
 			writeResult(w, r, value, err, http.StatusOK)
 		}))
 		mux.HandleFunc("GET /api/v1/repository/history", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
-			value, err := options.Repository.RepositoryHistory(r.Context(), queryLimit(r))
+			var value []domain.GitCommit
+			var err error
+			if paged, ok := options.Repository.(interface {
+				RepositoryHistoryPage(context.Context, int, int) ([]domain.GitCommit, error)
+			}); ok {
+				value, err = paged.RepositoryHistoryPage(r.Context(), queryLimit(r), queryOffset(r))
+			} else {
+				value, err = options.Repository.RepositoryHistory(r.Context(), queryLimit(r))
+			}
 			writeResult(w, r, value, err, http.StatusOK)
 		}))
 		mux.HandleFunc("GET /api/v1/stacks/{id}/diff", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +250,15 @@ func registerRepositoryRoutes(mux *http.ServeMux, options RouterOptions) {
 func registerOperationRoutes(mux *http.ServeMux, options RouterOptions) {
 	if options.Operations != nil {
 		mux.HandleFunc("GET /api/v1/operations", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
-			value, err := options.Operations.Operations(r.Context(), queryLimit(r))
+			var value []domain.Operation
+			var err error
+			if paged, ok := options.Operations.(interface {
+				OperationsPage(context.Context, int, int) ([]domain.Operation, error)
+			}); ok {
+				value, err = paged.OperationsPage(r.Context(), queryLimit(r), queryOffset(r))
+			} else {
+				value, err = options.Operations.Operations(r.Context(), queryLimit(r))
+			}
 			writeResult(w, r, value, err, http.StatusOK)
 		}))
 		mux.HandleFunc("GET /api/v1/operations/{id}", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
@@ -222,7 +268,16 @@ func registerOperationRoutes(mux *http.ServeMux, options RouterOptions) {
 	}
 	if options.Deployments != nil {
 		mux.HandleFunc("GET /api/v1/stacks/{id}/deployments", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
-			value, err := options.Deployments.Deployments(r.Context(), domain.StackID(r.PathValue("id")), queryLimit(r))
+			id := domain.StackID(r.PathValue("id"))
+			var value []domain.Deployment
+			var err error
+			if paged, ok := options.Deployments.(interface {
+				DeploymentsPage(context.Context, domain.StackID, int, int) ([]domain.Deployment, error)
+			}); ok {
+				value, err = paged.DeploymentsPage(r.Context(), id, queryLimit(r), queryOffset(r))
+			} else {
+				value, err = options.Deployments.Deployments(r.Context(), id, queryLimit(r))
+			}
 			writeResult(w, r, value, err, http.StatusOK)
 		}))
 	}
@@ -237,11 +292,41 @@ func readRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFunc {
 }
 func mutationRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := requireMutationAuth(w, r, options); ok {
-			next(w, r)
+		if _, session, ok := requireMutationAuth(w, r, options); ok {
+			recorder := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+			next(recorder, r)
+			outcome := "succeeded"
+			if recorder.status >= 400 {
+				outcome = "failed"
+			}
+			recordAudit(options, r, session.UserID, r.Method+" "+r.Pattern, "http", r.PathValue("id"), outcome)
 		}
 	}
 }
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	if w.status != http.StatusOK {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func recordAudit(options RouterOptions, r *http.Request, actor, action, targetType, targetID, outcome string) {
+	if options.Audit == nil {
+		return
+	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	var random [12]byte
+	_, _ = rand.Read(random[:])
+	_ = options.Audit.RecordAudit(r.Context(), domain.AuditEvent{ID: "aud_" + hex.EncodeToString(random[:]), ActorUserID: actor, Action: action, TargetType: targetType, TargetID: targetID, Outcome: outcome, RequestID: RequestID(r.Context()), SourceIP: host, OccurredAt: time.Now().UTC()})
+}
+func (w *statusWriter) Write(value []byte) (int, error) { return w.ResponseWriter.Write(value) }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, value any) error {
 	if err := decodeJSON(r, value); err != nil {
@@ -279,5 +364,12 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 func quoteETag(value string) string { return `"` + strings.Trim(value, `"`) + `"` }
 func queryLimit(r *http.Request) int {
 	value, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	return value
+}
+func queryOffset(r *http.Request) int {
+	value, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if value < 0 {
+		return 0
+	}
 	return value
 }

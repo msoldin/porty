@@ -30,6 +30,7 @@ type fakeGitRepository struct{ calls []string }
 func (f *fakeGitRepository) Status(context.Context) (domain.GitStatus, error) {
 	return domain.GitStatus{}, nil
 }
+func (f *fakeGitRepository) Head(context.Context) (string, error) { return "abc123", nil }
 func (f *fakeGitRepository) Diff(context.Context, string) (string, error) { return "", nil }
 func (f *fakeGitRepository) Commit(_ context.Context, stack, message string) (string, error) {
 	f.calls = append(f.calls, "commit:"+stack+":"+message)

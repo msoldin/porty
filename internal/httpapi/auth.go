@@ -23,18 +23,21 @@ const (
 )
 
 type RouterOptions struct {
-	Readiness   func(context.Context) error
-	Auth        *application.AuthService
-	PublicURL   string
-	SecureHTTP  bool
-	Stacks      StackAPI
-	Files       FileAPI
-	Environment EnvironmentAPI
-	Repository  RepositoryAPI
-	Actions     ActionAPI
-	Operations  OperationQueryAPI
-	Deployments DeploymentQueryAPI
-	Stream      http.Handler
+	Readiness       func(context.Context) error
+	Auth            *application.AuthService
+	PublicURL       string
+	SecureHTTP      bool
+	Stacks          StackAPI
+	Files           FileAPI
+	Environment     EnvironmentAPI
+	Repository      RepositoryAPI
+	Actions         ActionAPI
+	Operations      OperationQueryAPI
+	Deployments     DeploymentQueryAPI
+	RepositorySetup RepositorySetupAPI
+	Audit           AuditAPI
+	State           StackStateAPI
+	Stream          http.Handler
 }
 
 type StackAPI interface {
@@ -85,6 +88,19 @@ type DeploymentQueryAPI interface {
 	Deployments(context.Context, domain.StackID, int) ([]domain.Deployment, error)
 }
 
+type RepositorySetupAPI interface {
+	SetupRepository(context.Context, domain.RepositorySetupRequest) error
+}
+
+type AuditAPI interface {
+	AuditEvents(context.Context, int, int) ([]domain.AuditEvent, error)
+	RecordAudit(context.Context, domain.AuditEvent) error
+}
+
+type StackStateAPI interface {
+	StackState(context.Context, domain.StackID) (domain.StackState, error)
+}
+
 type SetupStatusResponse struct {
 	Registered bool   `json:"registered"`
 	CSRFToken  string `json:"csrfToken,omitempty"`
@@ -124,6 +140,7 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 		}
 		setCookie(w, sessionCookieName, credentials.SessionToken, "/", options.SecureHTTP, 7*24*60*60)
 		setCSRFCookie(w, credentials.CSRFToken, options.SecureHTTP, 7*24*60*60)
+		recordAudit(options, r, "", "auth.register", "user", strings.TrimSpace(input.Username), "succeeded")
 		writeJSON(w, http.StatusCreated, SessionResponse{Username: strings.TrimSpace(input.Username), CSRFToken: credentials.CSRFToken})
 	})
 
@@ -145,6 +162,7 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 		}
 		setCookie(w, sessionCookieName, credentials.SessionToken, "/", options.SecureHTTP, 7*24*60*60)
 		setCSRFCookie(w, credentials.CSRFToken, options.SecureHTTP, 7*24*60*60)
+		recordAudit(options, r, "", "auth.login", "user", input.Username, "succeeded")
 		writeJSON(w, http.StatusOK, SessionResponse{Username: input.Username, CSRFToken: credentials.CSRFToken})
 	})
 
@@ -161,18 +179,19 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 	})
 
 	mux.HandleFunc("DELETE /api/v1/session", func(w http.ResponseWriter, r *http.Request) {
-		raw, _, ok := requireMutationAuth(w, r, options)
+		raw, session, ok := requireMutationAuth(w, r, options)
 		if !ok {
 			return
 		}
 		_ = options.Auth.Logout(r.Context(), raw)
+		recordAudit(options, r, session.UserID, "auth.logout", "user", session.UserID, "succeeded")
 		setCookie(w, sessionCookieName, "", "/", options.SecureHTTP, -1)
 		setCSRFCookie(w, "", options.SecureHTTP, -1)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
 	mux.HandleFunc("PUT /api/v1/session/password", func(w http.ResponseWriter, r *http.Request) {
-		raw, _, ok := requireMutationAuth(w, r, options)
+		raw, session, ok := requireMutationAuth(w, r, options)
 		if !ok {
 			return
 		}
@@ -182,9 +201,11 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 			return
 		}
 		if err := options.Auth.ChangePassword(r.Context(), raw, input.CurrentPassword, input.NewPassword); err != nil {
+			recordAudit(options, r, session.UserID, "auth.password.change", "user", session.UserID, "failed")
 			writeAuthError(w, r, err)
 			return
 		}
+		recordAudit(options, r, session.UserID, "auth.password.change", "user", session.UserID, "succeeded")
 		setCookie(w, sessionCookieName, "", "/", options.SecureHTTP, -1)
 		setCSRFCookie(w, "", options.SecureHTTP, -1)
 		w.WriteHeader(http.StatusNoContent)

@@ -25,6 +25,7 @@ type DeploymentRepository interface {
 
 type DeployRequest struct {
 	StackID     domain.StackID
+	OperationID string
 	StackDir    string
 	ProjectName string
 	Environment map[string]string
@@ -51,9 +52,17 @@ func (s *DeploymentService) Deploy(ctx context.Context, request DeployRequest) (
 		return domain.Deployment{}, err
 	}
 	defer release()
+	return s.DeployLocked(ctx, request)
+}
+
+// DeployLocked runs a deployment while the caller holds the stack coordinator.
+func (s *DeploymentService) DeployLocked(ctx context.Context, request DeployRequest) (domain.Deployment, error) {
 	started := s.now().UTC()
+	if request.OperationID == "" {
+		request.OperationID = NewOperationID()
+	}
 	deployment := domain.Deployment{
-		ID: "dep_" + randomID(12), StackID: request.StackID, OperationID: "op_" + randomID(12),
+		ID: "dep_" + randomID(12), StackID: request.StackID, OperationID: request.OperationID,
 		GitCommit: request.GitCommit, Dirty: request.Dirty, DiffDigest: request.DiffDigest,
 		Status: domain.DeploymentFailed, StartedAt: started,
 	}

@@ -14,7 +14,7 @@ func TestDeployValidatesBeforeApplyingAndRecordsDigest(t *testing.T) {
 	runtime := &fakeComposeRuntime{}
 	store := &fakeDeploymentStore{}
 	service := application.NewDeploymentService(runtime, store, application.NewCoordinator())
-	request := application.DeployRequest{StackID: "stk_gateway", StackDir: "/srv/stacks/gateway", ProjectName: "porty-gateway-123", GitCommit: "abc123", Dirty: true}
+	request := application.DeployRequest{StackID: "stk_gateway", OperationID: "op_request", StackDir: "/srv/stacks/gateway", ProjectName: "porty-gateway-123", GitCommit: "abc123", Dirty: true}
 	deployment, err := service.Deploy(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -24,6 +24,9 @@ func TestDeployValidatesBeforeApplyingAndRecordsDigest(t *testing.T) {
 	}
 	if deployment.ComposeDigest != "sha256:desired" || deployment.Status != domain.DeploymentSucceeded || len(store.saved) != 1 {
 		t.Fatalf("deployment = %#v saved = %#v", deployment, store.saved)
+	}
+	if deployment.OperationID != "op_request" || deployment.GitCommit != "abc123" || !deployment.Dirty {
+		t.Fatalf("deployment provenance = %#v", deployment)
 	}
 }
 
