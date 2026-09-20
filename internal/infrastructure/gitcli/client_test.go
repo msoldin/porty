@@ -167,6 +167,26 @@ func TestStatusParsingAndStackScopedCommitInRealRepository(t *testing.T) {
 	}
 }
 
+func TestDiffIncludesUntrackedStackFiles(t *testing.T) {
+	repository := initRepository(t)
+	runGit(t, repository, "commit", "--allow-empty", "-m", "initial")
+	write(t, filepath.Join(repository, "paperless", "docker-compose.yml"), "services:\n  web:\n    image: nginx:alpine\n")
+
+	client, err := gitcli.New(portyprocess.NewRunner(), repository, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := client.Diff(context.Background(), "paperless")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"diff --git a/paperless/docker-compose.yml b/paperless/docker-compose.yml", "new file mode", "+    image: nginx:alpine"} {
+		if !strings.Contains(diff, want) {
+			t.Fatalf("Diff() missing %q:\n%s", want, diff)
+		}
+	}
+}
+
 func TestAdoptRejectsHostileLocalConfiguration(t *testing.T) {
 	repository := initRepository(t)
 	runGit(t, repository, "config", "core.fsmonitor", "/tmp/evil")

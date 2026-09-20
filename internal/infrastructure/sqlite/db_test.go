@@ -2,9 +2,31 @@ package sqlite
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestOpenRestrictsPermissiveExistingDataDirectory(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "data")
+	if err := os.Mkdir(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(context.Background(), filepath.Join(directory, "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("data directory mode = %04o, want 0700", got)
+	}
+}
 
 func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "porty.db")

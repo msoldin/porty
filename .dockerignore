@@ -1,0 +1,9 @@
+.git
+.github
+.superpowers
+.worktrees
+docs/design
+web/node_modules
+web/test-results
+web/playwright-report
+**/*_test.go

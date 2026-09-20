@@ -228,7 +228,50 @@ func (c *Client) Diff(ctx context.Context, stack string) (string, error) {
 		return "", ErrInvalidCommit
 	}
 	result, err := c.run(ctx, "diff", "--no-ext-diff", "--", stack)
-	return result.Output, err
+	if err != nil {
+		return result.Output, err
+	}
+	untracked, err := c.run(ctx, "ls-files", "--others", "--exclude-standard", "-z", "--", stack)
+	if err != nil {
+		return "", err
+	}
+	var output strings.Builder
+	output.WriteString(result.Output)
+	for _, name := range strings.Split(strings.TrimSuffix(untracked.Output, "\x00"), "\x00") {
+		if name == "" {
+			continue
+		}
+		path := filepath.Join(c.repo, filepath.FromSlash(name))
+		relative, relErr := filepath.Rel(filepath.Join(c.repo, stack), path)
+		info, statErr := os.Lstat(path)
+		if relErr != nil || !filepath.IsLocal(relative) || statErr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		contents, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return "", readErr
+		}
+		mode := 100644
+		if info.Mode().Perm()&0o111 != 0 {
+			mode = 100755
+		}
+		fmt.Fprintf(&output, "diff --git a/%s b/%s\nnew file mode %06d\n--- /dev/null\n+++ b/%s\n", name, name, mode, name)
+		if len(contents) > 1<<20 || strings.IndexByte(string(contents), 0) >= 0 {
+			fmt.Fprintf(&output, "Binary files /dev/null and b/%s differ\n", name)
+			continue
+		}
+		lines := strings.Split(strings.TrimSuffix(string(contents), "\n"), "\n")
+		if len(contents) == 0 {
+			lines = nil
+		}
+		fmt.Fprintf(&output, "@@ -0,0 +1,%d @@\n", len(lines))
+		for _, line := range lines {
+			output.WriteString("+")
+			output.WriteString(line)
+			output.WriteString("\n")
+		}
+	}
+	return output.String(), nil
 }
 
 func (c *Client) Commit(ctx context.Context, stack, message string) (string, error) {
