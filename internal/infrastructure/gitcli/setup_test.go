@@ -3,16 +3,582 @@ package gitcli_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 	"github.com/msoldin/porty/internal/infrastructure/gitcli"
 	portyprocess "github.com/msoldin/porty/internal/infrastructure/process"
 )
+
+const (
+	testRemoteURL = "https://git@example.com/team/repo.git"
+	testObjectID  = "0123456789012345678901234567890123456789"
+)
+
+func TestProvisionerInspectRemoteUsesSymbolicHEAD(t *testing.T) {
+	runner := &remoteInspectionRunner{result: portyprocess.Result{Output: "ref: refs/heads/trunk\tHEAD\n" + testObjectID + "\tHEAD\n" + testObjectID + "\trefs/heads/trunk\n"}}
+	provisioner, _ := newTestProvisioner(t, runner)
+
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.RemoteURL != "https://example.com/team/repo.git" || inspection.DefaultBranch != "trunk" || inspection.Suggested != "trunk" || inspection.Empty {
+		t.Fatalf("inspection = %#v", inspection)
+	}
+	if !reflect.DeepEqual(inspection.Branches, []string{"trunk"}) {
+		t.Fatalf("branches = %#v, want trunk", inspection.Branches)
+	}
+	if len(runner.requests) != 1 {
+		t.Fatalf("requests = %d, want 1", len(runner.requests))
+	}
+	request := runner.requests[0]
+	if request.MaxOutput != 1<<20 {
+		t.Fatalf("MaxOutput = %d, want %d", request.MaxOutput, 1<<20)
+	}
+	if !reflect.DeepEqual(request.Args, hardened("ls-remote", "--symref", testRemoteURL, "HEAD", "refs/heads/*")) {
+		t.Fatalf("arguments = %#v", request.Args)
+	}
+	if runner.deadline < 29*time.Second || runner.deadline > 30*time.Second {
+		t.Fatalf("deadline = %v, want approximately 30s", runner.deadline)
+	}
+}
+
+func TestProvisionerInspectRemoteUsesSoleBranchWithoutHEAD(t *testing.T) {
+	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: testObjectID + "\trefs/heads/release\n"}})
+
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.DefaultBranch != "release" || inspection.Suggested != "release" {
+		t.Fatalf("inspection = %#v", inspection)
+	}
+}
+
+func TestProvisionerInspectRemoteRequiresChoiceForMultipleBranchesWithoutHEAD(t *testing.T) {
+	output := testObjectID + "\trefs/heads/main\n" + testObjectID + "\trefs/heads/release\n"
+	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output}})
+
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.DefaultBranch != "" || inspection.Suggested != "" || inspection.Empty {
+		t.Fatalf("inspection = %#v", inspection)
+	}
+}
+
+func TestProvisionerInspectRemoteSuggestsMainForEmptyRemote(t *testing.T) {
+	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{})
+
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inspection.Empty || inspection.Suggested != "main" || inspection.DefaultBranch != "" || len(inspection.Branches) != 0 {
+		t.Fatalf("inspection = %#v", inspection)
+	}
+}
+
+func TestProvisionerInspectRemoteRejectsObjectHEADWithoutBranches(t *testing.T) {
+	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: testObjectID + "\tHEAD\n"}})
+	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if !errors.Is(err, application.ErrRemoteUnavailable) {
+		t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
+	}
+}
+
+func TestProvisionerInspectRemoteRejectsSymbolicHEADWithoutBranches(t *testing.T) {
+	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: "ref: refs/heads/main\tHEAD\n"}})
+	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if !errors.Is(err, application.ErrRemoteUnavailable) {
+		t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
+	}
+}
+
+func TestProvisionerInspectRemoteSortsAndDeduplicatesBranches(t *testing.T) {
+	output := testObjectID + "\trefs/heads/zeta\n" + testObjectID + "\trefs/heads/alpha\n" + testObjectID + "\trefs/heads/zeta\n"
+	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output}})
+
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(inspection.Branches, []string{"alpha", "zeta"}) {
+		t.Fatalf("branches = %#v", inspection.Branches)
+	}
+}
+
+func TestProvisionerInspectRemoteRejectsInvalidBranchRef(t *testing.T) {
+	tests := map[string]string{
+		"invalid branch":          testObjectID + "\trefs/heads/../escape\n",
+		"invalid object":          "not-an-object\trefs/heads/main\n",
+		"malformed record":        testObjectID + " refs/heads/main\n",
+		"unexpected ref":          testObjectID + "\trefs/tags/v1\n",
+		"duplicate symbolic head": "ref: refs/heads/main\tHEAD\nref: refs/heads/main\tHEAD\n" + testObjectID + "\trefs/heads/main\n",
+	}
+	for name, output := range tests {
+		t.Run(name, func(t *testing.T) {
+			provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output}})
+			_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+			if !errors.Is(err, application.ErrRemoteUnavailable) {
+				t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
+			}
+		})
+	}
+}
+
+func TestProvisionerInspectRemoteRejectsOversizedOutput(t *testing.T) {
+	t.Run("truncated output", func(t *testing.T) {
+		provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Truncated: true}})
+		_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+		if !errors.Is(err, application.ErrRemoteUnavailable) {
+			t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
+		}
+	})
+	t.Run("too many branches", func(t *testing.T) {
+		var output strings.Builder
+		for index := 0; index <= 1000; index++ {
+			fmt.Fprintf(&output, "%s\trefs/heads/branch-%04d\n", testObjectID, index)
+		}
+		provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output.String()}})
+		_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+		if !errors.Is(err, application.ErrRemoteUnavailable) {
+			t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
+		}
+	})
+}
+
+func TestProvisionerInspectRemoteMapsAuthenticationFailure(t *testing.T) {
+	const secret = "do-not-return-this-token"
+	runner := &remoteInspectionRunner{
+		result: portyprocess.Result{Output: "fatal: Authentication failed for " + secret, ExitCode: 128},
+		err:    errors.New("git failed with " + secret),
+	}
+	provisioner, _ := newTestProvisioner(t, runner)
+	authentication := domain.RepositoryAuthentication{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: secret}
+
+	_, err := provisioner.InspectRemote(context.Background(), "https://example.com/team/repo.git", authentication)
+	if !errors.Is(err, application.ErrRemoteAuthenticationFailed) {
+		t.Fatalf("InspectRemote() error = %v, want ErrRemoteAuthenticationFailed", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("InspectRemote() error exposed secret: %v", err)
+	}
+	if len(runner.requests) != 1 || !containsString(runner.requests[0].Redact, secret) || !containsString(runner.requests[0].Env, "PORTY_GIT_PASSWORD="+secret) {
+		t.Fatalf("authentication was not applied safely: %#v", runner.requests)
+	}
+}
+
+func TestProvisionerInspectRemoteMapsGitHTTPAuthenticationFailures(t *testing.T) {
+	for _, status := range []string{"401", "403"} {
+		t.Run(status, func(t *testing.T) {
+			runner := &remoteInspectionRunner{
+				result: portyprocess.Result{Output: "fatal: unable to access remote: The requested URL returned error: " + status, ExitCode: 128},
+				err:    errors.New("git failed with private transport details"),
+			}
+			provisioner, _ := newTestProvisioner(t, runner)
+
+			_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+			if !errors.Is(err, application.ErrRemoteAuthenticationFailed) || err.Error() != application.ErrRemoteAuthenticationFailed.Error() {
+				t.Fatalf("InspectRemote() error = %v, want stable ErrRemoteAuthenticationFailed", err)
+			}
+			if strings.Contains(err.Error(), status) {
+				t.Fatalf("InspectRemote() error exposed stderr: %v", err)
+			}
+		})
+	}
+}
+
+func TestProvisionerInspectRemoteMapsOtherFailureToUnavailable(t *testing.T) {
+	runner := &remoteInspectionRunner{
+		result: portyprocess.Result{Output: "fatal: unable to access remote host", ExitCode: 128},
+		err:    errors.New("network details must not escape"),
+	}
+	provisioner, _ := newTestProvisioner(t, runner)
+
+	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	if !errors.Is(err, application.ErrRemoteUnavailable) || err.Error() != application.ErrRemoteUnavailable.Error() {
+		t.Fatalf("InspectRemote() error = %v, want stable ErrRemoteUnavailable", err)
+	}
+}
+
+func TestProvisionerRemoteImportFetchesSelectedBranch(t *testing.T) {
+	localRemote := createLocalRemote(t, "trunk", true)
+	runner := newLocalRemoteRunner(localRemote)
+	provisioner, repository := newTestProvisioner(t, runner)
+	request := remoteProvisionRequest("trunk")
+	request.Authentication = domain.RepositoryAuthentication{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: "import-token"}
+
+	repositoryClient, configuration, err := provisioner.Provision(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repositoryClient.Fetch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := runGit(t, repository, "symbolic-ref", "--short", "HEAD"); got != "trunk\n" {
+		t.Fatalf("branch = %q, want trunk", got)
+	}
+	if got, err := os.ReadFile(filepath.Join(repository, "README.md")); err != nil || string(got) != "remote repository\n" {
+		t.Fatalf("fetched worktree contents = %q, err=%v", got, err)
+	}
+	if configuration.Remote == nil || configuration.Remote.URL != "https://example.com/team/repo.git" || !configuration.Remote.Managed {
+		t.Fatalf("remote configuration = %#v", configuration.Remote)
+	}
+	wantCommands := [][]string{
+		hardened("init", "-b", "trunk", repository),
+		hardened("-C", repository, "remote", "add", "origin", "https://example.com/team/repo.git"),
+		hardened("-C", repository, "fetch", "--no-tags", "origin", "refs/heads/trunk:refs/remotes/origin/trunk"),
+		hardened("-C", repository, "checkout", "-B", "trunk", "--track", "origin/trunk"),
+	}
+	if !containsCommands(runner.args(), wantCommands) {
+		t.Fatalf("commands = %#v, want ordered commands %#v", runner.args(), wantCommands)
+	}
+	for _, recorded := range runner.requests {
+		if (containsString(recorded.Args, "ls-remote") || containsString(recorded.Args, "fetch")) && !containsString(recorded.Env, "PORTY_GIT_PASSWORD=import-token") {
+			t.Fatalf("remote command is missing authentication environment: %#v", recorded)
+		}
+	}
+}
+
+func TestProvisionerRemoteImportCreatesTrackingBranch(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(createLocalRemote(t, "release", true)))
+
+	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("release"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runGit(t, repository, "config", "--local", "branch.release.remote"); got != "origin\n" {
+		t.Fatalf("tracking remote = %q", got)
+	}
+	if got := runGit(t, repository, "config", "--local", "branch.release.merge"); got != "refs/heads/release\n" {
+		t.Fatalf("tracking merge = %q", got)
+	}
+}
+
+func TestProvisionerRemoteImportBoundsFetch(t *testing.T) {
+	runner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+	provisioner, _ := newTestProvisioner(t, runner)
+	if _, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main")); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range runner.requests {
+		if containsString(request.Args, "fetch") && request.MaxOutput != 1<<20 {
+			t.Errorf("fetch MaxOutput = %d, want %d", request.MaxOutput, 1<<20)
+		}
+	}
+	if runner.fetchDeadline < 29*time.Second || runner.fetchDeadline > 30*time.Second {
+		t.Errorf("fetch deadline = %v, want approximately 30s", runner.fetchDeadline)
+	}
+}
+
+func TestProvisionerRemoteImportBoundsTreeAndCheckout(t *testing.T) {
+	runner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+	provisioner, _ := newTestProvisioner(t, runner)
+	if _, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main")); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"ls-tree", "checkout"} {
+		found := false
+		for _, request := range runner.requests {
+			if containsString(request.Args, command) {
+				found = true
+				if request.MaxOutput != 1<<20 {
+					t.Errorf("%s MaxOutput = %d, want %d", command, request.MaxOutput, 1<<20)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s was not called", command)
+		}
+		if deadline := runner.commandDeadlines[command]; deadline < 29*time.Second || deadline > 30*time.Second {
+			t.Errorf("%s deadline = %v, want approximately 30s", command, deadline)
+		}
+	}
+}
+
+func TestProvisionerRemoteImportPublishesNestedFilesAndSymlinks(t *testing.T) {
+	remote := createLocalRemote(t, "main", true)
+	source := filepath.Join(filepath.Dir(remote), "source")
+	write(t, filepath.Join(source, "nested", "start.sh"), "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(filepath.Join(source, "nested", "start.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../README.md", filepath.Join(source, "nested", "readme")); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, source, "add", "nested")
+	runGit(t, source, "commit", "-m", "add nested files")
+	runGit(t, source, "push", "origin", "main")
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+
+	if _, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main")); err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(filepath.Join(repository, "nested", "start.sh")); err != nil || string(content) != "#!/bin/sh\nexit 0\n" {
+		t.Fatalf("nested executable = %q, err=%v", content, err)
+	}
+	if info, err := os.Stat(filepath.Join(repository, "nested", "start.sh")); err != nil || info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("executable permissions missing: info=%v err=%v", info, err)
+	}
+	if target, err := os.Readlink(filepath.Join(repository, "nested", "readme")); err != nil || target != "../README.md" {
+		t.Fatalf("symlink target = %q, err=%v", target, err)
+	}
+	if status := runGit(t, repository, "status", "--porcelain"); status != "" {
+		t.Fatalf("imported worktree is dirty: %q", status)
+	}
+	if _, err := os.Lstat(filepath.Join(repository, ".git", "porty-checkout")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("checkout staging directory remains: %v", err)
+	}
+}
+
+func TestProvisionerRemoteImportSupportsEmptyRemote(t *testing.T) {
+	runner := newLocalRemoteRunner(createLocalRemote(t, "main", false))
+	provisioner, repository := newTestProvisioner(t, runner)
+
+	_, configuration, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runGit(t, repository, "symbolic-ref", "--short", "HEAD"); got != "main\n" {
+		t.Fatalf("branch = %q, want main", got)
+	}
+	if got := runGit(t, repository, "remote", "get-url", "origin"); got != "https://example.com/team/repo.git\n" {
+		t.Fatalf("origin = %q", got)
+	}
+	if configuration.Remote == nil || !configuration.Remote.Managed {
+		t.Fatalf("remote configuration = %#v", configuration.Remote)
+	}
+	for _, arguments := range runner.args() {
+		if containsString(arguments, "fetch") || containsString(arguments, "checkout") {
+			t.Fatalf("empty import ran history command: %#v", arguments)
+		}
+	}
+}
+
+func TestProvisionerRemoteImportRejectsUnadvertisedBranch(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(createLocalRemote(t, "main", true)))
+
+	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("missing"))
+	if !errors.Is(err, application.ErrInvalidRequest) {
+		t.Fatalf("Provision() error = %v, want ErrInvalidRequest", err)
+	}
+	if _, statErr := os.Lstat(repository); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("repository was mutated: %v", statErr)
+	}
+}
+
+func TestProvisionerRemoteImportRetryAcceptsExactPartialRepository(t *testing.T) {
+	provisioner, _ := newTestProvisioner(t, newLocalRemoteRunner(createLocalRemote(t, "main", true)))
+	request := remoteProvisionRequest("main")
+
+	if _, _, err := provisioner.Provision(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if _, configuration, err := provisioner.Provision(context.Background(), request); err != nil {
+		t.Fatalf("retry failed: %v", err)
+	} else if configuration.Branch != request.Branch || configuration.Author != request.Author || configuration.Remote == nil || !configuration.Remote.Managed {
+		t.Fatalf("retry configuration = %#v", configuration)
+	}
+}
+
+func TestProvisionerRemoteImportRetryRejectsMismatchedOrigin(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(createLocalRemote(t, "main", true)))
+	request := remoteProvisionRequest("main")
+	if _, _, err := provisioner.Provision(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repository, "remote", "set-url", "origin", "https://example.com/other/repo.git")
+
+	_, _, err := provisioner.Provision(context.Background(), request)
+	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+		t.Fatalf("Provision() error = %v, want ErrRepositoryPathNotEmpty", err)
+	}
+}
+
+func TestProvisionerRemoteImportRetryRejectsUnrelatedLocalHistory(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(createLocalRemote(t, "main", true)))
+	request := remoteProvisionRequest("main")
+	if _, _, err := provisioner.Provision(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(repository, "local-only.txt"), "unrelated local history\n")
+	runGit(t, repository, "add", "local-only.txt")
+	runGit(t, repository, "commit", "-m", "unrelated local commit")
+
+	_, _, err := provisioner.Provision(context.Background(), request)
+	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+		t.Fatalf("Provision() error = %v, want ErrRepositoryPathNotEmpty", err)
+	}
+}
+
+func TestProvisionerRemoteImportFailureRemovesOnlyCreatedArtifacts(t *testing.T) {
+	for _, preexistingRoot := range []bool{false, true} {
+		t.Run(fmt.Sprintf("preexisting root %t", preexistingRoot), func(t *testing.T) {
+			localRunner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+			failingRunner := &failingCommandRunner{delegate: localRunner, command: "fetch"}
+			provisioner, repository := newTestProvisioner(t, failingRunner)
+			if preexistingRoot {
+				if err := os.Mkdir(repository, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
+			if !errors.Is(err, application.ErrRemoteUnavailable) {
+				t.Fatalf("Provision() error = %v, want ErrRemoteUnavailable", err)
+			}
+			info, statErr := os.Lstat(repository)
+			if preexistingRoot {
+				if statErr != nil || !info.IsDir() {
+					t.Fatalf("pre-existing root was removed: %v", statErr)
+				}
+				entries, readErr := os.ReadDir(repository)
+				if readErr != nil || len(entries) != 0 {
+					t.Fatalf("created artifacts remain: entries=%v err=%v", entries, readErr)
+				}
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("created root remains: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestProvisionerRemoteImportFailurePreservesFileAddedToPreExistingRoot(t *testing.T) {
+	localRunner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+	failingRunner := &failingCommandRunner{delegate: localRunner, command: "fetch"}
+	provisioner, repository := newTestProvisioner(t, failingRunner)
+	if err := os.Mkdir(repository, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	failingRunner.beforeFail = func() {
+		write(t, filepath.Join(repository, "keep.txt"), "must survive cleanup\n")
+	}
+
+	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
+	if !errors.Is(err, application.ErrRemoteUnavailable) {
+		t.Fatalf("Provision() error = %v, want ErrRemoteUnavailable", err)
+	}
+	if got, readErr := os.ReadFile(filepath.Join(repository, "keep.txt")); readErr != nil || string(got) != "must survive cleanup\n" {
+		t.Fatalf("pre-existing-root file = %q, err=%v", got, readErr)
+	}
+	if _, statErr := os.Lstat(filepath.Join(repository, ".git")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("created Git metadata remains: %v", statErr)
+	}
+}
+
+func TestProvisionerRemoteImportCleanupRejectsParentSymlinkReplacement(t *testing.T) {
+	localRunner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+	failingRunner := &failingCommandRunner{delegate: localRunner, command: "fetch"}
+	provisioner, repository := newTestProvisioner(t, failingRunner)
+	dataDirectory := filepath.Dir(repository)
+	movedDataDirectory := dataDirectory + "-moved"
+	externalDirectory := t.TempDir()
+	externalRepository := filepath.Join(externalDirectory, "repository")
+	write(t, filepath.Join(externalRepository, "keep.txt"), "external data\n")
+	failingRunner.beforeFail = func() {
+		if err := os.Rename(dataDirectory, movedDataDirectory); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(externalDirectory, dataDirectory); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
+	if !errors.Is(err, application.ErrRemoteUnavailable) {
+		t.Fatalf("Provision() error = %v, want ErrRemoteUnavailable", err)
+	}
+	if got, readErr := os.ReadFile(filepath.Join(externalRepository, "keep.txt")); readErr != nil || string(got) != "external data\n" {
+		t.Fatalf("external file = %q, err=%v", got, readErr)
+	}
+}
+
+func TestProvisionerRemoteImportFailurePreservesConcurrentFileCreatedDuringCheckout(t *testing.T) {
+	localRunner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+	failingRunner := &failingCommandRunner{
+		delegate: localRunner,
+		command:  "config",
+	}
+	provisioner, repository := newTestProvisioner(t, failingRunner)
+	failingRunner.afterRun = func(request portyprocess.Request) {
+		if containsString(request.Args, "checkout") {
+			write(t, filepath.Join(repository, "concurrent.txt"), "must survive cleanup\n")
+		}
+	}
+
+	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
+	if err == nil {
+		t.Fatal("Provision() error = nil, want configuration failure")
+	}
+	if got, readErr := os.ReadFile(filepath.Join(repository, "concurrent.txt")); readErr != nil || string(got) != "must survive cleanup\n" {
+		t.Fatalf("concurrent file = %q, err=%v", got, readErr)
+	}
+	if _, statErr := os.Lstat(filepath.Join(repository, "README.md")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("created checkout artifact remains: %v", statErr)
+	}
+}
+
+func TestProvisionerRemoteImportFailureRemovesPartialCheckoutArtifacts(t *testing.T) {
+	localRunner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+	failingRunner := &failingCommandRunner{delegate: localRunner, command: "checkout", failAfterRun: true}
+	provisioner, repository := newTestProvisioner(t, failingRunner)
+
+	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
+	if err == nil {
+		t.Fatal("Provision() error = nil, want checkout failure")
+	}
+	if _, statErr := os.Lstat(filepath.Join(repository, "README.md")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("partial checkout artifact remains: %v", statErr)
+	}
+	if _, statErr := os.Lstat(repository); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("created repository root remains: %v", statErr)
+	}
+}
+
+func TestProvisionerRemoteImportFailurePreservesConcurrentPlannedFile(t *testing.T) {
+	for _, failCheckout := range []bool{true, false} {
+		t.Run(fmt.Sprintf("checkout failure %t", failCheckout), func(t *testing.T) {
+			localRunner := newLocalRemoteRunner(createLocalRemote(t, "main", true))
+			failingRunner := &failingCommandRunner{delegate: localRunner, command: "checkout"}
+			if !failCheckout {
+				failingRunner.command = "config"
+			}
+			provisioner, repository := newTestProvisioner(t, failingRunner)
+			addConcurrentFile := func() {
+				write(t, filepath.Join(repository, "README.md"), "concurrent external data\n")
+			}
+			if failCheckout {
+				failingRunner.beforeFail = addConcurrentFile
+			} else {
+				failingRunner.afterRun = func(request portyprocess.Request) {
+					if containsString(request.Args, "checkout") {
+						addConcurrentFile()
+					}
+				}
+			}
+
+			if _, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main")); err == nil {
+				t.Fatal("Provision() error = nil, want failure")
+			}
+			if got, err := os.ReadFile(filepath.Join(repository, "README.md")); err != nil || string(got) != "concurrent external data\n" {
+				t.Fatalf("concurrent planned file = %q, err=%v", got, err)
+			}
+			if _, err := os.Lstat(filepath.Join(repository, ".git")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("attempt-created metadata remains: %v", err)
+			}
+		})
+	}
+}
 
 func TestProvisionerInspectPathClassifiesEmptyDirectory(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
@@ -283,6 +849,159 @@ func TestProvisionerProvisionAdoptUsesFinalOriginSnapshot(t *testing.T) {
 	if configuration.Remote == nil || configuration.Remote.URL != finalURL || !configuration.Remote.Managed {
 		t.Fatalf("remote = %#v, want managed final origin %q", configuration.Remote, finalURL)
 	}
+}
+
+type remoteInspectionRunner struct {
+	result   portyprocess.Result
+	err      error
+	requests []portyprocess.Request
+	deadline time.Duration
+}
+
+func (r *remoteInspectionRunner) Run(ctx context.Context, request portyprocess.Request) (portyprocess.Result, error) {
+	requestCopy := request
+	requestCopy.Args = append([]string(nil), request.Args...)
+	requestCopy.Env = append([]string(nil), request.Env...)
+	requestCopy.Redact = append([]string(nil), request.Redact...)
+	r.requests = append(r.requests, requestCopy)
+	if deadline, ok := ctx.Deadline(); ok {
+		r.deadline = time.Until(deadline)
+	}
+	return r.result, r.err
+}
+
+type localRemoteRunner struct {
+	delegate         Runner
+	localPath        string
+	remoteURL        string
+	requests         []portyprocess.Request
+	fetchDeadline    time.Duration
+	commandDeadlines map[string]time.Duration
+}
+
+type failingCommandRunner struct {
+	delegate     Runner
+	command      string
+	beforeFail   func()
+	afterRun     func(portyprocess.Request)
+	failAfterRun bool
+}
+
+func (r *failingCommandRunner) Run(ctx context.Context, request portyprocess.Request) (portyprocess.Result, error) {
+	if containsString(request.Args, r.command) && !r.failAfterRun {
+		if r.beforeFail != nil {
+			r.beforeFail()
+		}
+		return portyprocess.Result{Output: "fatal: remote transport unavailable", ExitCode: 128}, errors.New("remote command failed")
+	}
+	result, err := r.delegate.Run(ctx, request)
+	if r.afterRun != nil {
+		r.afterRun(request)
+	}
+	if containsString(request.Args, r.command) && r.failAfterRun {
+		return portyprocess.Result{Output: "fatal: remote transport unavailable", ExitCode: 128}, errors.New("remote command failed")
+	}
+	return result, err
+}
+
+func newLocalRemoteRunner(localPath string) *localRemoteRunner {
+	return &localRemoteRunner{
+		delegate:  portyprocess.NewRunner(),
+		localPath: localPath,
+		remoteURL: "https://example.com/team/repo.git",
+	}
+}
+
+func (r *localRemoteRunner) Run(ctx context.Context, request portyprocess.Request) (portyprocess.Result, error) {
+	if r.commandDeadlines == nil {
+		r.commandDeadlines = make(map[string]time.Duration)
+	}
+	for _, command := range []string{"ls-tree", "checkout"} {
+		if containsString(request.Args, command) {
+			if deadline, ok := ctx.Deadline(); ok {
+				r.commandDeadlines[command] = time.Until(deadline)
+			}
+		}
+	}
+	if containsString(request.Args, "fetch") {
+		if deadline, ok := ctx.Deadline(); ok {
+			r.fetchDeadline = time.Until(deadline)
+		}
+	}
+	requestCopy := request
+	requestCopy.Args = append([]string(nil), request.Args...)
+	requestCopy.Env = append([]string(nil), request.Env...)
+	requestCopy.Redact = append([]string(nil), request.Redact...)
+	r.requests = append(r.requests, requestCopy)
+
+	rewritten := request
+	rewritten.Args = append([]string(nil), request.Args...)
+	if containsString(rewritten.Args, "ls-remote") {
+		for index, argument := range rewritten.Args {
+			if argument == testRemoteURL || argument == r.remoteURL {
+				rewritten.Args[index] = r.localPath
+			}
+		}
+	}
+	if containsString(rewritten.Args, "fetch") {
+		for index, argument := range rewritten.Args {
+			if argument == "origin" {
+				rewritten.Args[index] = r.localPath
+			}
+		}
+	}
+	return r.delegate.Run(ctx, rewritten)
+}
+
+func (r *localRemoteRunner) args() [][]string {
+	result := make([][]string, 0, len(r.requests))
+	for _, request := range r.requests {
+		result = append(result, request.Args)
+	}
+	return result
+}
+
+func remoteProvisionRequest(branch string) application.RepositoryProvisionRequest {
+	return application.RepositoryProvisionRequest{
+		Mode:           domain.RepositorySetupRemote,
+		Branch:         branch,
+		Author:         domain.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
+		RemoteURL:      testRemoteURL,
+		Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone},
+	}
+}
+
+func createLocalRemote(t *testing.T, branch string, populated bool) string {
+	t.Helper()
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	runGit(t, root, "init", "--bare", remote)
+	if !populated {
+		return remote
+	}
+	source := filepath.Join(root, "source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, source, "init", "-b", branch)
+	runGit(t, source, "config", "user.name", "Remote Author")
+	runGit(t, source, "config", "user.email", "remote@example.invalid")
+	write(t, filepath.Join(source, "README.md"), "remote repository\n")
+	runGit(t, source, "add", "README.md")
+	runGit(t, source, "commit", "-m", "initial")
+	runGit(t, source, "remote", "add", "origin", remote)
+	runGit(t, source, "push", "origin", branch)
+	runGit(t, remote, "symbolic-ref", "HEAD", "refs/heads/"+branch)
+	return remote
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 type recordingDelegateRunner struct {

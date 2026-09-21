@@ -497,7 +497,7 @@ git commit -m "feat: provision local stack repositories"
 - Modify: `internal/infrastructure/gitcli/setup.go`
 - Modify: `internal/infrastructure/gitcli/setup_test.go`
 
-- [ ] **Step 1: Add failing inspection parser tests**
+- [x] **Step 1: Add failing inspection parser tests**
 
 ```go
 func TestProvisionerInspectRemoteUsesSymbolicHEAD(t *testing.T)
@@ -519,7 +519,7 @@ ref: refs/heads/trunk\tHEAD
 0123456789012345678901234567890123456789\trefs/heads/trunk
 ```
 
-- [ ] **Step 2: Add failing import tests**
+- [x] **Step 2: Add failing import tests**
 
 ```go
 func TestProvisionerRemoteImportFetchesSelectedBranch(t *testing.T)
@@ -530,13 +530,13 @@ func TestProvisionerRemoteImportRetryAcceptsExactPartialRepository(t *testing.T)
 func TestProvisionerRemoteImportRetryRejectsMismatchedOrigin(t *testing.T)
 ```
 
-- [ ] **Step 3: Run and confirm failure**
+- [x] **Step 3: Run and confirm failure**
 
 Run: `go test ./internal/infrastructure/gitcli -run 'TestProvisioner.*Remote'`
 
 Expected: failing parser/import tests.
 
-- [ ] **Step 4: Implement bounded branch discovery**
+- [x] **Step 4: Implement bounded branch discovery**
 
 Run with a 30-second context and `MaxOutput: 1 << 20`:
 
@@ -555,7 +555,7 @@ Selection order:
 
 Return a canonical URL with userinfo removed. Classify stderr through redacted authentication markers; never return stderr.
 
-- [ ] **Step 5: Implement targeted import**
+- [x] **Step 5: Implement targeted import**
 
 For an advertised branch:
 
@@ -570,13 +570,13 @@ git -C <fixed-root> config --local user.email <email>
 
 For an empty remote, stop after init, origin creation, and identity configuration, leaving an unborn branch. Apply auth to inspection, fetch, and returned client. On failure remove only artifacts created by that call; never recursively delete a pre-existing directory.
 
-- [ ] **Step 6: Run and pass**
+- [x] **Step 6: Run and pass**
 
 Run: `gofmt -w internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go && go test ./internal/infrastructure/gitcli -run 'TestProvisioner.*Remote'`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go
