@@ -299,7 +299,7 @@ Unsupported mode/auth type, invalid identity/branch, missing URL, and inconsiste
 - Create: `internal/application/repository_setup_test.go`
 - Modify: `internal/domain/api.go`
 
-- [ ] **Step 1: Write failing service tests with fakes**
+- [x] **Step 1: Write failing service tests with fakes**
 
 ```go
 func TestRepositorySetupStatusOffersModesForEmptyPath(t *testing.T)
@@ -317,17 +317,17 @@ func TestRepositorySetupResponseNeverContainsSecret(t *testing.T)
 
 Use fake store/provisioner implementations and the real `Coordinator`. Record maximum concurrent provisioner calls and assert it is one.
 
-- [ ] **Step 2: Run the focused test and confirm failure**
+- [x] **Step 2: Run the focused test and confirm failure**
 
 Run: `go test ./internal/application -run 'TestRepositorySetup'`
 
 Expected: compile failures for missing types.
 
-- [ ] **Step 3: Add the Core Contracts types**
+- [x] **Step 3: Add the Core Contracts types**
 
 Add all request, response, configuration, path, constant, and authentication types. Remove the superseded flat setup request from `internal/domain/api.go` after references move.
 
-- [ ] **Step 4: Implement validation and orchestration**
+- [x] **Step 4: Implement validation and orchestration**
 
 ```go
 const (
@@ -364,13 +364,13 @@ Reconciliation behavior:
 
 Retry asks the provisioner to accept only an exact prior-attempt branch/identity/remote/history; never delete mismatched state.
 
-- [ ] **Step 5: Run and pass**
+- [x] **Step 5: Run and pass**
 
 Run: `gofmt -w internal/domain/repository_setup.go internal/domain/api.go internal/application/repository_setup.go internal/application/repository_setup_test.go && go test ./internal/application -run 'TestRepositorySetup'`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/domain/repository_setup.go internal/domain/api.go internal/application/repository_setup.go internal/application/repository_setup_test.go
