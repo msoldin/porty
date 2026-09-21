@@ -383,7 +383,7 @@ git commit -m "feat: add repository setup orchestration"
 - Modify: `internal/infrastructure/sqlite/repository_store.go`
 - Create: `internal/infrastructure/sqlite/repository_store_test.go`
 
-- [ ] **Step 1: Write failing store tests**
+- [x] **Step 1: Write failing store tests**
 
 ```go
 func TestRepositoryStoreLoadsRegisteredDefaultsWithoutAuthRow(t *testing.T)
@@ -397,13 +397,13 @@ func TestRepositoryStoreSaveRollsBackConfigurationWhenAuthWriteFails(t *testing.
 
 Inspect SQL directly to prove local-only remote fields are `NULL`, HTTPS-to-SSH clears HTTPS secrets, and removal deletes the auth row.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `go test ./internal/infrastructure/sqlite -run 'TestRepositoryStore'`
 
 Expected: old store contract fails.
 
-- [ ] **Step 3: Implement transactional `Load` and `Save`**
+- [x] **Step 3: Implement transactional `Load` and `Save`**
 
 Use existing `app_state` and `repository_auth` columns; add no migration. One transaction updates setup state/root/remote/branch/author and then:
 
@@ -413,13 +413,13 @@ Use existing `app_state` and `repository_auth` columns; add no migration. One tr
 
 Reject unknown stored `auth_type`.
 
-- [ ] **Step 4: Run and pass**
+- [x] **Step 4: Run and pass**
 
 Run: `gofmt -w internal/infrastructure/sqlite/repository_store.go internal/infrastructure/sqlite/repository_store_test.go && go test ./internal/infrastructure/sqlite -run 'TestRepositoryStore'`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/infrastructure/sqlite/repository_store.go internal/infrastructure/sqlite/repository_store_test.go
