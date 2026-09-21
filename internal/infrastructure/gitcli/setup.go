@@ -176,6 +176,10 @@ func (p *Provisioner) InspectRemote(ctx context.Context, remoteURL string, authe
 	if err != nil {
 		return domain.RemoteInspection{}, err
 	}
+	if err := client.validateAuthentication(); err != nil {
+		return domain.RemoteInspection{}, application.ErrSSHMaterialUnavailable
+	}
+	remoteURL = safeRemoteURL(remoteURL)
 	inspectCtx, cancel := context.WithTimeout(ctx, remoteInspectTimeout)
 	defer cancel()
 	result, runErr := runAt(
@@ -270,6 +274,9 @@ func (p *Provisioner) provisionRemote(ctx context.Context, request application.R
 		client, err := p.authenticatedClient(request.Branch, remoteInspection.RemoteURL, request.Authentication)
 		if err != nil {
 			return nil, domain.RepositoryConfiguration{}, err
+		}
+		if err := client.validateAuthentication(); err != nil {
+			return nil, domain.RepositoryConfiguration{}, application.ErrSSHMaterialUnavailable
 		}
 		fetchCtx, cancel := context.WithTimeout(ctx, remoteFetchTimeout)
 		result, err := runAtRepository(
@@ -499,7 +506,14 @@ func (p *Provisioner) applyAuthentication(client *Client, remoteURL string, auth
 		if parsed.Scheme != "ssh" || authentication.Username != "" || authentication.Secret != "" {
 			return nil, application.ErrInvalidRequest
 		}
-		return nil, application.ErrSSHMaterialUnavailable
+		if filepath.Clean(authentication.SSHKeyPath) != p.sshKeyPath || filepath.Clean(authentication.KnownHostsPath) != p.knownHostsPath {
+			return nil, application.ErrSSHMaterialUnavailable
+		}
+		authenticated, err := client.WithSSHCredentials(p.executable, p.sshKeyPath, p.knownHostsPath)
+		if err != nil {
+			return nil, application.ErrSSHMaterialUnavailable
+		}
+		return authenticated, nil
 	default:
 		return nil, application.ErrInvalidRequest
 	}

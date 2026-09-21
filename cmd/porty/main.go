@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/msoldin/porty/internal/application"
@@ -26,12 +26,17 @@ import (
 )
 
 func main() {
-	if os.Getenv("PORTY_GIT_ASKPASS") == "1" {
-		value := os.Getenv("PORTY_GIT_PASSWORD")
-		if len(os.Args) > 1 && strings.Contains(strings.ToLower(os.Args[1]), "username") {
-			value = os.Getenv("PORTY_GIT_USERNAME")
+	if handled, exitCode := runGitHelper(context.Background(), os.Args[1:], os.LookupEnv, os.Stdout, func(ctx context.Context, name string, args ...string) error {
+		command := exec.CommandContext(ctx, name, args...)
+		command.Env = []string{}
+		command.Stdin = os.Stdin
+		command.Stdout = os.Stdout
+		command.Stderr = os.Stderr
+		return command.Run()
+	}); handled {
+		if exitCode != 0 {
+			os.Exit(exitCode)
 		}
-		_, _ = os.Stdout.WriteString(value)
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
@@ -192,21 +197,29 @@ func (s *repositorySetup) SetupRepository(ctx context.Context, request domain.Re
 	if err != nil {
 		return err
 	}
-	if request.Username != "" || request.Secret != "" {
-		client, err = client.WithHTTPSCredentials(s.helper, request.Username, request.Secret)
+	remoteURL := ""
+	username := ""
+	secret := ""
+	if request.Remote != nil {
+		remoteURL = request.Remote.URL
+		username = request.Remote.Authentication.Username
+		secret = request.Remote.Authentication.Secret
+	}
+	if username != "" || secret != "" {
+		client, err = client.WithHTTPSCredentials(s.helper, username, secret)
 		if err != nil {
 			return err
 		}
 	}
 	switch request.Mode {
-	case "init":
+	case domain.RepositorySetupInit:
 		err = gitcli.InitExisting(ctx, s.runner, s.root, branch)
-		if err == nil && request.Remote != "" {
-			err = client.SetOrigin(ctx, request.Remote)
+		if err == nil && remoteURL != "" {
+			err = client.SetOrigin(ctx, remoteURL)
 		}
-	case "clone":
-		err = client.CloneInto(ctx, request.Remote)
-	case "adopt":
+	case domain.RepositorySetupRemote:
+		err = client.CloneInto(ctx, remoteURL)
+	case domain.RepositorySetupAdopt:
 		client, err = gitcli.Adopt(ctx, s.runner, s.root, branch)
 	default:
 		return errors.New("unsupported repository setup mode")
@@ -214,8 +227,8 @@ func (s *repositorySetup) SetupRepository(ctx context.Context, request domain.Re
 	if err != nil {
 		return err
 	}
-	if request.Username != "" || request.Secret != "" {
-		client, err = client.WithHTTPSCredentials(s.helper, request.Username, request.Secret)
+	if username != "" || secret != "" {
+		client, err = client.WithHTTPSCredentials(s.helper, username, secret)
 		if err != nil {
 			return err
 		}
@@ -223,7 +236,7 @@ func (s *repositorySetup) SetupRepository(ctx context.Context, request domain.Re
 	if err := client.ValidateSafety(ctx); err != nil {
 		return err
 	}
-	if err := s.store.SaveConfiguration(ctx, request.Remote, branch, request.Username, request.Secret); err != nil {
+	if err := s.store.SaveConfiguration(ctx, remoteURL, branch, username, secret); err != nil {
 		return err
 	}
 	s.service.Replace(client)

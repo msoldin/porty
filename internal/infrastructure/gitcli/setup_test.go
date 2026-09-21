@@ -43,7 +43,7 @@ func TestProvisionerInspectRemoteUsesSymbolicHEAD(t *testing.T) {
 	if request.MaxOutput != 1<<20 {
 		t.Fatalf("MaxOutput = %d, want %d", request.MaxOutput, 1<<20)
 	}
-	if !reflect.DeepEqual(request.Args, hardened("ls-remote", "--symref", testRemoteURL, "HEAD", "refs/heads/*")) {
+	if !reflect.DeepEqual(request.Args, hardened("ls-remote", "--symref", "https://example.com/team/repo.git", "HEAD", "refs/heads/*")) {
 		t.Fatalf("arguments = %#v", request.Args)
 	}
 	if runner.deadline < 29*time.Second || runner.deadline > 30*time.Second {
@@ -208,6 +208,57 @@ func TestProvisionerInspectRemoteMapsOtherFailureToUnavailable(t *testing.T) {
 	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
 	if !errors.Is(err, application.ErrRemoteUnavailable) || err.Error() != application.ErrRemoteUnavailable.Error() {
 		t.Fatalf("InspectRemote() error = %v, want stable ErrRemoteUnavailable", err)
+	}
+}
+
+func TestProvisionerRejectsMissingSSHMaterial(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, &remoteInspectionRunner{})
+	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", domain.RepositoryAuthentication{Type: domain.RepositoryAuthSSH, SSHKeyPath: filepath.Join(filepath.Dir(repository), "ssh", "id"), KnownHostsPath: filepath.Join(filepath.Dir(repository), "ssh", "known_hosts")})
+	if !errors.Is(err, application.ErrSSHMaterialUnavailable) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionerRejectsSymlinkedSSHMaterial(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, &remoteInspectionRunner{})
+	sshDirectory := filepath.Join(filepath.Dir(repository), "ssh")
+	if err := os.Mkdir(sshDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "id")
+	if err := os.WriteFile(target, []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(sshDirectory, "id")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sshDirectory, "known_hosts"), []byte("host key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", domain.RepositoryAuthentication{Type: domain.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDirectory, "id"), KnownHostsPath: filepath.Join(sshDirectory, "known_hosts")})
+	if !errors.Is(err, application.ErrSSHMaterialUnavailable) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionerRejectsPermissivePrivateKey(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, &remoteInspectionRunner{})
+	sshDirectory := filepath.Join(filepath.Dir(repository), "ssh")
+	if err := os.Mkdir(sshDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sshDirectory, "id"), []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sshDirectory, "known_hosts"), []byte("host key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(sshDirectory, "id"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", domain.RepositoryAuthentication{Type: domain.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDirectory, "id"), KnownHostsPath: filepath.Join(sshDirectory, "known_hosts")})
+	if !errors.Is(err, application.ErrSSHMaterialUnavailable) {
+		t.Fatalf("error = %v", err)
 	}
 }
 

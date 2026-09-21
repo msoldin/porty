@@ -594,7 +594,7 @@ git commit -m "feat: discover and import remote repositories"
 - Modify: `internal/infrastructure/gitcli/setup.go`
 - Modify: `internal/infrastructure/gitcli/setup_test.go`
 
-- [ ] **Step 1: Write failing helper/auth tests**
+- [x] **Step 1: Write failing helper/auth tests**
 
 ```go
 func TestGitAskpassHelperReturnsUsernameAndSecretByPrompt(t *testing.T)
@@ -609,13 +609,13 @@ func TestProvisionerRejectsSymlinkedSSHMaterial(t *testing.T)
 func TestProvisionerRejectsPermissivePrivateKey(t *testing.T)
 ```
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `go test ./cmd/porty ./internal/infrastructure/gitcli -run 'Test(Git|Client.*Authentication|ProvisionerRejects.*SSH|ProvisionerRejectsPermissive)'`
 
 Expected: missing SSH helper/auth APIs.
 
-- [ ] **Step 3: Extract helper dispatch from `main`**
+- [x] **Step 3: Extract helper dispatch from `main`**
 
 ```go
 type commandRunner func(context.Context, string, ...string) error
@@ -637,7 +637,7 @@ ssh -i <fixed-key> -o IdentitiesOnly=yes -o UserKnownHostsFile=<fixed-known-host
 
 Permit only SSH protocol/version/port negotiation options and a destination plus `git-upload-pack` or `git-receive-pack` repository command. Reject alternate identity/config/proxy/known-host options and arbitrary commands.
 
-- [ ] **Step 4: Validate SSH files before every Git command**
+- [x] **Step 4: Validate SSH files before every Git command**
 
 - Paths must equal server-configured fixed paths.
 - `Lstat` must report regular, non-symlink files.
@@ -646,17 +646,17 @@ Permit only SSH protocol/version/port negotiation options and a destination plus
 
 Use `GIT_SSH=<absolute-porty-executable>`, `GIT_SSH_VARIANT=ssh`, `PORTY_GIT_SSH=1`, and private fixed-path variables. Do not use `GIT_SSH_COMMAND`.
 
-- [ ] **Step 5: Keep credentials out of arguments and errors**
+- [x] **Step 5: Keep credentials out of arguments and errors**
 
 HTTPS retains askpass with terminal prompts disabled. Extend redaction for secret and username-bearing URL forms. Active clients receive the same sanitized auth environment as provisioning.
 
-- [ ] **Step 6: Run and pass**
+- [x] **Step 6: Run and pass**
 
 Run: `gofmt -w cmd/porty/git_helper.go cmd/porty/git_helper_test.go cmd/porty/main.go internal/infrastructure/gitcli/client.go internal/infrastructure/gitcli/client_test.go internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go && go test ./cmd/porty ./internal/infrastructure/gitcli -run 'Test(Git|Client.*Authentication|ProvisionerRejects.*SSH|ProvisionerRejectsPermissive)'`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cmd/porty/git_helper.go cmd/porty/git_helper_test.go cmd/porty/main.go internal/infrastructure/gitcli/client.go internal/infrastructure/gitcli/client_test.go internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go

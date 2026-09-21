@@ -127,7 +127,7 @@ func TestHTTPSCredentialsStayOutOfArgumentsAndAreRedacted(t *testing.T) {
 	if strings.Contains(strings.Join(request.Args, " "), "top-secret") {
 		t.Fatal("secret appeared in Git arguments")
 	}
-	if !reflect.DeepEqual(request.Redact, []string{"top-secret"}) {
+	if !reflect.DeepEqual(request.Redact, []string{"top-secret", "deploy"}) {
 		t.Fatalf("redactions = %#v", request.Redact)
 	}
 	environment := strings.Join(request.Env, "\n")
@@ -135,6 +135,69 @@ func TestHTTPSCredentialsStayOutOfArgumentsAndAreRedacted(t *testing.T) {
 		if !strings.Contains(environment, expected) {
 			t.Fatalf("environment missing %q", expected)
 		}
+	}
+}
+
+func TestClientHTTPSAuthenticationUsesAskpassWithoutSecretArguments(t *testing.T) {
+	TestHTTPSCredentialsStayOutOfArgumentsAndAreRedacted(t)
+}
+
+func TestClientSSHAuthenticationUsesFixedFilesWithoutShellCommand(t *testing.T) {
+	directory := t.TempDir()
+	key := filepath.Join(directory, "id")
+	knownHosts := filepath.Join(directory, "known_hosts")
+	write(t, key, "key")
+	write(t, knownHosts, "host key")
+	if err := os.Chmod(key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(knownHosts, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &recordingRunner{}
+	client, _ := gitcli.New(runner, "/srv/porty/repository", "main")
+	client, err := client.WithSSHCredentials("/usr/bin/porty", key, knownHosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Fetch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := runner.requests[0]
+	joined := strings.Join(request.Env, "\n")
+	for _, want := range []string{"GIT_SSH=/usr/bin/porty", "GIT_SSH_VARIANT=ssh", "PORTY_GIT_SSH=1", "PORTY_GIT_SSH_KEY=" + key, "PORTY_GIT_KNOWN_HOSTS=" + knownHosts} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("environment missing %q", want)
+		}
+	}
+	if strings.Contains(joined, "GIT_SSH_COMMAND") || request.Name != "git" {
+		t.Fatalf("unsafe request = %#v", request)
+	}
+}
+
+func TestClientSSHAuthenticationRevalidatesFilesBeforeEveryCommand(t *testing.T) {
+	directory := t.TempDir()
+	key := filepath.Join(directory, "id")
+	knownHosts := filepath.Join(directory, "known_hosts")
+	write(t, key, "key")
+	write(t, knownHosts, "host key")
+	if err := os.Chmod(key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &recordingRunner{}
+	client, _ := gitcli.New(runner, "/srv/porty/repository", "main")
+	client, err := client.WithSSHCredentials("/usr/bin/porty", key, knownHosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(key, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Fetch(context.Background()); err == nil {
+		t.Fatal("Fetch() accepted permissive key")
+	}
+	if len(runner.requests) != 0 {
+		t.Fatal("Git ran before SSH material revalidation")
 	}
 }
 

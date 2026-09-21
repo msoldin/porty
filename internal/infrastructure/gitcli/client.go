@@ -34,11 +34,13 @@ type Status = domain.GitStatus
 type Commit = domain.GitCommit
 
 type Client struct {
-	runner Runner
-	repo   string
-	branch string
-	redact []string
-	env    []string
+	runner         Runner
+	repo           string
+	branch         string
+	redact         []string
+	env            []string
+	sshKeyPath     string
+	knownHostsPath string
 }
 
 const (
@@ -147,7 +149,7 @@ func (c *Client) WithHTTPSCredentials(helper, username, secret string) (*Client,
 		return nil, errors.New("invalid HTTPS credentials")
 	}
 	copy := *c
-	copy.redact = append(append([]string(nil), c.redact...), secret)
+	copy.redact = append(append([]string(nil), c.redact...), secret, username)
 	copy.env = append(append([]string(nil), c.env...),
 		"PORTY_GIT_ASKPASS=1",
 		"GIT_ASKPASS="+filepath.Clean(helper),
@@ -156,6 +158,35 @@ func (c *Client) WithHTTPSCredentials(helper, username, secret string) (*Client,
 		"PORTY_GIT_PASSWORD="+secret,
 	)
 	return &copy, nil
+}
+
+func (c *Client) WithSSHCredentials(helper, keyPath, knownHostsPath string) (*Client, error) {
+	if !filepath.IsAbs(helper) || !filepath.IsAbs(keyPath) || !filepath.IsAbs(knownHostsPath) || strings.IndexFunc(helper+keyPath+knownHostsPath, unicode.IsControl) >= 0 {
+		return nil, errors.New("invalid SSH credentials")
+	}
+	if err := validateSSHMaterial(keyPath, knownHostsPath); err != nil {
+		return nil, err
+	}
+	copy := *c
+	copy.sshKeyPath = filepath.Clean(keyPath)
+	copy.knownHostsPath = filepath.Clean(knownHostsPath)
+	copy.env = append(append([]string(nil), c.env...),
+		"GIT_SSH="+filepath.Clean(helper), "GIT_SSH_VARIANT=ssh", "PORTY_GIT_SSH=1",
+		"PORTY_GIT_SSH_KEY="+copy.sshKeyPath, "PORTY_GIT_KNOWN_HOSTS="+copy.knownHostsPath,
+	)
+	return &copy, nil
+}
+
+func validateSSHMaterial(keyPath, knownHostsPath string) error {
+	keyInfo, err := os.Lstat(keyPath)
+	if err != nil || !keyInfo.Mode().IsRegular() || keyInfo.Mode()&os.ModeSymlink != 0 || keyInfo.Mode().Perm()&0o077 != 0 {
+		return errors.New("SSH material unavailable")
+	}
+	hostInfo, err := os.Lstat(knownHostsPath)
+	if err != nil || !hostInfo.Mode().IsRegular() || hostInfo.Mode()&os.ModeSymlink != 0 || hostInfo.Mode().Perm()&0o022 != 0 {
+		return errors.New("SSH material unavailable")
+	}
+	return nil
 }
 
 func ValidateRemoteURL(value string) error {
@@ -393,7 +424,17 @@ func (c *Client) Push(ctx context.Context) error {
 }
 
 func (c *Client) run(ctx context.Context, arguments ...string) (portyprocess.Result, error) {
+	if err := c.validateAuthentication(); err != nil {
+		return portyprocess.Result{}, err
+	}
 	return runAt(ctx, c.runner, c.repo, c.redact, c.env, arguments...)
+}
+
+func (c *Client) validateAuthentication() error {
+	if c.sshKeyPath == "" {
+		return nil
+	}
+	return validateSSHMaterial(c.sshKeyPath, c.knownHostsPath)
 }
 
 func runAt(ctx context.Context, runner Runner, directory string, redact, extraEnv []string, arguments ...string) (portyprocess.Result, error) {
