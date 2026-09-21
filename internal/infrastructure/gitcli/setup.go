@@ -659,6 +659,34 @@ func (p *Provisioner) RemoveRemote(ctx context.Context, configuration domain.Rep
 	return client, updated, nil
 }
 
+func (p *Provisioner) Open(ctx context.Context, configuration domain.RepositoryConfiguration, authentication domain.RepositoryAuthentication) (application.GitRepository, error) {
+	if configuration.State != domain.RepositorySetupReady || configuration.Root != p.repositoryRoot || ValidateBranch(configuration.Branch) != nil {
+		return nil, application.ErrInvalidWorktree
+	}
+	inspection, err := p.InspectPath(ctx)
+	if err != nil || inspection.State != domain.RepositoryPathWorktree || inspection.Detached || inspection.Branch != configuration.Branch || inspection.Author != configuration.Author {
+		return nil, application.ErrInvalidWorktree
+	}
+	remoteURL := ""
+	if configuration.Remote != nil {
+		if !configuration.Remote.Managed || configuration.Remote.Name != "origin" || inspection.ExistingRemote == nil || inspection.ExistingRemote.URL != configuration.Remote.URL || configuration.Remote.AuthType != authentication.Type {
+			return nil, application.ErrInvalidWorktree
+		}
+		remoteURL = configuration.Remote.URL
+	} else {
+		authentication = domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}
+	}
+	client, err := Adopt(ctx, p.runner, p.repositoryRoot, configuration.Branch)
+	if err != nil {
+		return nil, application.ErrInvalidWorktree
+	}
+	client, err = p.applyAuthentication(client, remoteURL, authentication)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
 type repositoryArtifact struct {
 	name string
 	info os.FileInfo

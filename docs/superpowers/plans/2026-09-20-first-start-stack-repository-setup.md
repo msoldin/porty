@@ -739,7 +739,7 @@ git commit -m "feat: manage repository remotes safely"
 - Modify: `cmd/porty/main.go`
 - Modify: `cmd/porty/main_test.go`
 
-- [ ] **Step 1: Replace the old setup test with failing startup tests**
+- [x] **Step 1: Replace the old setup test with failing startup tests**
 
 ```go
 func TestBuildHandlerLeavesRegisteredEmptyInstallInSetupState(t *testing.T)
@@ -752,13 +752,13 @@ func TestBuildHandlerFailsReadinessForTamperedReadyRepository(t *testing.T)
 
 Delete tests of the local `repositorySetup` type once that type is removed.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `go test ./cmd/porty -run 'TestBuildHandler.*Repository|TestBuildHandler.*SetupState'`
 
 Expected: failing wiring assertions.
 
-- [ ] **Step 3: Wire the new service**
+- [x] **Step 3: Wire the new service**
 
 1. Compute repository and SSH paths server-side.
 2. Construct SQLite store and Git provisioner.
@@ -770,13 +770,13 @@ Expected: failing wiring assertions.
 
 Remove inline `repositorySetup`, `SetupRepository`, and missing-branch-means-main behavior. Setup-incomplete remains healthy; only persisted-ready reconciliation failure prevents normal readiness/startup.
 
-- [ ] **Step 4: Run and pass**
+- [x] **Step 4: Run and pass**
 
 Run: `gofmt -w cmd/porty/main.go cmd/porty/main_test.go && go test ./cmd/porty -run 'TestBuildHandler.*Repository|TestBuildHandler.*SetupState'`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/porty/main.go cmd/porty/main_test.go

@@ -13,7 +13,6 @@ import (
 
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/config"
-	"github.com/msoldin/porty/internal/domain"
 	"github.com/msoldin/porty/internal/httpapi"
 	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	"github.com/msoldin/porty/internal/infrastructure/composecli"
@@ -134,23 +133,34 @@ func buildHandler(db *sql.DB, cfg config.Config) http.Handler {
 	options.Deployments = deploymentStore
 	if stackStore := portysqlite.NewStackStore(db); options.Stacks != nil {
 		repositoryStore := portysqlite.NewRepositoryStore(db)
-		branch, err := repositoryStore.Branch(context.Background())
-		if err != nil {
+		configuration, _, loadErr := repositoryStore.Load(context.Background())
+		branch := configuration.Branch
+		if branch == "" {
 			branch = "main"
 		}
 		git, err := gitcli.New(runner, repositoryRoot, branch)
-		if _, statErr := os.Lstat(filepath.Join(repositoryRoot, ".git")); statErr == nil {
-			git, err = gitcli.Adopt(context.Background(), runner, repositoryRoot, branch)
-		}
-		if err == nil {
-			helper, _ := os.Executable()
-			if credentials, credentialErr := repositoryStore.Credentials(context.Background()); credentialErr == nil {
-				git, err = git.WithHTTPSCredentials(helper, credentials.Username, credentials.Secret)
-			}
+		if loadErr != nil {
+			err = loadErr
 		}
 		if err == nil {
 			environment := application.NewEnvironmentService(stackStore)
 			repositoryService := application.NewRepositoryService(git)
+			repositoryService.Replace(git, configuration.Remote != nil && configuration.Remote.Managed)
+			helper, helperErr := os.Executable()
+			if helperErr != nil {
+				err = helperErr
+			}
+			var provisioner *gitcli.Provisioner
+			if err == nil {
+				provisioner, err = gitcli.NewProvisioner(cfg.DataDir, runner, helper)
+			}
+			var setupService *application.RepositorySetupService
+			if err == nil {
+				setupService = application.NewRepositorySetupService(repositoryStore, provisioner, repositoryService, coordinator, application.RepositorySetupOptions{SSHKeyPath: filepath.Join(cfg.DataDir, "ssh", "id"), KnownHostsPath: filepath.Join(cfg.DataDir, "ssh", "known_hosts")})
+				if reconcileErr := setupService.Reconcile(context.Background()); reconcileErr != nil && configuration.State == "ready" {
+					err = reconcileErr
+				}
+			}
 			operations := application.NewOperationService(operationStore, hub, 10*time.Minute, 256<<10)
 			deployments := application.NewDeploymentService(compose, deploymentStore, coordinator)
 			control := application.NewControlPlane(repositoryRoot, stackStore, environment, repositoryService, compose, operations, deployments, coordinator, hub)
@@ -158,8 +168,12 @@ func buildHandler(db *sql.DB, cfg config.Config) http.Handler {
 			options.Repository = control
 			options.Actions = control
 			options.State = control
-			helper, _ := os.Executable()
-			options.RepositorySetup = &repositorySetup{runner: runner, root: repositoryRoot, coordinator: coordinator, service: repositoryService, store: repositoryStore, helper: helper}
+			if setupService != nil {
+				options.RepositorySetup = setupService
+			}
+			if err != nil {
+				repositorySafetyErr = err
+			}
 		} else {
 			repositorySafetyErr = err
 		}
@@ -172,73 +186,4 @@ func buildHandler(db *sql.DB, cfg config.Config) http.Handler {
 	root.Handle("/api/", api)
 	root.Handle("/", web.Handler())
 	return root
-}
-
-type repositorySetup struct {
-	runner      gitcli.Runner
-	root        string
-	coordinator *application.Coordinator
-	service     *application.RepositoryService
-	store       *portysqlite.RepositoryStore
-	helper      string
-}
-
-func (s *repositorySetup) SetupRepository(ctx context.Context, request domain.RepositorySetupRequest) error {
-	release, err := s.coordinator.Try(true, "")
-	if err != nil {
-		return err
-	}
-	defer release()
-	branch := request.Branch
-	if branch == "" {
-		branch = "main"
-	}
-	client, err := gitcli.New(s.runner, s.root, branch)
-	if err != nil {
-		return err
-	}
-	remoteURL := ""
-	username := ""
-	secret := ""
-	if request.Remote != nil {
-		remoteURL = request.Remote.URL
-		username = request.Remote.Authentication.Username
-		secret = request.Remote.Authentication.Secret
-	}
-	if username != "" || secret != "" {
-		client, err = client.WithHTTPSCredentials(s.helper, username, secret)
-		if err != nil {
-			return err
-		}
-	}
-	switch request.Mode {
-	case domain.RepositorySetupInit:
-		err = gitcli.InitExisting(ctx, s.runner, s.root, branch)
-		if err == nil && remoteURL != "" {
-			err = client.SetOrigin(ctx, remoteURL)
-		}
-	case domain.RepositorySetupRemote:
-		err = client.CloneInto(ctx, remoteURL)
-	case domain.RepositorySetupAdopt:
-		client, err = gitcli.Adopt(ctx, s.runner, s.root, branch)
-	default:
-		return errors.New("unsupported repository setup mode")
-	}
-	if err != nil {
-		return err
-	}
-	if username != "" || secret != "" {
-		client, err = client.WithHTTPSCredentials(s.helper, username, secret)
-		if err != nil {
-			return err
-		}
-	}
-	if err := client.ValidateSafety(ctx); err != nil {
-		return err
-	}
-	if err := s.store.SaveConfiguration(ctx, remoteURL, branch, username, secret); err != nil {
-		return err
-	}
-	s.service.Replace(client, remoteURL != "")
-	return nil
 }
