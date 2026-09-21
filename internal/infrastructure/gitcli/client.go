@@ -406,6 +406,11 @@ func runAt(ctx context.Context, runner Runner, directory string, redact, extraEn
 	})
 }
 
+func runAtRepository(ctx context.Context, runner Runner, repository string, redact, extraEnv []string, arguments ...string) (portyprocess.Result, error) {
+	arguments = append([]string{"-C", filepath.Clean(repository)}, arguments...)
+	return runAt(ctx, runner, filepath.Dir(filepath.Clean(repository)), redact, extraEnv, arguments...)
+}
+
 func repositoryTarget(target string) (string, string, error) {
 	if !filepath.IsAbs(target) {
 		return "", "", errors.New("repository target must be absolute")

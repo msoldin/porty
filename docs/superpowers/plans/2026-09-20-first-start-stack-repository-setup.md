@@ -433,7 +433,7 @@ git commit -m "feat: persist repository setup state"
 - Create: `internal/infrastructure/gitcli/setup_test.go`
 - Modify: `internal/infrastructure/gitcli/client.go`
 
-- [ ] **Step 1: Write failing fixed-root tests**
+- [x] **Step 1: Write failing fixed-root tests**
 
 ```go
 func TestProvisionerInspectPathClassifiesEmptyDirectory(t *testing.T)
@@ -451,13 +451,13 @@ func TestProvisionerProvisionRetryAcceptsExactInitializedRepository(t *testing.T
 
 Use temporary real repositories for filesystem behavior and the recording runner for exact commands.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `go test ./internal/infrastructure/gitcli -run 'TestProvisioner.*(InspectPath|Init|Adopt|Retry)'`
 
 Expected: missing `Provisioner`.
 
-- [ ] **Step 3: Implement fixed-root inspection**
+- [x] **Step 3: Implement fixed-root inspection**
 
 - Construct with cleaned repository root, process runner, current executable, and fixed SSH paths.
 - `Lstat` root and `.git`; reject symlinks and escape from configured data root.
@@ -466,7 +466,7 @@ Expected: missing `Provisioner`.
 - Read local identity and `origin`; missing values are valid.
 - Run hostile-config validation before marking adoptable.
 
-- [ ] **Step 4: Implement init and adopt**
+- [x] **Step 4: Implement init and adopt**
 
 Init uses fixed arrays equivalent to:
 
@@ -478,13 +478,13 @@ git -C <fixed-root> config --local user.email <email>
 
 Adopt requires a safe symbolic branch and submitted branch equality, writes submitted local identity, and either manages a validated existing origin or leaves it untouched/unmanaged. Create the active client only after final safety validation. Init retry accepts existing state only when branch, identity, and no managed remote match exactly.
 
-- [ ] **Step 5: Run and pass**
+- [x] **Step 5: Run and pass**
 
 Run: `gofmt -w internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go internal/infrastructure/gitcli/client.go && go test ./internal/infrastructure/gitcli -run 'TestProvisioner.*(InspectPath|Init|Adopt|Retry)'`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go internal/infrastructure/gitcli/client.go
