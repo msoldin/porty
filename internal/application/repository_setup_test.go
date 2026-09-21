@@ -222,6 +222,30 @@ func TestRepositorySetupReadyRejectsTamperedRepository(t *testing.T) {
 	}
 }
 
+func TestRepositorySetupRemoveRemoteKeepsRepositoryReady(t *testing.T) {
+	remote := &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: domain.RepositoryAuthHTTPS, Managed: true}
+	store := &fakeRepositorySetupStore{configuration: readyConfiguration("main", remote), authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: "secret"}}
+	provisioner := &fakeRepositoryProvisioner{provisionConfiguration: readyConfiguration("main", nil)}
+	service, repository := newRepositorySetupService(store, provisioner)
+
+	status, err := service.RemoveRemote(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != domain.RepositorySetupReady || status.Required || status.ManagedRemote != nil {
+		t.Fatalf("status = %#v", status)
+	}
+	if store.savedConfiguration.State != domain.RepositorySetupReady || store.savedConfiguration.Remote != nil {
+		t.Fatalf("saved configuration = %#v", store.savedConfiguration)
+	}
+	if store.savedAuthentication.Type != domain.RepositoryAuthNone || store.savedAuthentication.Secret != "" {
+		t.Fatalf("saved authentication = %#v", store.savedAuthentication)
+	}
+	if err := repository.Fetch(context.Background()); !errors.Is(err, application.ErrRepositoryRemoteUnavailable) {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+}
+
 func TestRepositorySetupResponseNeverContainsSecret(t *testing.T) {
 	remote := &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: domain.RepositoryAuthHTTPS, Managed: true}
 	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}

@@ -519,6 +519,146 @@ func (p *Provisioner) applyAuthentication(client *Client, remoteURL string, auth
 	}
 }
 
+func (p *Provisioner) ConfigureRemote(ctx context.Context, request application.RepositoryRemoteProvisionRequest, configuration domain.RepositoryConfiguration) (application.GitRepository, domain.RepositoryConfiguration, error) {
+	if configuration.State != domain.RepositorySetupReady || configuration.Root != p.repositoryRoot || configuration.Branch != request.Branch || ValidateRemoteURL(request.RemoteURL) != nil || ValidateBranch(request.Branch) != nil {
+		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidRequest
+	}
+	inspection, err := p.InspectPath(ctx)
+	if err != nil || inspection.State != domain.RepositoryPathWorktree || inspection.Detached || inspection.Branch != request.Branch {
+		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	}
+	if inspection.ExistingRemote != nil && (configuration.Remote == nil || !configuration.Remote.Managed) && !request.ReplaceExisting {
+		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteConflict
+	}
+	remotes, err := p.git(ctx, "remote")
+	if err != nil {
+		return nil, domain.RepositoryConfiguration{}, err
+	}
+	for _, remote := range strings.Fields(remotes.Output) {
+		if remote == "porty-candidate" {
+			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteConflict
+		}
+	}
+	remoteInspection, err := p.InspectRemote(ctx, request.RemoteURL, request.Authentication)
+	if err != nil {
+		return nil, domain.RepositoryConfiguration{}, err
+	}
+	if _, err := p.git(ctx, "remote", "add", "porty-candidate", remoteInspection.RemoteURL); err != nil {
+		return nil, domain.RepositoryConfiguration{}, err
+	}
+	candidatePresent := true
+	defer func() {
+		if candidatePresent {
+			_, _ = p.git(context.Background(), "remote", "remove", "porty-candidate")
+		}
+	}()
+	selectedAdvertised := false
+	if !remoteInspection.Empty {
+		for _, branch := range remoteInspection.Branches {
+			selectedAdvertised = selectedAdvertised || branch == request.Branch
+		}
+	}
+	if selectedAdvertised {
+		client, err := p.authenticatedClient(request.Branch, remoteInspection.RemoteURL, request.Authentication)
+		if err != nil {
+			return nil, domain.RepositoryConfiguration{}, err
+		}
+		if err := client.validateAuthentication(); err != nil {
+			return nil, domain.RepositoryConfiguration{}, application.ErrSSHMaterialUnavailable
+		}
+		fetchCtx, cancel := context.WithTimeout(ctx, remoteFetchTimeout)
+		result, fetchErr := runAtRepository(fetchCtx, boundedRunner{runner: p.runner, maxOutput: remoteFetchMaxOutput}, p.repositoryRoot, client.redact, client.env, "fetch", "--no-tags", "porty-candidate", "refs/heads/"+request.Branch+":refs/remotes/porty-candidate/"+request.Branch)
+		cancel()
+		if fetchErr != nil {
+			return nil, domain.RepositoryConfiguration{}, classifyRemoteFailure(result.Output)
+		}
+		hasCommit, err := p.hasCommit(ctx)
+		if err != nil {
+			return nil, domain.RepositoryConfiguration{}, err
+		}
+		candidateRef := "refs/remotes/porty-candidate/" + request.Branch
+		if hasCommit {
+			result, err := p.git(ctx, "merge-base", "HEAD", candidateRef)
+			if err != nil {
+				if result.ExitCode != 1 {
+					return nil, domain.RepositoryConfiguration{}, err
+				}
+				return nil, domain.RepositoryConfiguration{}, application.ErrUnrelatedHistory
+			}
+			if strings.TrimSpace(result.Output) == "" {
+				return nil, domain.RepositoryConfiguration{}, application.ErrUnrelatedHistory
+			}
+		} else {
+			status, err := p.git(ctx, "status", "--porcelain=v1", "-z")
+			if err != nil {
+				return nil, domain.RepositoryConfiguration{}, err
+			}
+			if status.Output != "" {
+				return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+			}
+			checkoutCtx, cancel := context.WithTimeout(ctx, remoteCheckoutTimeout)
+			_, err = runAtRepository(checkoutCtx, boundedRunner{runner: p.runner, maxOutput: remoteCheckoutMaxOutput}, p.repositoryRoot, nil, nil, "checkout", "-B", request.Branch, "--track", "porty-candidate/"+request.Branch)
+			cancel()
+			if err != nil {
+				return nil, domain.RepositoryConfiguration{}, err
+			}
+		}
+	}
+	if _, err = p.git(ctx, "remote", "remove", "porty-candidate"); err != nil {
+		return nil, domain.RepositoryConfiguration{}, err
+	}
+	candidatePresent = false
+	if inspection.ExistingRemote == nil {
+		_, err = p.git(ctx, "remote", "add", "origin", remoteInspection.RemoteURL)
+	} else {
+		_, err = p.git(ctx, "remote", "set-url", "origin", remoteInspection.RemoteURL)
+	}
+	if err != nil {
+		return nil, domain.RepositoryConfiguration{}, err
+	}
+	if selectedAdvertised {
+		_, err = p.git(ctx, "config", "--local", "branch."+request.Branch+".remote", "origin")
+		if err == nil {
+			_, err = p.git(ctx, "config", "--local", "branch."+request.Branch+".merge", "refs/heads/"+request.Branch)
+		}
+	}
+	if err != nil {
+		return nil, domain.RepositoryConfiguration{}, err
+	}
+	client, err := p.authenticatedClient(request.Branch, remoteInspection.RemoteURL, request.Authentication)
+	if err != nil {
+		return nil, domain.RepositoryConfiguration{}, err
+	}
+	updated := configuration
+	updated.Remote = &domain.RepositoryRemoteSummary{Name: "origin", URL: remoteInspection.RemoteURL, AuthType: request.Authentication.Type, Managed: true}
+	return client, updated, nil
+}
+
+func (p *Provisioner) RemoveRemote(ctx context.Context, configuration domain.RepositoryConfiguration) (application.GitRepository, domain.RepositoryConfiguration, error) {
+	if configuration.State != domain.RepositorySetupReady || configuration.Root != p.repositoryRoot || configuration.Remote == nil || !configuration.Remote.Managed || configuration.Remote.Name != "origin" {
+		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteUnavailable
+	}
+	inspection, err := p.InspectPath(ctx)
+	if err != nil || inspection.State != domain.RepositoryPathWorktree {
+		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	}
+	if inspection.ExistingRemote != nil && inspection.ExistingRemote.URL != configuration.Remote.URL {
+		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteConflict
+	}
+	if inspection.ExistingRemote != nil {
+		if _, err := p.git(ctx, "remote", "remove", "origin"); err != nil {
+			return nil, domain.RepositoryConfiguration{}, err
+		}
+	}
+	client, err := Adopt(ctx, p.runner, p.repositoryRoot, configuration.Branch)
+	if err != nil {
+		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	}
+	updated := configuration
+	updated.Remote = nil
+	return client, updated, nil
+}
+
 type repositoryArtifact struct {
 	name string
 	info os.FileInfo

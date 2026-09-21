@@ -239,6 +239,6 @@ func (s *repositorySetup) SetupRepository(ctx context.Context, request domain.Re
 	if err := s.store.SaveConfiguration(ctx, remoteURL, branch, username, secret); err != nil {
 		return err
 	}
-	s.service.Replace(client)
+	s.service.Replace(client, remoteURL != "")
 	return nil
 }

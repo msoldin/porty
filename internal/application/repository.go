@@ -19,12 +19,13 @@ type GitRepository interface {
 }
 
 type RepositoryService struct {
-	mu  sync.RWMutex
-	git GitRepository
+	mu            sync.RWMutex
+	git           GitRepository
+	remoteEnabled bool
 }
 
 func NewRepositoryService(git GitRepository) *RepositoryService {
-	return &RepositoryService{git: git}
+	return &RepositoryService{git: git, remoteEnabled: true}
 }
 
 func (s *RepositoryService) Status(ctx context.Context) (domain.GitStatus, error) {
@@ -56,11 +57,26 @@ func (s *RepositoryService) HistoryPage(ctx context.Context, limit, offset int) 
 	return git.History(ctx, limit)
 }
 
-func (s *RepositoryService) Replace(git GitRepository) { s.mu.Lock(); s.git = git; s.mu.Unlock() }
-func (s *RepositoryService) current() GitRepository    { s.mu.RLock(); defer s.mu.RUnlock(); return s.git }
+func (s *RepositoryService) Replace(git GitRepository, remoteEnabled bool) {
+	s.mu.Lock()
+	s.git, s.remoteEnabled = git, remoteEnabled
+	s.mu.Unlock()
+}
+func (s *RepositoryService) current() GitRepository { s.mu.RLock(); defer s.mu.RUnlock(); return s.git }
+func (s *RepositoryService) remote() (GitRepository, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.remoteEnabled {
+		return nil, ErrRepositoryRemoteUnavailable
+	}
+	return s.git, nil
+}
 
 func (s *RepositoryService) Pull(ctx context.Context) error {
-	git := s.current()
+	git, err := s.remote()
+	if err != nil {
+		return err
+	}
 	if err := git.Fetch(ctx); err != nil {
 		return err
 	}
@@ -68,7 +84,17 @@ func (s *RepositoryService) Pull(ctx context.Context) error {
 }
 
 func (s *RepositoryService) Push(ctx context.Context) error {
-	return s.current().Push(ctx)
+	git, err := s.remote()
+	if err != nil {
+		return err
+	}
+	return git.Push(ctx)
 }
 
-func (s *RepositoryService) Fetch(ctx context.Context) error { return s.current().Fetch(ctx) }
+func (s *RepositoryService) Fetch(ctx context.Context) error {
+	git, err := s.remote()
+	if err != nil {
+		return err
+	}
+	return git.Fetch(ctx)
+}

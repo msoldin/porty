@@ -262,6 +262,212 @@ func TestProvisionerRejectsPermissivePrivateKey(t *testing.T) {
 	}
 }
 
+func TestProvisionerConfigureRemoteAcceptsEmptyRemote(t *testing.T) {
+	remote := createLocalRemote(t, "main", false)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, updated, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Remote == nil || !updated.Remote.Managed {
+		t.Fatalf("configuration = %#v", updated)
+	}
+	if got := runGit(t, repository, "remote", "get-url", "origin"); got != "https://example.com/team/repo.git\n" {
+		t.Fatalf("origin = %q", got)
+	}
+}
+
+func TestProvisionerConfigureRemoteRejectsUnrelatedHistory(t *testing.T) {
+	remote := createLocalRemote(t, "main", true)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(repository, "local.txt"), "local\n")
+	runGit(t, repository, "add", ".")
+	runGit(t, repository, "commit", "-m", "local")
+	_, _, err = provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if !errors.Is(err, application.ErrUnrelatedHistory) {
+		t.Fatalf("error = %v", err)
+	}
+	if got := strings.TrimSpace(runGit(t, repository, "remote")); got != "" {
+		t.Fatalf("remotes = %q", got)
+	}
+}
+
+func TestProvisionerConfigureRemoteAcceptsRelatedHistory(t *testing.T) {
+	dataDirectory := t.TempDir()
+	repository := filepath.Join(dataDirectory, "repository")
+	initializeRepositoryAt(t, repository)
+	write(t, filepath.Join(repository, "base.txt"), "base\n")
+	runGit(t, repository, "add", ".")
+	runGit(t, repository, "commit", "-m", "base")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	runGit(t, filepath.Dir(remote), "init", "--bare", remote)
+	runGit(t, repository, "remote", "add", "seed", remote)
+	runGit(t, repository, "push", "seed", "main")
+	runGit(t, repository, "remote", "remove", "seed")
+	write(t, filepath.Join(repository, "local.txt"), "local\n")
+	runGit(t, repository, "add", ".")
+	runGit(t, repository, "commit", "-m", "local")
+	executable, _ := os.Executable()
+	provisioner, err := gitcli.NewProvisioner(dataDirectory, newLocalRemoteRunner(remote), executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
+	_, updated, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if err != nil || updated.Remote == nil {
+		t.Fatalf("ConfigureRemote() = %#v, %v", updated, err)
+	}
+}
+
+func TestProvisionerConfigureRemoteAcceptsMissingBranch(t *testing.T) {
+	remote := createLocalRemote(t, "release", true)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, updated, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Remote == nil || strings.TrimSpace(runGit(t, repository, "symbolic-ref", "--short", "HEAD")) != "main" {
+		t.Fatalf("configuration = %#v", updated)
+	}
+}
+
+func TestProvisionerConfigureRemoteAdoptsPopulatedRemoteFromCleanUnbornRepository(t *testing.T) {
+	remote := createLocalRemote(t, "main", true)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(runGit(t, repository, "show", "HEAD:README.md")); got != "remote repository" {
+		t.Fatalf("README = %q", got)
+	}
+	if got := strings.TrimSpace(runGit(t, repository, "config", "branch.main.remote")); got != "origin" {
+		t.Fatalf("tracking remote = %q", got)
+	}
+}
+
+func TestProvisionerConfigureRemoteRejectsDirtyUnbornRepository(t *testing.T) {
+	remote := createLocalRemote(t, "main", true)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	write(t, filepath.Join(repository, "local.txt"), "dirty\n")
+	_, _, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionerConfigureRemoteRequiresConfirmationForUnmanagedOrigin(t *testing.T) {
+	remote := createLocalRemote(t, "main", false)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	initializeRepositoryAt(t, repository)
+	runGit(t, repository, "remote", "add", "origin", "https://old.example/repo.git")
+	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
+	request := application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}
+	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); !errors.Is(err, application.ErrRepositoryRemoteConflict) {
+		t.Fatalf("error = %v", err)
+	}
+	request.ReplaceExisting = true
+	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(runGit(t, repository, "remote", "get-url", "origin")); got != "https://example.com/team/repo.git" {
+		t.Fatalf("origin = %q", got)
+	}
+}
+
+func TestProvisionerConfigureRemoteCleansTemporaryRemoteAfterFailure(t *testing.T) {
+	remote := createLocalRemote(t, "main", true)
+	localRunner := newLocalRemoteRunner(remote)
+	runner := &failingCommandRunner{delegate: localRunner, command: "merge-base"}
+	provisioner, repository := newTestProvisioner(t, runner)
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	write(t, filepath.Join(repository, "local.txt"), "local\n")
+	runGit(t, repository, "add", ".")
+	runGit(t, repository, "commit", "-m", "local")
+	_, _, _ = provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if got := strings.TrimSpace(runGit(t, repository, "remote")); got != "" {
+		t.Fatalf("remotes = %q", got)
+	}
+}
+
+func TestProvisionerConfigureRemoteDoesNotMapOperationalMergeBaseFailureToUnrelated(t *testing.T) {
+	remote := createLocalRemote(t, "main", true)
+	runner := &failingCommandRunner{delegate: newLocalRemoteRunner(remote), command: "merge-base"}
+	provisioner, repository := newTestProvisioner(t, runner)
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	write(t, filepath.Join(repository, "local.txt"), "local\n")
+	runGit(t, repository, "add", ".")
+	runGit(t, repository, "commit", "-m", "local")
+	_, _, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if err == nil || errors.Is(err, application.ErrUnrelatedHistory) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionerRemoveRemoteRemovesOnlyManagedOrigin(t *testing.T) {
+	remote := createLocalRemote(t, "main", false)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	_, configuration, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, updated, err := provisioner.RemoveRemote(context.Background(), configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Remote != nil || strings.TrimSpace(runGit(t, repository, "remote")) != "" {
+		t.Fatalf("updated = %#v", updated)
+	}
+}
+
+func TestProvisionerRemoveRemoteLeavesUnmanagedOriginUntouched(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
+	initializeRepositoryAt(t, repository)
+	runGit(t, repository, "remote", "add", "origin", "https://example.com/repo.git")
+	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
+	_, _, err := provisioner.RemoveRemote(context.Background(), configuration)
+	if !errors.Is(err, application.ErrRepositoryRemoteUnavailable) || strings.TrimSpace(runGit(t, repository, "remote")) != "origin" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProvisionerRemoveRemoteRejectsChangedManagedOrigin(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
+	initializeRepositoryAt(t, repository)
+	runGit(t, repository, "remote", "add", "origin", "https://changed.example/repo.git")
+	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}, Remote: &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://expected.example/repo.git", Managed: true}}
+	_, _, err := provisioner.RemoveRemote(context.Background(), configuration)
+	if !errors.Is(err, application.ErrRepositoryRemoteConflict) || strings.TrimSpace(runGit(t, repository, "remote")) != "origin" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestProvisionerRemoteImportFetchesSelectedBranch(t *testing.T) {
 	localRemote := createLocalRemote(t, "trunk", true)
 	runner := newLocalRemoteRunner(localRemote)
@@ -996,7 +1202,7 @@ func (r *localRemoteRunner) Run(ctx context.Context, request portyprocess.Reques
 	}
 	if containsString(rewritten.Args, "fetch") {
 		for index, argument := range rewritten.Args {
-			if argument == "origin" {
+			if argument == "origin" || argument == "porty-candidate" {
 				rewritten.Args[index] = r.localPath
 			}
 		}

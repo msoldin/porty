@@ -145,7 +145,7 @@ func (s *RepositorySetupService) Setup(ctx context.Context, request domain.Repos
 	if err := s.store.Save(setupCtx, configuration, authentication); err != nil {
 		return domain.RepositorySetupStatus{}, ErrRepositoryPersistenceFailed
 	}
-	s.repository.Replace(git)
+	s.repository.Replace(git, configuration.Remote != nil && configuration.Remote.Managed)
 	return s.status(setupCtx, configuration)
 }
 
@@ -187,7 +187,7 @@ func (s *RepositorySetupService) ConfigureRemote(ctx context.Context, request do
 	if err := s.store.Save(setupCtx, updated, authentication); err != nil {
 		return domain.RepositorySetupStatus{}, ErrRepositoryPersistenceFailed
 	}
-	s.repository.Replace(git)
+	s.repository.Replace(git, updated.Remote != nil && updated.Remote.Managed)
 	return s.status(setupCtx, updated)
 }
 
@@ -219,7 +219,7 @@ func (s *RepositorySetupService) RemoveRemote(ctx context.Context) (domain.Repos
 	if err := s.store.Save(setupCtx, updated, authentication); err != nil {
 		return domain.RepositorySetupStatus{}, ErrRepositoryPersistenceFailed
 	}
-	s.repository.Replace(git)
+	s.repository.Replace(git, false)
 	return s.status(setupCtx, updated)
 }
 
@@ -252,7 +252,7 @@ func (s *RepositorySetupService) Reconcile(ctx context.Context) error {
 		if err != nil {
 			return safeProvisionError(err)
 		}
-		s.repository.Replace(git)
+		s.repository.Replace(git, configuration.Remote != nil && configuration.Remote.Managed)
 		return nil
 	default:
 		return ErrInvalidWorktree
@@ -300,7 +300,7 @@ func (s *RepositorySetupService) reconcileRegistered(ctx context.Context) error 
 	if err := s.store.Save(setupCtx, configuration, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}); err != nil {
 		return ErrRepositoryPersistenceFailed
 	}
-	s.repository.Replace(git)
+	s.repository.Replace(git, configuration.Remote != nil && configuration.Remote.Managed)
 	return nil
 }
 

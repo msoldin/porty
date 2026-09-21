@@ -672,7 +672,7 @@ git commit -m "feat: support repository git authentication"
 - Modify: `internal/infrastructure/gitcli/setup.go`
 - Modify: `internal/infrastructure/gitcli/setup_test.go`
 
-- [ ] **Step 1: Write failing application tests**
+- [x] **Step 1: Write failing application tests**
 
 ```go
 func TestRepositoryServiceRejectsFetchWithoutManagedRemote(t *testing.T)
@@ -684,7 +684,7 @@ func TestRepositorySetupRemoveRemoteKeepsRepositoryReady(t *testing.T)
 
 Change `RepositoryService.Replace` to accept `(client GitRepository, remoteEnabled bool)`. Guard only fetch/pull/push.
 
-- [ ] **Step 2: Write failing adapter tests**
+- [x] **Step 2: Write failing adapter tests**
 
 ```go
 func TestProvisionerConfigureRemoteAcceptsEmptyRemote(t *testing.T)
@@ -698,13 +698,13 @@ func TestProvisionerRemoveRemoteRemovesOnlyManagedOrigin(t *testing.T)
 func TestProvisionerRemoveRemoteLeavesUnmanagedOriginUntouched(t *testing.T)
 ```
 
-- [ ] **Step 3: Run and confirm failure**
+- [x] **Step 3: Run and confirm failure**
 
 Run: `go test ./internal/application ./internal/infrastructure/gitcli -run 'Test(RepositoryService.*Remote|RepositorySetupRemoveRemote|ProvisionerConfigureRemote|ProvisionerRemoveRemote)'`
 
 Expected: missing remote state/methods.
 
-- [ ] **Step 4: Probe compatibility before changing `origin`**
+- [x] **Step 4: Probe compatibility before changing `origin`**
 
 Use reserved temporary remote `porty-candidate` after proving it is absent. Fetch the branch to `refs/remotes/porty-candidate/<branch>`.
 
@@ -716,17 +716,17 @@ Use reserved temporary remote `porty-candidate` after proving it is absent. Fetc
 
 Only after validation, set/replace `origin`, clean the temporary remote, persist the redacted summary/auth, and swap clients. Deferred cleanup removes `porty-candidate` on every error.
 
-- [ ] **Step 5: Implement managed removal**
+- [x] **Step 5: Implement managed removal**
 
 Remove `origin` only when persisted configuration says it is managed and named `origin`. Missing Git remote is idempotent. Return ready local-only configuration and disable remote actions. Never remove unmanaged origin.
 
-- [ ] **Step 6: Run and pass**
+- [x] **Step 6: Run and pass**
 
 Run: `gofmt -w internal/application/repository.go internal/application/repository_test.go internal/application/repository_setup_test.go internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go && go test ./internal/application ./internal/infrastructure/gitcli -run 'Test(RepositoryService.*Remote|RepositorySetupRemoveRemote|ProvisionerConfigureRemote|ProvisionerRemoveRemote)'`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/application/repository.go internal/application/repository_test.go internal/application/repository_setup_test.go internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go
