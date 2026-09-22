@@ -23,6 +23,7 @@ let authenticated = true;
 let registered = true;
 let repositoryReady = true;
 let repositoryRequired: boolean | undefined;
+let hasManagedRemote = true;
 let sockets = 0;
 beforeEach(() => {
   location.hash = "";
@@ -34,6 +35,7 @@ beforeEach(() => {
   registered = true;
   repositoryReady = true;
   repositoryRequired = undefined;
+  hasManagedRemote = true;
   sockets = 0;
   vi.stubGlobal(
     "fetch",
@@ -54,6 +56,23 @@ beforeEach(() => {
       ) {
         authenticated = true;
         return Response.json({ username: "admin", csrfToken: "csrf" });
+      }
+      if (path === "/repository/remote" && method === "DELETE") {
+        hasManagedRemote = false;
+        return Response.json({
+          state: "ready",
+          required: false,
+          pathState: "worktree",
+          modes: [],
+          branch: "main",
+          author: { name: "Porty", email: "porty@localhost" },
+          defaultAuthor: { name: "Porty", email: "porty@localhost" },
+          ssh: {
+            identityAvailable: false,
+            knownHostsAvailable: false,
+            usable: false,
+          },
+        });
       }
       if (path.includes("/files") && method === "PUT") {
         if (delaySave)
@@ -95,6 +114,14 @@ beforeEach(() => {
           ],
           author: { name: "", email: "" },
           defaultAuthor: { name: "Porty", email: "porty@localhost" },
+          managedRemote: hasManagedRemote
+            ? {
+                name: "origin",
+                url: "https://example.com/team/repo.git",
+                authType: "none",
+                managed: true,
+              }
+            : undefined,
           ssh: {
             identityAvailable: false,
             knownHostsAvailable: false,
@@ -192,6 +219,39 @@ async function edit(element: HTMLElement) {
 }
 
 describe("Porty administration interface", () => {
+  it("disables remote-only actions for a ready local-only repository", async () => {
+    hasManagedRemote = false;
+    render(<App />);
+
+    expect(
+      await screen.findByRole("link", { name: "paperless" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fetch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Pull" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Push" })).toBeDisabled();
+  });
+
+  it("disables remote actions immediately after removing the managed remote", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+    expect(
+      await screen.findByRole("link", { name: "paperless" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pull" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("link", { name: "Settings" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove remote" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Pull" })).toBeDisabled(),
+    );
+    expect(screen.getByRole("button", { name: "Fetch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Push" })).toBeDisabled();
+    expect(requestsFor("/repository/remote")).toHaveLength(1);
+  });
+
   it("fails closed until the authoritative repository state is ready", async () => {
     repositoryReady = false;
     repositoryRequired = false;

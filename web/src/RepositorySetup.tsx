@@ -11,6 +11,7 @@ import {
   type RepositorySetupStatus,
 } from "./api";
 import { Icon, Notice } from "./ui";
+import { RemoteAuthenticationFields } from "./RepositoryRemoteFields";
 
 const choices: Array<{
   mode: RepositorySetupMode;
@@ -186,89 +187,25 @@ export function RepositorySetup({
               required
             />
           </label>
-          <fieldset class="choice-list">
-            <legend>Authentication</legend>
-            <label>
-              <input
-                type="radio"
-                name="authentication"
-                checked={authType === "none"}
-                onChange={() => {
-                  setAuthType("none");
-                  setSecret("");
-                  invalidateInspection();
-                }}
-              />
-              No authentication
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="authentication"
-                checked={authType === "https"}
-                onChange={() => {
-                  setAuthType("https");
-                  invalidateInspection();
-                }}
-              />
-              HTTPS username and secret
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="authentication"
-                checked={authType === "ssh"}
-                disabled={!status.ssh.usable}
-                onChange={() => {
-                  setAuthType("ssh");
-                  setSecret("");
-                  invalidateInspection();
-                }}
-              />
-              Mounted SSH files
-            </label>
-          </fieldset>
-          {authType === "https" && (
-            <div class="setup-fields two-columns">
-              <label>
-                HTTPS username
-                <input
-                  value={username}
-                  autocomplete="username"
-                  onInput={(event) => {
-                    setUsername(event.currentTarget.value);
-                    invalidateInspection();
-                  }}
-                  required
-                />
-              </label>
-              <label>
-                HTTPS secret
-                <input
-                  value={secret}
-                  type="password"
-                  autocomplete="new-password"
-                  onInput={(event) => {
-                    setSecret(event.currentTarget.value);
-                    invalidateInspection();
-                  }}
-                  required
-                />
-              </label>
-            </div>
-          )}
-          {authType === "ssh" && (
-            <p class="muted">
-              {status.ssh.usable
-                ? "SSH identity and known hosts are ready."
-                : "The mounted SSH identity and known hosts are not usable."}
-            </p>
-          )}
-          {!status.ssh.usable && authType !== "ssh" && (
-            <p class="muted">
-              Mounted SSH files are unavailable until both fixed files are safe.
-            </p>
-          )}
+          <RemoteAuthenticationFields
+            ssh={status.ssh}
+            authType={authType}
+            username={username}
+            secret={secret}
+            onAuthType={(value) => {
+              setAuthType(value);
+              if (value !== "https") setSecret("");
+              invalidateInspection();
+            }}
+            onUsername={(value) => {
+              setUsername(value);
+              invalidateInspection();
+            }}
+            onSecret={(value) => {
+              setSecret(value);
+              invalidateInspection();
+            }}
+          />
           <button
             type="button"
             disabled={busy || !remoteReady}

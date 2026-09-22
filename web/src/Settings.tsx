@@ -1,6 +1,13 @@
 import { useEffect, useState } from "preact/hooks";
-import { api, message, stackPath, type Stack } from "./api";
+import {
+  api,
+  message,
+  stackPath,
+  type RepositorySetupStatus,
+  type Stack,
+} from "./api";
 import { Notice } from "./ui";
+import { RepositorySettings } from "./RepositorySettings";
 
 function EnvironmentRow({
   name,
@@ -210,12 +217,24 @@ export function StackSettings({
     </div>
   );
 }
-export function AccountSettings({ onLogout }: { onLogout: () => void }) {
+export function AccountSettings({
+  onLogout,
+  repositoryStatus,
+  onRepositoryChange,
+}: {
+  onLogout: () => void;
+  repositoryStatus: RepositorySetupStatus;
+  onRepositoryChange: (status: RepositorySetupStatus) => void;
+}) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <div class="settings-content">
       <h1>Settings</h1>
+      <RepositorySettings
+        status={repositoryStatus}
+        onChange={onRepositoryChange}
+      />
       <h2>Change password</h2>
       <p class="muted">Changing your password signs out every session.</p>
       {error && <Notice>{error}</Notice>}

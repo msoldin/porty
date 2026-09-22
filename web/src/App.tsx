@@ -119,6 +119,8 @@ export function App() {
   return session ? (
     <Workspace
       session={session}
+      repositoryStatus={repositoryStatus!}
+      onRepositoryChange={setRepositoryStatus}
       logout={() => {
         setCSRF("");
         setRegistered(true);
@@ -133,9 +135,13 @@ export function App() {
 
 function Workspace({
   session,
+  repositoryStatus,
+  onRepositoryChange,
   logout,
 }: {
   session: Session;
+  repositoryStatus: RepositorySetupStatus;
+  onRepositoryChange: (status: RepositorySetupStatus) => void;
   logout: () => void;
 }) {
   const [stacks, setStacks] = useState<Stack[]>([]);
@@ -153,6 +159,7 @@ function Workspace({
   routeRef.current = route;
   const [selectedOperation, setSelectedOperation] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const remoteEnabled = Boolean(repositoryStatus.managedRemote);
   async function refresh() {
     const result = await Promise.allSettled([
       api<Stack[] | null>("/stacks").then(async (items) =>
@@ -364,16 +371,22 @@ function Workspace({
             <span>Unavailable</span>
           </div>
           <div class="repository-actions">
-            <button disabled title="Fetch is not exposed by this server">
+            <button
+              disabled={busy || !repo || !remoteEnabled}
+              onClick={() => repoAction("fetch")}
+            >
               <Icon name="Refresh" />
               Fetch
             </button>
-            <button disabled={busy || !repo} onClick={() => repoAction("pull")}>
+            <button
+              disabled={busy || !repo || !remoteEnabled}
+              onClick={() => repoAction("pull")}
+            >
               <Icon name="Pull" />
               Pull
             </button>
             <button
-              disabled={busy || !repo || repo.ahead === 0}
+              disabled={busy || !repo || !remoteEnabled || repo.ahead === 0}
               onClick={() => repoAction("push")}
             >
               <Icon name="Push" />
@@ -441,7 +454,11 @@ function Workspace({
               open={(operation) => setSelectedOperation(operation.id)}
             />
           ) : route === "/settings" ? (
-            <AccountSettings onLogout={logout} />
+            <AccountSettings
+              onLogout={logout}
+              repositoryStatus={repositoryStatus}
+              onRepositoryChange={onRepositoryChange}
+            />
           ) : route === "/audit" ? (
             <div class="detail-content">
               <h1>Audit</h1>

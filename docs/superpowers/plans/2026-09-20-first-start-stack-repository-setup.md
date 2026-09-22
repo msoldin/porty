@@ -964,7 +964,7 @@ git commit -m "feat: add first-start repository setup"
 - Modify: `web/src/App.test.tsx`
 - Modify: `web/src/styles.css`
 
-- [ ] **Step 1: Write failing settings tests**
+- [x] **Step 1: Write failing settings tests**
 
 ```text
 local-only settings offer Add remote
@@ -977,17 +977,17 @@ removing remote keeps ready state and disables remote actions
 Fetch, Pull, and Push are disabled without managed remote
 ```
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `npm --prefix web test -- RepositorySettings.test.tsx App.test.tsx`
 
 Expected: missing settings/remote-aware controls.
 
-- [ ] **Step 3: Implement settings**
+- [x] **Step 3: Implement settings**
 
 Reuse setup remote/auth controls. Require inspection before add/replace, show only redacted stored URL, and require confirmation for unmanaged-origin replacement. Explain that removal keeps stacks and local history. Pass `ManagedRemote != null` to repository actions; disable fetch/pull/push but retain status/diff/history/commit locally.
 
-- [ ] **Step 4: Format, typecheck, and test**
+- [x] **Step 4: Format, typecheck, and test**
 
 ```bash
 npm --prefix web exec prettier -- --write src/RepositorySettings.tsx src/RepositorySettings.test.tsx src/AccountSettings.tsx src/App.tsx src/App.test.tsx src/styles.css
@@ -997,7 +997,7 @@ npm --prefix web test -- RepositorySettings.test.tsx App.test.tsx
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/RepositorySettings.tsx web/src/RepositorySettings.test.tsx web/src/AccountSettings.tsx web/src/App.tsx web/src/App.test.tsx web/src/styles.css
