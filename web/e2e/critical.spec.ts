@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 
 let server: ChildProcess;
 let dataDir: string;
@@ -22,22 +22,7 @@ async function waitForServer(url: string) {
 
 test.beforeAll(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "porty-e2e-"));
-  const repository = join(dataDir, "repository");
-  const binDir = join(dataDir, "bin");
-  await mkdir(repository, { recursive: true });
-  await mkdir(binDir);
-  for (const args of [
-    ["init", "-b", "main"],
-    ["config", "user.name", "Porty Test"],
-    ["config", "user.email", "porty@example.invalid"],
-    ["commit", "--allow-empty", "-m", "Initial repository"],
-  ]) {
-    const result = spawnSync("git", args, {
-      cwd: repository,
-      encoding: "utf8",
-    });
-    if (result.status !== 0) throw new Error(result.stderr);
-  }
+  const binDir = await mkdtemp(join(tmpdir(), "porty-e2e-bin-"));
   const fakeDocker = join(binDir, "docker");
   await writeFile(
     fakeDocker,
@@ -68,6 +53,16 @@ async function register(page: Page) {
   await page.getByLabel("Username").fill("admin");
   await page.getByLabel("Password").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Create administrator" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Configure the stack repository" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Create local repository" }).click();
+  await expect(page.getByLabel("Git author name")).toHaveValue("Porty");
+  await expect(page.getByLabel("Git author email")).toHaveValue(
+    "porty@localhost",
+  );
+  await page.getByLabel("Initial branch").fill("stacks");
+  await page.getByRole("button", { name: "Create repository" }).click();
   await expect(page.getByRole("heading", { name: "Stacks" })).toBeVisible();
 }
 
@@ -92,6 +87,15 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await expect(page.getByLabel("Operation details")).toContainText(
     /succeeded|running/,
   );
+  await page.getByRole("button", { name: "Close operation" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("button", { name: "Add remote" })).toBeVisible();
+  for (const actionName of ["Fetch", "Pull", "Push"]) {
+    const action = page.getByRole("button", { name: actionName });
+    if (await action.count()) {
+      await expect(action).toBeDisabled();
+    }
+  }
   await page.screenshot({
     path: testInfo.outputPath("critical-journey.png"),
     fullPage: false,

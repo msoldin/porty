@@ -28,14 +28,28 @@ The service creates `/var/lib/porty` with mode `0700`. Porty tightens its config
 
 ## Repository setup
 
-Porty v1 uses `/var/lib/porty/repository` and remote `origin`. After registering the administrator, open **Repository** in the UI to initialize that directory, clone an HTTPS/SSH remote, or adopt an existing worktree. The selected branch is persisted. HTTPS credentials are write-only in the UI, stored in the mode-restricted database, and supplied through Porty's non-interactive askpass mode. Configure the commit identity locally:
+Repository setup is mandatory after administrator registration. Login resumes the setup screen until the repository is ready; stack, editor, deployment, and repository-operation APIs remain unavailable during that time. Porty always operates on `<data-dir>/repository` (`/var/lib/porty/repository` with the installation above). The browser cannot select another server path.
 
-```sh
-sudo -u porty git -C /var/lib/porty/repository config user.name Porty
-sudo -u porty git -C /var/lib/porty/repository config user.email porty@localhost
-```
+The setup screen offers three modes:
+
+- **Create local repository** initializes the fixed directory without creating `origin`. The branch and repository-local Git author name/email are editable; `main`, `Porty`, and `porty@localhost` are only defaults.
+- **Use remote repository** first inspects an HTTPS or `ssh://` remote. Porty selects its symbolic default branch when advertised, selects a sole branch automatically, or asks the administrator to choose. An empty remote starts an editable branch named `main` by default and can receive its first commit later.
+- **Use mounted repository** adopts a safe Git worktree already mounted at the fixed directory. A detached `HEAD` must be changed to a branch before adoption. If `origin` exists, the administrator explicitly chooses whether Porty manages it or leaves the repository local-only.
+
+A local-only repository fully satisfies setup and supports stack files, status, history, and commits. **Settings → Repository remote** can later add, replace, update authentication for, or remove Porty's managed `origin`. Removing it preserves the ready lifecycle, local branch, commits, files, and stacks; fetch, pull, and push remain unavailable without a managed remote.
+
+Remote authentication is explicit: public/no authentication, HTTPS username plus secret, or fixed mounted SSH files. HTTPS secrets are write-only: the browser clears them after each attempt, APIs never return them, and Porty stores them only in its mode-restricted database for non-interactive askpass use.
+
+SSH mode reads only these server-managed files:
+
+- `<data-dir>/ssh/id`
+- `<data-dir>/ssh/known_hosts`
+
+Create them as regular files owned by the Porty service account. Set the private key to mode `0600` or stricter; `known_hosts` must not be group- or world-writable. Porty requires both files, strict host verification, batch mode, and the mounted identity. It does not use an SSH agent or user home configuration.
 
 Only HTTPS and `ssh://` remotes are accepted by the Git adapter. Porty disables interactive prompts, global/system Git configuration, hooks, pagers, external diffs, filters, submodules, and credential helpers when it invokes Git.
+
+During an upgrade, a registered installation with a safe existing repository at the fixed path is reconciled automatically. Porty imports its checked-out branch and repository-local author identity when present, applies the approved author defaults only when identity is absent, validates any existing configuration, and marks it ready. Unsafe, detached, or incomplete repositories remain in the setup lifecycle for operator action.
 
 If the administrator password is lost, stop the service and run the offline reset command. Supplying the password through the environment keeps it out of the process argument list:
 

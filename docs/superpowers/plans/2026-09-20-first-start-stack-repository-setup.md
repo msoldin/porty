@@ -1010,7 +1010,7 @@ git commit -m "feat: add repository remote settings"
 - Modify: `web/e2e/porty.spec.ts`
 - Modify: `docs/operator-guide.md`
 
-- [ ] **Step 1: Update the Playwright journey**
+- [x] **Step 1: Update the Playwright journey**
 
 Start Porty with an empty data directory and extend the desktop/mobile journey:
 
@@ -1023,7 +1023,7 @@ Start Porty with an empty data directory and extend the desktop/mobile journey:
 
 Keep non-`main` remote default-branch coverage in the Go Git integration tests; do not weaken production URL validation by enabling local file transport for Playwright.
 
-- [ ] **Step 2: Update operator documentation**
+- [x] **Step 2: Update operator documentation**
 
 Document:
 
@@ -1038,7 +1038,7 @@ Document:
 - detached-HEAD rejection and explicit existing-origin choice;
 - upgrade reconciliation for a safe existing repository.
 
-- [ ] **Step 3: Build and run end-to-end tests**
+- [x] **Step 3: Build and run end-to-end tests**
 
 ```bash
 go build -o /tmp/porty-e2e ./cmd/porty
@@ -1047,7 +1047,7 @@ PORTY_E2E_BINARY=/tmp/porty-e2e npm --prefix web run test:e2e
 
 Expected: desktop and mobile journeys pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add web/e2e/porty.spec.ts docs/operator-guide.md
