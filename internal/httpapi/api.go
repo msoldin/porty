@@ -139,16 +139,46 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 	registerRepositoryRoutes(mux, options)
 	registerOperationRoutes(mux, options)
 	if options.RepositorySetup != nil {
-		mux.HandleFunc("POST /api/v1/repository/setup", mutationRoute(options, func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("GET /api/v1/repository/setup/status", setupReadRoute(options, func(w http.ResponseWriter, r *http.Request) {
+			status, err := options.RepositorySetup.Status(r.Context())
+			writeResult(w, r, status, err, http.StatusOK)
+		}))
+		mux.HandleFunc("POST /api/v1/repository/setup/inspect-remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, _ application.AuthenticatedSession) {
+			var input domain.RemoteInspectionRequest
+			if decodeBody(w, r, &input) != nil {
+				return
+			}
+			inspection, err := options.RepositorySetup.InspectRemote(r.Context(), input)
+			writeResult(w, r, inspection, err, http.StatusOK)
+		}))
+		mux.HandleFunc("POST /api/v1/repository/setup", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session application.AuthenticatedSession) {
 			var input domain.RepositorySetupRequest
 			if decodeBody(w, r, &input) != nil {
 				return
 			}
-			if err := options.RepositorySetup.SetupRepository(r.Context(), input); err != nil {
-				writeAPIError(w, r, err)
+			status, err := options.RepositorySetup.Setup(r.Context(), input)
+			recordRepositoryAudit(options, r, session.UserID, "repository.setup."+string(input.Mode), input.Branch, status, err)
+			writeResult(w, r, status, err, http.StatusCreated)
+		}))
+		mux.HandleFunc("PUT /api/v1/repository/remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session application.AuthenticatedSession) {
+			if !requireRepositoryReady(w, r, options) {
 				return
 			}
-			writeJSON(w, http.StatusCreated, map[string]string{"status": "configured"})
+			var input domain.RepositoryRemoteRequest
+			if decodeBody(w, r, &input) != nil {
+				return
+			}
+			status, err := options.RepositorySetup.ConfigureRemote(r.Context(), input)
+			recordRepositoryAudit(options, r, session.UserID, "repository.remote.configure", input.Branch, status, err)
+			writeResult(w, r, status, err, http.StatusOK)
+		}))
+		mux.HandleFunc("DELETE /api/v1/repository/remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session application.AuthenticatedSession) {
+			if !requireRepositoryReady(w, r, options) {
+				return
+			}
+			status, err := options.RepositorySetup.RemoveRemote(r.Context())
+			recordRepositoryAudit(options, r, session.UserID, "repository.remote.remove", status.Branch, status, err)
+			writeResult(w, r, status, err, http.StatusOK)
 		}))
 	}
 	if options.State != nil {
@@ -166,6 +196,9 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 	if options.Stream != nil {
 		mux.HandleFunc("GET /api/v1/stream", func(w http.ResponseWriter, r *http.Request) {
 			if _, _, ok := authenticate(w, r, options.Auth); ok {
+				if !requireRepositoryReady(w, r, options) {
+					return
+				}
 				options.Stream.ServeHTTP(w, r)
 			}
 		})
@@ -286,6 +319,9 @@ func registerOperationRoutes(mux *http.ServeMux, options RouterOptions) {
 func readRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, _, ok := authenticate(w, r, options.Auth); ok {
+			if !requireRepositoryReady(w, r, options) {
+				return
+			}
 			next(w, r)
 		}
 	}
@@ -293,6 +329,9 @@ func readRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFunc {
 func mutationRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, session, ok := requireMutationAuth(w, r, options); ok {
+			if !requireRepositoryReady(w, r, options) {
+				return
+			}
 			recorder := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 			next(recorder, r)
 			outcome := "succeeded"
@@ -301,6 +340,79 @@ func mutationRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFun
 			}
 			recordAudit(options, r, session.UserID, r.Method+" "+r.Pattern, "http", r.PathValue("id"), outcome)
 		}
+	}
+}
+
+func setupReadRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, _, ok := authenticate(w, r, options.Auth); ok {
+			next(w, r)
+		}
+	}
+}
+
+func setupMutationRoute(options RouterOptions, next func(http.ResponseWriter, *http.Request, application.AuthenticatedSession)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, session, ok := requireMutationAuth(w, r, options); ok {
+			next(w, r, session)
+		}
+	}
+}
+
+func requireRepositoryReady(w http.ResponseWriter, r *http.Request, options RouterOptions) bool {
+	if options.RepositorySetup == nil {
+		return true
+	}
+	ready, err := options.RepositorySetup.Ready(r.Context())
+	if err != nil {
+		writeAPIError(w, r, err)
+		return false
+	}
+	if !ready {
+		WriteError(w, r, http.StatusConflict, "RepositorySetupRequired", "Configure the stack repository before using Porty.", nil)
+		return false
+	}
+	return true
+}
+
+func recordRepositoryAudit(options RouterOptions, r *http.Request, actor, action, branch string, status domain.RepositorySetupStatus, err error) {
+	outcome := "succeeded"
+	targetID := "branch=" + branch
+	if err != nil {
+		outcome = "failed"
+		targetID += ";code=" + repositoryErrorCode(err)
+	} else if status.ManagedRemote != nil {
+		targetID += ";remote=" + status.ManagedRemote.URL
+	}
+	recordAudit(options, r, actor, action, "repository", targetID, outcome)
+}
+
+func repositoryErrorCode(err error) string {
+	switch {
+	case errors.Is(err, application.ErrInvalidRequest):
+		return "InvalidRequest"
+	case errors.Is(err, application.ErrRepositorySetupRequired):
+		return "RepositorySetupRequired"
+	case errors.Is(err, application.ErrRepositoryPathNotEmpty):
+		return "RepositoryPathNotEmpty"
+	case errors.Is(err, application.ErrInvalidWorktree):
+		return "InvalidWorktree"
+	case errors.Is(err, application.ErrDetachedHead):
+		return "DetachedHead"
+	case errors.Is(err, application.ErrRemoteAuthenticationFailed):
+		return "RemoteAuthenticationFailed"
+	case errors.Is(err, application.ErrRemoteUnavailable):
+		return "RemoteUnavailable"
+	case errors.Is(err, application.ErrSSHMaterialUnavailable):
+		return "SSHMaterialUnavailable"
+	case errors.Is(err, application.ErrUnrelatedHistory):
+		return "UnrelatedHistory"
+	case errors.Is(err, application.ErrRepositoryRemoteConflict):
+		return "RepositoryRemoteConflict"
+	case errors.Is(err, application.ErrRepositoryRemoteUnavailable):
+		return "RepositoryRemoteUnavailable"
+	default:
+		return "InternalError"
 	}
 }
 
@@ -330,6 +442,11 @@ func (w *statusWriter) Write(value []byte) (int, error) { return w.ResponseWrite
 
 func decodeBody(w http.ResponseWriter, r *http.Request, value any) error {
 	if err := decodeJSON(r, value); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			WriteError(w, r, http.StatusRequestEntityTooLarge, "LimitExceeded", "The request body exceeds a limit", nil)
+			return err
+		}
 		WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "Request body is invalid", nil)
 		return err
 	}
@@ -356,6 +473,28 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, r, http.StatusRequestEntityTooLarge, "LimitExceeded", "The requested content exceeds a limit", nil)
 	case errors.Is(err, application.ErrOperationConflict):
 		WriteError(w, r, http.StatusConflict, "OperationConflict", "A conflicting operation is in progress", nil)
+	case errors.Is(err, application.ErrInvalidRequest):
+		WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "The request is invalid", nil)
+	case errors.Is(err, application.ErrRepositorySetupRequired):
+		WriteError(w, r, http.StatusConflict, "RepositorySetupRequired", "Configure the stack repository before using Porty.", nil)
+	case errors.Is(err, application.ErrRepositoryPathNotEmpty):
+		WriteError(w, r, http.StatusConflict, "RepositoryPathNotEmpty", "The repository path is not empty", nil)
+	case errors.Is(err, application.ErrInvalidWorktree):
+		WriteError(w, r, http.StatusConflict, "InvalidWorktree", "The repository worktree is invalid", nil)
+	case errors.Is(err, application.ErrDetachedHead):
+		WriteError(w, r, http.StatusConflict, "DetachedHead", "Check out a branch before adopting the repository", nil)
+	case errors.Is(err, application.ErrRemoteAuthenticationFailed):
+		WriteError(w, r, http.StatusUnauthorized, "RemoteAuthenticationFailed", "Remote authentication failed", nil)
+	case errors.Is(err, application.ErrRemoteUnavailable):
+		WriteError(w, r, http.StatusBadGateway, "RemoteUnavailable", "The remote repository is unavailable", nil)
+	case errors.Is(err, application.ErrSSHMaterialUnavailable):
+		WriteError(w, r, http.StatusConflict, "SSHMaterialUnavailable", "SSH identity files are unavailable or unsafe", nil)
+	case errors.Is(err, application.ErrUnrelatedHistory):
+		WriteError(w, r, http.StatusConflict, "UnrelatedHistory", "Local and remote repository histories are unrelated", nil)
+	case errors.Is(err, application.ErrRepositoryRemoteConflict):
+		WriteError(w, r, http.StatusConflict, "RepositoryRemoteConflict", "The existing origin requires explicit replacement", nil)
+	case errors.Is(err, application.ErrRepositoryRemoteUnavailable):
+		WriteError(w, r, http.StatusConflict, "RepositoryRemoteUnavailable", "No managed remote is configured", nil)
 	default:
 		WriteError(w, r, http.StatusInternalServerError, "InternalError", "The request could not be completed", nil)
 	}

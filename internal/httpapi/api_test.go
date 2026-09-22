@@ -185,23 +185,54 @@ func (*fakeActionAPI) StartAction(context.Context, domain.StackID, string) (doma
 	return domain.Operation{ID: "op_1", Status: domain.OperationQueued}, nil
 }
 
-type fakeRepositorySetup struct{ request domain.RepositorySetupRequest }
+type fakeRepositorySetup struct {
+	request       domain.RepositorySetupRequest
+	remoteRequest domain.RepositoryRemoteRequest
+	inspection    domain.RemoteInspection
+	status        domain.RepositorySetupStatus
+	err           error
+	ready         bool
+	readySet      bool
+}
 
-func (f *fakeRepositorySetup) SetupRepository(_ context.Context, request domain.RepositorySetupRequest) error {
+func (f *fakeRepositorySetup) Status(context.Context) (domain.RepositorySetupStatus, error) {
+	return f.status, f.err
+}
+func (f *fakeRepositorySetup) InspectRemote(context.Context, domain.RemoteInspectionRequest) (domain.RemoteInspection, error) {
+	return f.inspection, f.err
+}
+func (f *fakeRepositorySetup) Setup(_ context.Context, request domain.RepositorySetupRequest) (domain.RepositorySetupStatus, error) {
 	f.request = request
-	return nil
+	return f.status, f.err
+}
+func (f *fakeRepositorySetup) ConfigureRemote(_ context.Context, request domain.RepositoryRemoteRequest) (domain.RepositorySetupStatus, error) {
+	f.remoteRequest = request
+	return f.status, f.err
+}
+func (f *fakeRepositorySetup) RemoveRemote(context.Context) (domain.RepositorySetupStatus, error) {
+	return f.status, f.err
+}
+func (f *fakeRepositorySetup) Ready(context.Context) (bool, error) {
+	if !f.readySet {
+		return true, nil
+	}
+	return f.ready, f.err
 }
 
 type fakeAuditAPI struct {
-	events []domain.AuditEvent
-	offset int
+	events   []domain.AuditEvent
+	offset   int
+	recorded []domain.AuditEvent
 }
 
 func (f *fakeAuditAPI) AuditEvents(_ context.Context, _ int, offset int) ([]domain.AuditEvent, error) {
 	f.offset = offset
 	return f.events, nil
 }
-func (f *fakeAuditAPI) RecordAudit(context.Context, domain.AuditEvent) error { return nil }
+func (f *fakeAuditAPI) RecordAudit(_ context.Context, event domain.AuditEvent) error {
+	f.recorded = append(f.recorded, event)
+	return nil
+}
 
 type fakeStateAPI struct{}
 

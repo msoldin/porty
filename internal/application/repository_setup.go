@@ -149,11 +149,6 @@ func (s *RepositorySetupService) Setup(ctx context.Context, request domain.Repos
 	return s.status(setupCtx, configuration)
 }
 
-func (s *RepositorySetupService) SetupRepository(ctx context.Context, request domain.RepositorySetupRequest) error {
-	_, err := s.Setup(ctx, request)
-	return err
-}
-
 func (s *RepositorySetupService) ConfigureRemote(ctx context.Context, request domain.RepositoryRemoteRequest) (domain.RepositorySetupStatus, error) {
 	remoteURL := strings.TrimSpace(request.Remote.URL)
 	branch, err := validateBranch(request.Branch)

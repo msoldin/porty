@@ -89,7 +89,12 @@ type DeploymentQueryAPI interface {
 }
 
 type RepositorySetupAPI interface {
-	SetupRepository(context.Context, domain.RepositorySetupRequest) error
+	Status(context.Context) (domain.RepositorySetupStatus, error)
+	InspectRemote(context.Context, domain.RemoteInspectionRequest) (domain.RemoteInspection, error)
+	Setup(context.Context, domain.RepositorySetupRequest) (domain.RepositorySetupStatus, error)
+	ConfigureRemote(context.Context, domain.RepositoryRemoteRequest) (domain.RepositorySetupStatus, error)
+	RemoveRemote(context.Context) (domain.RepositorySetupStatus, error)
+	Ready(context.Context) (bool, error)
 }
 
 type AuditAPI interface {

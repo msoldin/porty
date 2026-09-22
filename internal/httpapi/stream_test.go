@@ -45,3 +45,17 @@ func TestAuthenticatedWebSocketSubscriptionStreamsSequencedEvents(t *testing.T) 
 		t.Fatalf("message = %#v", message)
 	}
 }
+
+func TestStreamRequiresRepositorySetupBeforeUpgrade(t *testing.T) {
+	called := false
+	stream := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(http.StatusNoContent) })
+	handler, sessionCookie, _ := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup(), Stream: stream})
+	request := httptest.NewRequest(http.MethodGet, "http://porty.local/api/v1/stream", nil)
+	request.AddCookie(sessionCookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assertAPIError(t, response, http.StatusConflict, "RepositorySetupRequired")
+	if called {
+		t.Fatal("stream upgraded before repository setup")
+	}
+}

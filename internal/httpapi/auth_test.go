@@ -185,3 +185,11 @@ func TestSessionRefreshReturnsTokenFromBoundCSRFCookie(t *testing.T) {
 		t.Fatalf("session CSRF token = %q, want bound cookie value", body.CSRFToken)
 	}
 }
+
+func TestPasswordChangeRemainsAvailableBeforeRepositorySetup(t *testing.T) {
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup()})
+	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPut, "/api/v1/session/password", `{"CurrentPassword":"correct horse battery staple","NewPassword":"new correct horse battery staple"}`)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("password change = %d %s", response.Code, response.Body.String())
+	}
+}

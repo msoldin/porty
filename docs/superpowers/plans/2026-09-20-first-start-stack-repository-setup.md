@@ -793,7 +793,7 @@ git commit -m "feat: reconcile repository setup at startup"
 - Modify: `internal/httpapi/stream_test.go`
 - Create: `internal/httpapi/repository_setup_test.go`
 
-- [ ] **Step 1: Add failing endpoint tests**
+- [x] **Step 1: Add failing endpoint tests**
 
 Cover:
 
@@ -822,13 +822,13 @@ func TestPasswordChangeRemainsAvailableBeforeRepositorySetup(t *testing.T)
 func TestRepositorySetupAuditContainsNoSecretOrRawRemoteURL(t *testing.T)
 ```
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `go test ./internal/httpapi -run 'Test(RepositorySetup|RepositoryRemote|Normal.*RequiresRepository|StreamRequiresRepository|PasswordChangeRemains)'`
 
 Expected: missing routes/gates.
 
-- [ ] **Step 3: Expand the HTTP port**
+- [x] **Step 3: Expand the HTTP port**
 
 ```go
 type RepositorySetupAPI interface {
@@ -843,7 +843,7 @@ type RepositorySetupAPI interface {
 
 Add authenticated wrappers that skip readiness only for setup status/inspection/submission and password change. Mutations still require CSRF and origin enforcement.
 
-- [ ] **Step 4: Gate normal HTTP and WebSocket routes**
+- [x] **Step 4: Gate normal HTTP and WebSocket routes**
 
 After authentication, call `Ready`. If false, return:
 
@@ -853,19 +853,19 @@ After authentication, call `Ready`. If false, return:
 
 Gate stack, workspace/file, environment, repository status/history/actions, operation, deployment, audit, and WebSocket routes. Do not gate health/readiness or auth routes.
 
-- [ ] **Step 5: Bound decoding, map errors, and audit safely**
+- [x] **Step 5: Bound decoding, map errors, and audit safely**
 
 Use the strict JSON decoder/body limit and map the Stable Errors table. Never include wrapped Git errors, stderr, raw URL, username, or secret in responses.
 
 Use a dedicated setup mutation wrapper so one audit event records action `repository.setup.<mode>`, `repository.remote.configure`, or `repository.remote.remove`; submitted branch; service-returned redacted remote on success; actor/request ID/outcome/stable code. Never audit decoded auth or raw submitted URL, and avoid duplicate generic mutation audit events.
 
-- [ ] **Step 6: Run and pass**
+- [x] **Step 6: Run and pass**
 
 Run: `gofmt -w internal/httpapi/auth.go internal/httpapi/api.go internal/httpapi/api_test.go internal/httpapi/auth_test.go internal/httpapi/stream_test.go internal/httpapi/repository_setup_test.go && go test ./internal/httpapi -run 'Test(RepositorySetup|RepositoryRemote|Normal.*RequiresRepository|StreamRequiresRepository|PasswordChangeRemains)'`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/httpapi/auth.go internal/httpapi/api.go internal/httpapi/api_test.go internal/httpapi/auth_test.go internal/httpapi/stream_test.go internal/httpapi/repository_setup_test.go
