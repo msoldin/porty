@@ -20,7 +20,7 @@ export function Auth({
       <p>
         {registered
           ? "Sign in to manage your stacks."
-          : "Create the administrator account for this server."}
+          : "Create the administrator account, then configure the fixed stack repository."}
       </p>
       {error && <Notice>{error}</Notice>}
       <form

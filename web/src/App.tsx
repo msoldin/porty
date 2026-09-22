@@ -3,6 +3,7 @@ import {
   api,
   APIError,
   message,
+  getRepositorySetupStatus,
   setCSRF,
   type Session,
   type Stack,
@@ -11,8 +12,10 @@ import {
   type Commit,
   type AuditEvent,
   type StackState,
+  type RepositorySetupStatus,
 } from "./api";
 import { Auth } from "./Auth";
+import { RepositorySetup } from "./RepositorySetup";
 import { Dashboard } from "./Dashboard";
 import { StackDetail } from "./StackDetail";
 import { AccountSettings } from "./Settings";
@@ -24,6 +27,9 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [registered, setRegistered] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [repositoryStatus, setRepositoryStatus] =
+    useState<RepositorySetupStatus | null>(null);
+  const [repositoryLoading, setRepositoryLoading] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
@@ -59,6 +65,28 @@ export function App() {
       active = false;
     };
   }, []);
+  useEffect(() => {
+    if (!session) {
+      setRepositoryStatus(null);
+      setRepositoryLoading(false);
+      return;
+    }
+    let active = true;
+    setRepositoryLoading(true);
+    getRepositorySetupStatus()
+      .then((status) => {
+        if (active) setRepositoryStatus(status);
+      })
+      .catch((failure) => {
+        if (active) setError(message(failure));
+      })
+      .finally(() => {
+        if (active) setRepositoryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session]);
   if (loading)
     return (
       <main class="auth" role="status">
@@ -73,12 +101,28 @@ export function App() {
         <button onClick={() => location.reload()}>Retry</button>
       </main>
     );
+  if (session) {
+    if (repositoryLoading || !repositoryStatus)
+      return (
+        <main class="auth" role="status">
+          Loading repository setup…
+        </main>
+      );
+    if (repositoryStatus.state !== "ready")
+      return (
+        <RepositorySetup
+          status={repositoryStatus}
+          onReady={setRepositoryStatus}
+        />
+      );
+  }
   return session ? (
     <Workspace
       session={session}
       logout={() => {
         setCSRF("");
         setRegistered(true);
+        setRepositoryStatus(null);
         setSession(null);
       }}
     />
@@ -390,7 +434,6 @@ function Workspace({
                 </article>
               ))}
               {!commits.length && <Empty>No commits available.</Empty>}
-              {!repo && <RepositorySetup refresh={refresh} />}
             </div>
           ) : route === "/operations" ? (
             <Operations
@@ -431,59 +474,5 @@ function Workspace({
         />
       )}
     </div>
-  );
-}
-
-function RepositorySetup({ refresh }: { refresh: () => void }) {
-  const [error, setError] = useState("");
-  return (
-    <form
-      class="inline-form"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        const data = new FormData(event.currentTarget);
-        setError("");
-        try {
-          await api("/repository/setup", "POST", {
-            mode: data.get("mode"),
-            remote: data.get("remote"),
-            branch: data.get("branch"),
-            username: data.get("username"),
-            secret: data.get("secret"),
-          });
-          refresh();
-        } catch (failure) {
-          setError(message(failure));
-        }
-      }}
-    >
-      <h2>Configure repository</h2>
-      {error && <Notice>{error}</Notice>}
-      <label>
-        Mode
-        <select name="mode">
-          <option value="init">Initialize</option>
-          <option value="clone">Clone</option>
-          <option value="adopt">Adopt existing</option>
-        </select>
-      </label>
-      <label>
-        Branch
-        <input name="branch" defaultValue="main" required />
-      </label>
-      <label>
-        Remote URL
-        <input name="remote" placeholder="https://example.com/team/repo.git" />
-      </label>
-      <label>
-        HTTPS username
-        <input name="username" autocomplete="username" />
-      </label>
-      <label>
-        HTTPS secret
-        <input name="secret" type="password" autocomplete="new-password" />
-      </label>
-      <button class="primary">Save repository</button>
-    </form>
   );
 }

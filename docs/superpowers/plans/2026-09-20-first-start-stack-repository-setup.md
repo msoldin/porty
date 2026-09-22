@@ -883,7 +883,7 @@ git commit -m "feat: expose repository setup APIs"
 - Modify: `web/src/Auth.tsx`
 - Modify: `web/src/styles.css`
 
-- [ ] **Step 1: Write failing wizard tests**
+- [x] **Step 1: Write failing wizard tests**
 
 Cover user-visible behavior:
 
@@ -905,13 +905,13 @@ enters workspace only after ready status
 
 In `App.test.tsx`, registration and login for registered-not-ready users must render setup without fetching stacks or opening the event stream.
 
-- [ ] **Step 2: Run and confirm failure**
+- [x] **Step 2: Run and confirm failure**
 
 Run: `npm --prefix web test -- RepositorySetup.test.tsx App.test.tsx`
 
 Expected: missing component/API and old direct-to-workspace flow.
 
-- [ ] **Step 3: Add typed APIs**
+- [x] **Step 3: Add typed APIs**
 
 Mirror Go contracts in `web/src/api.ts` and add:
 
@@ -925,7 +925,7 @@ export function removeRepositoryRemote(): Promise<RepositorySetupStatus>
 
 Use a TypeScript auth union so SSH cannot carry username/secret and no-auth cannot carry a secret.
 
-- [ ] **Step 4: Implement chooser and staged remote flow**
+- [x] **Step 4: Implement chooser and staged remote flow**
 
 - **Create local repository:** branch and identity only.
 - **Use remote repository:** URL/auth first, explicit Inspect, then branch and identity.
@@ -933,11 +933,11 @@ Use a TypeScript auth union so SSH cannot carry username/secret and no-auth cann
 
 Disable unavailable cards with the safe server reason. Never render path or SSH upload inputs. After mutation failure retain mode, URL, username, branch, and identity but clear in-memory secret.
 
-- [ ] **Step 5: Gate workspace initialization**
+- [x] **Step 5: Gate workspace initialization**
 
 After authentication, fetch setup status before mounting `Workspace`. Render loading/setup/ready states. Only ready may fetch workspace resources or create the WebSocket. A successful setup response enters workspace without logout/reload.
 
-- [ ] **Step 6: Format, typecheck, and test**
+- [x] **Step 6: Format, typecheck, and test**
 
 ```bash
 npm --prefix web exec prettier -- --write src/api.ts src/RepositorySetup.tsx src/RepositorySetup.test.tsx src/App.tsx src/App.test.tsx src/Auth.tsx src/styles.css
@@ -947,7 +947,7 @@ npm --prefix web test -- RepositorySetup.test.tsx App.test.tsx
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add web/src/api.ts web/src/RepositorySetup.tsx web/src/RepositorySetup.test.tsx web/src/App.tsx web/src/App.test.tsx web/src/Auth.tsx web/src/styles.css

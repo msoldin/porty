@@ -19,18 +19,42 @@ let writes: { path: string; init?: RequestInit }[];
 let stale = false;
 let holdSave: (() => void) | undefined;
 let delaySave = false;
+let authenticated = true;
+let registered = true;
+let repositoryReady = true;
+let repositoryRequired: boolean | undefined;
+let sockets = 0;
 beforeEach(() => {
   location.hash = "";
   writes = [];
   stale = false;
   delaySave = false;
   holdSave = undefined;
+  authenticated = true;
+  registered = true;
+  repositoryReady = true;
+  repositoryRequired = undefined;
+  sockets = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       const path = String(url).replace("/api/v1", "");
       const method = init?.method || "GET";
       if (method !== "GET") writes.push({ path, init });
+      if (path === "/session" && method === "GET" && !authenticated)
+        return Response.json(
+          { error: { code: "Unauthorized", message: "Sign in required" } },
+          { status: 401 },
+        );
+      if (path === "/setup/status")
+        return Response.json({ registered, csrfToken: "register-csrf" });
+      if (
+        (path === "/session" || path === "/setup/register") &&
+        method === "POST"
+      ) {
+        authenticated = true;
+        return Response.json({ username: "admin", csrfToken: "csrf" });
+      }
       if (path.includes("/files") && method === "PUT") {
         if (delaySave)
           await new Promise<void>((resolve) => {
@@ -56,6 +80,27 @@ beforeEach(() => {
         return new Response(null, { status: 204 });
       const data: Record<string, unknown> = {
         "/session": { username: "admin", csrfToken: "csrf" },
+        "/repository/setup/status": {
+          state: repositoryReady ? "ready" : "registered",
+          required: repositoryRequired ?? !repositoryReady,
+          pathState: "empty",
+          modes: [
+            { mode: "init", available: true },
+            { mode: "remote", available: true },
+            {
+              mode: "adopt",
+              available: false,
+              reason: "No worktree is mounted.",
+            },
+          ],
+          author: { name: "", email: "" },
+          defaultAuthor: { name: "Porty", email: "porty@localhost" },
+          ssh: {
+            identityAvailable: false,
+            knownHostsAvailable: false,
+            usable: false,
+          },
+        },
         "/stacks": [stack],
         "/repository/status": {
           branch: "main",
@@ -110,6 +155,9 @@ beforeEach(() => {
     class {
       static OPEN = 1;
       readyState = 1;
+      constructor() {
+        sockets += 1;
+      }
       onopen: (() => void) | null = null;
       onmessage: ((event: { data: string }) => void) | null = null;
       onclose = null;
@@ -123,6 +171,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+function requestsFor(path: string) {
+  return vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => String(url).replace("/api/v1", "") === path);
+}
 
 async function openEditor() {
   render(<App />);
@@ -138,6 +192,45 @@ async function edit(element: HTMLElement) {
 }
 
 describe("Porty administration interface", () => {
+  it("fails closed until the authoritative repository state is ready", async () => {
+    repositoryReady = false;
+    repositoryRequired = false;
+    render(<App />);
+
+    expect(
+      await screen.findByRole("button", { name: "Create local repository" }),
+    ).toBeInTheDocument();
+    expect(requestsFor("/stacks")).toHaveLength(0);
+    expect(sockets).toBe(0);
+  });
+
+  it.each([
+    { registered: false, submit: "Create administrator" },
+    { registered: true, submit: "Sign in" },
+  ])(
+    "shows repository setup after authentication when registered=$registered without starting workspace traffic",
+    async ({ registered: isRegistered, submit }) => {
+      authenticated = false;
+      registered = isRegistered;
+      repositoryReady = false;
+      render(<App />);
+
+      fireEvent.input(await screen.findByLabelText("Username"), {
+        target: { value: "admin" },
+      });
+      fireEvent.input(screen.getByLabelText("Password"), {
+        target: { value: "correct horse battery staple" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: submit }));
+
+      expect(
+        await screen.findByRole("button", { name: "Create local repository" }),
+      ).toBeInTheDocument();
+      expect(requestsFor("/repository/setup/status")).toHaveLength(1);
+      expect(requestsFor("/stacks")).toHaveLength(0);
+      expect(sockets).toBe(0);
+    },
+  );
   it("keeps working-tree and remote states independent and does not invent runtime health", async () => {
     render(<App />);
     const link = await screen.findByRole("link", { name: "paperless" });
@@ -194,7 +287,12 @@ describe("Porty administration interface", () => {
     );
     holdSave!();
     await screen.findByText("Saved");
-    await waitFor(() => expect(screen.getByLabelText("File contents")).toHaveAttribute("contenteditable", "true"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("File contents")).toHaveAttribute(
+        "contenteditable",
+        "true",
+      ),
+    );
   });
   it("shows environment keys with blank password inputs and clears replacements after save", async () => {
     render(<App />);

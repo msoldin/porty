@@ -63,6 +63,65 @@ export type AuditEvent = {
   requestId: string;
   occurredAt: string;
 };
+export type RepositorySetupState = "unregistered" | "registered" | "ready";
+export type RepositorySetupMode = "init" | "remote" | "adopt";
+export type RepositoryPathState = "empty" | "worktree" | "occupied" | "invalid";
+export type RepositoryAuthType = "none" | "https" | "ssh";
+export type GitIdentity = { name: string; email: string };
+export type RemoteAuthenticationInput =
+  | { type: "none" }
+  | { type: "https"; username: string; secret: string }
+  | { type: "ssh" };
+export type RepositoryRemoteInput = {
+  url: string;
+  authentication: RemoteAuthenticationInput;
+};
+export type RepositoryRemoteSummary = {
+  name: string;
+  url: string;
+  authType: RepositoryAuthType;
+  managed: boolean;
+};
+export type RepositorySetupStatus = {
+  state: RepositorySetupState;
+  required: boolean;
+  pathState: RepositoryPathState;
+  modes: Array<{
+    mode: RepositorySetupMode;
+    available: boolean;
+    reason?: string;
+  }>;
+  branch?: string;
+  author: GitIdentity;
+  defaultAuthor: GitIdentity;
+  existingRemote?: RepositoryRemoteSummary;
+  managedRemote?: RepositoryRemoteSummary;
+  ssh: {
+    identityAvailable: boolean;
+    knownHostsAvailable: boolean;
+    usable: boolean;
+  };
+};
+export type RemoteInspectionRequest = { remote: RepositoryRemoteInput };
+export type RemoteInspection = {
+  remoteUrl: string;
+  defaultBranch?: string;
+  branches: string[];
+  empty: boolean;
+  suggestedBranch: string;
+};
+export type RepositorySetupRequest = {
+  mode: RepositorySetupMode;
+  branch: string;
+  author: GitIdentity;
+  remote?: RepositoryRemoteInput;
+  manageExistingRemote?: boolean;
+};
+export type RepositoryRemoteRequest = {
+  remote: RepositoryRemoteInput;
+  branch: string;
+  replaceExisting: boolean;
+};
 
 export class APIError extends Error {
   constructor(
@@ -106,3 +165,29 @@ export async function api<T>(
 export const stackPath = (id: string) => `/stacks/${encodeURIComponent(id)}`;
 export const message = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed";
+
+export function getRepositorySetupStatus(): Promise<RepositorySetupStatus> {
+  return api("/repository/setup/status");
+}
+
+export function inspectRepositoryRemote(
+  request: RemoteInspectionRequest,
+): Promise<RemoteInspection> {
+  return api("/repository/setup/inspect-remote", "POST", request);
+}
+
+export function setupRepository(
+  request: RepositorySetupRequest,
+): Promise<RepositorySetupStatus> {
+  return api("/repository/setup", "POST", request);
+}
+
+export function configureRepositoryRemote(
+  request: RepositoryRemoteRequest,
+): Promise<RepositorySetupStatus> {
+  return api("/repository/remote", "PUT", request);
+}
+
+export function removeRepositoryRemote(): Promise<RepositorySetupStatus> {
+  return api("/repository/remote", "DELETE");
+}
