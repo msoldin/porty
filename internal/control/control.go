@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/docker/compose/v5/pkg/api"
 	portycompose "github.com/msoldin/porty/internal/compose"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
@@ -18,7 +20,7 @@ import (
 
 type RuntimeController interface {
 	Validate(context.Context, portycompose.Request) error
-	Status(context.Context, portycompose.Request) (string, error)
+	Status(context.Context, portycompose.Request) ([]api.ContainerSummary, error)
 	Digest(context.Context, portycompose.Request) (string, error)
 	Start(context.Context, portycompose.Request) error
 	Stop(context.Context, portycompose.Request) error
@@ -142,27 +144,12 @@ func (c *ControlPlane) StackState(ctx context.Context, id portystack.StackID) (S
 	return StackState{Runtime: AggregateRuntime(containers), Freshness: ClassifyDeployment(snapshot, digest, false)}, nil
 }
 
-func parseContainerStates(output string) []ContainerState {
-	var rows []struct {
-		State  string `json:"State"`
-		Health string `json:"Health"`
-	}
-	if err := json.Unmarshal([]byte(output), &rows); err != nil {
-		for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-			var row struct {
-				State  string `json:"State"`
-				Health string `json:"Health"`
-			}
-			if json.Unmarshal([]byte(line), &row) == nil {
-				rows = append(rows, row)
-			}
-		}
-	}
+func parseContainerStates(rows []api.ContainerSummary) []ContainerState {
 	result := make([]ContainerState, 0, len(rows))
 	for _, row := range rows {
-		if strings.EqualFold(row.Health, "unhealthy") {
+		if strings.EqualFold(string(row.Health), "unhealthy") {
 			result = append(result, ContainerUnhealthy)
-		} else if strings.EqualFold(row.State, "running") {
+		} else if strings.EqualFold(string(row.State), "running") {
 			result = append(result, ContainerRunning)
 		} else {
 			result = append(result, ContainerStopped)
@@ -225,7 +212,12 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 			case "validate":
 				err = c.runtime.Validate(jobCtx, request)
 			case "status":
-				return c.runtime.Status(jobCtx, request)
+				status, statusErr := c.runtime.Status(jobCtx, request)
+				if statusErr != nil {
+					return "", statusErr
+				}
+				encoded, encodeErr := json.Marshal(status)
+				return string(encoded), encodeErr
 			case "start":
 				err = c.runtime.Start(jobCtx, request)
 			case "stop":

@@ -2,159 +2,185 @@ package compose
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	portyfs "github.com/msoldin/porty/internal/filesystem"
-	portyprocess "github.com/msoldin/porty/internal/process"
+	"github.com/docker/compose/v5/pkg/api"
 )
 
-type Runner interface {
-	Run(context.Context, portyprocess.Request) (portyprocess.Result, error)
-}
-
 type Client struct {
-	runner  Runner
+	service api.Compose
 	timeout time.Duration
 }
 
 const maxCommandOutput = 1 << 20
 
-func New(runner Runner, timeout time.Duration) *Client {
+func New(service api.Compose, timeout time.Duration) *Client {
 	if timeout <= 0 {
 		timeout = 2 * time.Minute
 	}
-	return &Client{runner: runner, timeout: timeout}
+	return &Client{service: service, timeout: timeout}
 }
 
 func (c *Client) Validate(ctx context.Context, request Request) error {
-	_, err := c.run(ctx, request, "config", "--quiet")
+	_, err := Load(ctx, request)
 	return err
 }
 
 func (c *Client) Digest(ctx context.Context, request Request) (string, error) {
-	result, err := c.run(ctx, request, "config", "--format", "json")
+	project, err := Load(ctx, request)
 	if err != nil {
 		return "", err
 	}
-	environment, err := portyfs.SerializeEnvironment(request.Environment)
+	return Digest(project, request.Environment)
+}
+
+func (c *Client) Status(parent context.Context, request Request) ([]api.ContainerSummary, error) {
+	project, err := Load(parent, request)
 	if err != nil {
-		return "", err
-	}
-	digest := sha256.New()
-	_, _ = digest.Write([]byte(result.Output))
-	_, _ = digest.Write([]byte{0})
-	_, _ = digest.Write(environment)
-	return "sha256:" + hex.EncodeToString(digest.Sum(nil)), nil
-}
-
-func (c *Client) Status(ctx context.Context, request Request) (string, error) {
-	result, err := c.run(ctx, request, "ps", "--format", "json")
-	return result.Output, err
-}
-
-func (c *Client) Start(ctx context.Context, request Request) error {
-	_, err := c.run(ctx, request, "up", "-d")
-	return err
-}
-
-func (c *Client) Stop(ctx context.Context, request Request) error {
-	_, err := c.run(ctx, request, "stop")
-	return err
-}
-
-func (c *Client) Restart(ctx context.Context, request Request) error {
-	_, err := c.run(ctx, request, "restart")
-	return err
-}
-
-func (c *Client) Deploy(ctx context.Context, request Request, recreate bool) error {
-	arguments := []string{"up", "-d"}
-	if recreate {
-		arguments = append(arguments, "--force-recreate")
-	}
-	arguments = append(arguments, "--remove-orphans")
-	_, err := c.run(ctx, request, arguments...)
-	return err
-}
-
-func (c *Client) Pull(ctx context.Context, request Request) error {
-	_, err := c.run(ctx, request, "pull")
-	return err
-}
-
-func (c *Client) Down(ctx context.Context, request Request) error {
-	_, err := c.run(ctx, request, "down", "--remove-orphans")
-	return err
-}
-
-func (c *Client) Logs(ctx context.Context, request Request, tail int) (string, error) {
-	if tail <= 0 || tail > 10000 {
-		tail = 500
-	}
-	result, err := c.run(ctx, request, "logs", "--no-color", "--tail", strconv.Itoa(tail))
-	return result.Output, err
-}
-
-func (c *Client) run(parent context.Context, request Request, action ...string) (portyprocess.Result, error) {
-	if c.runner == nil || !filepath.IsAbs(request.StackDir) || request.ProjectName == "" {
-		return portyprocess.Result{}, errors.New("invalid Compose request")
-	}
-	contents, err := portyfs.SerializeEnvironment(request.Environment)
-	if err != nil {
-		return portyprocess.Result{}, err
-	}
-	file, err := os.CreateTemp("", "porty-compose-env-*")
-	if err != nil {
-		return portyprocess.Result{}, err
-	}
-	path := file.Name()
-	defer os.Remove(path)
-	if err := file.Chmod(0o600); err != nil {
-		file.Close()
-		return portyprocess.Result{}, err
-	}
-	if _, err := file.Write(contents); err != nil {
-		file.Close()
-		return portyprocess.Result{}, err
-	}
-	if err := file.Close(); err != nil {
-		return portyprocess.Result{}, err
-	}
-	arguments := []string{"compose", "--project-name", request.ProjectName, "--env-file", path, "-f", "docker-compose.yml"}
-	arguments = append(arguments, action...)
-	secrets := make([]string, 0, len(request.Environment))
-	for _, value := range request.Environment {
-		secrets = append(secrets, value)
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(parent, c.timeout)
 	defer cancel()
-	result, err := c.runner.Run(ctx, portyprocess.Request{
-		Name: "docker", Args: arguments, Dir: request.StackDir, Redact: secrets,
-		MaxOutput: maxCommandOutput, CleanEnv: true, Env: []string{"DOCKER_CLI_HINTS=false"},
-	})
+	status, err := c.service.Ps(ctx, project.Name, api.PsOptions{Project: project, All: true})
 	if err != nil {
-		detail := result.Output
-		for _, secret := range secrets {
-			if secret != "" {
-				detail = strings.ReplaceAll(detail, secret, "[REDACTED]")
-			}
-		}
-		detail = strings.TrimSpace(detail)
-		if len(detail) > maxCommandOutput {
-			detail = detail[:maxCommandOutput]
-		}
-		if detail != "" {
-			return result, fmt.Errorf("docker compose %s: %s: %w", action[0], detail, err)
-		}
-		return result, fmt.Errorf("docker compose %s: %w", action[0], err)
+		return nil, c.safeError(err, request)
 	}
-	return result, nil
+	return status, nil
 }
+
+func (c *Client) Start(parent context.Context, request Request) error {
+	return c.up(parent, request, false, false)
+}
+
+func (c *Client) Deploy(parent context.Context, request Request, recreate bool) error {
+	return c.up(parent, request, recreate, true)
+}
+
+func (c *Client) up(parent context.Context, request Request, recreate, removeOrphans bool) error {
+	project, err := Load(parent, request)
+	if err != nil {
+		return err
+	}
+	mode := api.RecreateDiverged
+	if recreate {
+		mode = api.RecreateForce
+	}
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
+	defer cancel()
+	err = c.service.Up(ctx, project, api.UpOptions{
+		Create: api.CreateOptions{Build: &api.BuildOptions{}, Recreate: mode, RemoveOrphans: removeOrphans},
+		Start:  api.StartOptions{},
+	})
+	return c.safeError(err, request)
+}
+
+func (c *Client) Stop(parent context.Context, request Request) error {
+	project, err := Load(parent, request)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
+	defer cancel()
+	return c.safeError(c.service.Stop(ctx, project.Name, api.StopOptions{Project: project}), request)
+}
+
+func (c *Client) Restart(parent context.Context, request Request) error {
+	project, err := Load(parent, request)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
+	defer cancel()
+	return c.safeError(c.service.Restart(ctx, project.Name, api.RestartOptions{Project: project}), request)
+}
+
+func (c *Client) Pull(parent context.Context, request Request) error {
+	project, err := Load(parent, request)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
+	defer cancel()
+	return c.safeError(c.service.Pull(ctx, project, api.PullOptions{}), request)
+}
+
+func (c *Client) Down(parent context.Context, request Request) error {
+	project, err := Load(parent, request)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
+	defer cancel()
+	return c.safeError(c.service.Down(ctx, project.Name, api.DownOptions{Project: project, RemoveOrphans: true}), request)
+}
+
+func (c *Client) Logs(parent context.Context, request Request, tail int) (string, error) {
+	project, err := Load(parent, request)
+	if err != nil {
+		return "", err
+	}
+	if tail <= 0 || tail > 10000 {
+		tail = 500
+	}
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
+	defer cancel()
+	consumer := &boundedLogs{}
+	err = c.service.Logs(ctx, project.Name, consumer, api.LogOptions{Project: project, Tail: strconv.Itoa(tail)})
+	if err != nil {
+		return boundedComposeOutput(consumer.String(), request.Environment), c.safeError(err, request)
+	}
+	return boundedComposeOutput(consumer.String(), request.Environment), nil
+}
+
+func (c *Client) safeError(err error, request Request) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	message := redactComposeOutput(err.Error(), request.Environment)
+	if len(message) > maxCommandOutput {
+		message = message[:maxCommandOutput]
+	}
+	return fmt.Errorf("Compose: %s", message)
+}
+
+func redactComposeOutput(message string, environment map[string]string) string {
+	for _, secret := range environment {
+		if secret != "" {
+			message = strings.ReplaceAll(message, secret, "[REDACTED]")
+		}
+	}
+	return message
+}
+
+func boundedComposeOutput(message string, environment map[string]string) string {
+	message = redactComposeOutput(message, environment)
+	if len(message) > maxCommandOutput {
+		message = message[:maxCommandOutput]
+	}
+	return message
+}
+
+type boundedLogs struct{ data strings.Builder }
+
+func (l *boundedLogs) append(container, message string) {
+	if l.data.Len() >= maxCommandOutput {
+		return
+	}
+	line := container + "  | " + message + "\n"
+	if len(line) > maxCommandOutput-l.data.Len() {
+		line = line[:maxCommandOutput-l.data.Len()]
+	}
+	l.data.WriteString(line)
+}
+
+func (l *boundedLogs) Log(container, message string)    { l.append(container, message) }
+func (l *boundedLogs) Err(container, message string)    { l.append(container, message) }
+func (l *boundedLogs) Status(container, message string) { l.append(container, message) }
+func (l *boundedLogs) String() string                   { return l.data.String() }

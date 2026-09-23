@@ -8,16 +8,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	gitlib "github.com/go-git/go-git/v6"
+	gitconfig "github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing"
 
 	"github.com/msoldin/porty/internal/app"
 	portyauth "github.com/msoldin/porty/internal/auth"
 	"github.com/msoldin/porty/internal/config"
 	gitcli "github.com/msoldin/porty/internal/git"
-	portyprocess "github.com/msoldin/porty/internal/process"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
@@ -130,8 +132,7 @@ func TestBuildHandlerRestoresReadySSHRemoteClient(t *testing.T) {
 	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), configuration, authentication); err != nil {
 		t.Fatal(err)
 	}
-	executable, _ := os.Executable()
-	provisioner, err := gitcli.NewProvisioner(dataDir, portyprocess.NewRunner(), executable)
+	provisioner, err := gitcli.NewProvisioner(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,19 +185,23 @@ func readyStartupConfiguration(dataDir, remoteURL string, authType portyrepo.Rep
 func initializeStartupRepository(t *testing.T, dataDir, branch, remoteURL string) {
 	t.Helper()
 	repository := filepath.Join(dataDir, "repository")
-	runStartupGit(t, dataDir, "init", "-b", branch, repository)
-	runStartupGit(t, repository, "config", "user.name", "Porty")
-	runStartupGit(t, repository, "config", "user.email", "porty@localhost")
-	if remoteURL != "" {
-		runStartupGit(t, repository, "remote", "add", "origin", remoteURL)
+	repo, err := gitlib.PlainInit(repository, false, gitlib.WithDefaultBranch(plumbing.NewBranchReferenceName(branch)))
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-func runStartupGit(t *testing.T, directory string, args ...string) {
-	t.Helper()
-	command := exec.Command("git", args...)
-	command.Dir = directory
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %v: %s", args, err, output)
+	defer repo.Close()
+	cfg, err := repo.Config()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.User.Name, cfg.User.Email = "Porty", "porty@localhost"
+	if err := repo.SetConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if remoteURL != "" {
+		if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteURL}}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 func assertReadyStatus(t *testing.T, handler http.Handler, want int) {

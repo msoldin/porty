@@ -3,6 +3,7 @@ package control_test
 import (
 	"context"
 	"errors"
+	"github.com/docker/compose/v5/pkg/api"
 	portycompose "github.com/msoldin/porty/internal/compose"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
@@ -85,8 +86,8 @@ func (*controlRuntime) Validate(context.Context, portycompose.Request) error { r
 func (*controlRuntime) Digest(context.Context, portycompose.Request) (string, error) {
 	return "sha256:compose", nil
 }
-func (*controlRuntime) Status(context.Context, portycompose.Request) (string, error) {
-	return `[]`, nil
+func (*controlRuntime) Status(context.Context, portycompose.Request) ([]api.ContainerSummary, error) {
+	return []api.ContainerSummary{}, nil
 }
 func (*controlRuntime) Start(context.Context, portycompose.Request) error        { return nil }
 func (*controlRuntime) Stop(context.Context, portycompose.Request) error         { return nil }

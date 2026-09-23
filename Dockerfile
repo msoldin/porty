@@ -8,7 +8,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/porty ./cmd/porty
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates docker-cli docker-cli-compose git tzdata \
+RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S porty \
     && adduser -S -D -H -G porty porty \
     && install -d -o porty -g porty -m 0700 /var/lib/porty

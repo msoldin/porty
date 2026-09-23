@@ -19,7 +19,6 @@ import (
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	gitcli "github.com/msoldin/porty/internal/git"
 	httpapi "github.com/msoldin/porty/internal/http"
-	portyprocess "github.com/msoldin/porty/internal/process"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 	portyws "github.com/msoldin/porty/internal/websocket"
 	"github.com/msoldin/porty/web"
@@ -47,8 +46,14 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 	}
 	repositoryRoot := filepath.Join(cfg.DataDir, "repository")
 	coordinator := portyop.NewCoordinator()
-	runner := portyprocess.NewRunner()
-	compose := composecli.New(runner, 5*time.Minute)
+	compose, dockerClient, err := composecli.NewDockerClient(ctx, 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		<-ctx.Done()
+		_ = dockerClient.Close()
+	}()
 	if err := os.MkdirAll(repositoryRoot, 0o700); err == nil {
 		if files, err := portyfs.Open(repositoryRoot, portyfs.Limits{MaxEditableBytes: cfg.MaxEditableFileBytes, MaxDepth: 32, MaxEntries: 10_000}); err == nil {
 			stackStore := portysqlite.NewStackStore(db)
@@ -73,7 +78,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 		if branch == "" {
 			branch = "main"
 		}
-		git, err := gitcli.New(runner, repositoryRoot, branch)
+		git, err := gitcli.New(repositoryRoot, branch)
 		if loadErr != nil {
 			err = loadErr
 		}
@@ -81,13 +86,9 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			environment := portystack.NewEnvironmentService(stackStore)
 			repositoryService := portyrepo.NewRepositoryService(git)
 			repositoryService.Replace(git, configuration.Remote != nil && configuration.Remote.Managed)
-			helper, helperErr := os.Executable()
-			if helperErr != nil {
-				err = helperErr
-			}
 			var provisioner *gitcli.Provisioner
 			if err == nil {
-				provisioner, err = gitcli.NewProvisioner(cfg.DataDir, runner, helper)
+				provisioner, err = gitcli.NewProvisioner(cfg.DataDir)
 			}
 			var setupService *portyrepo.RepositorySetupService
 			if err == nil {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -22,21 +22,13 @@ async function waitForServer(url: string) {
 
 test.beforeAll(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "porty-e2e-"));
-  const binDir = await mkdtemp(join(tmpdir(), "porty-e2e-bin-"));
-  const fakeDocker = join(binDir, "docker");
-  await writeFile(
-    fakeDocker,
-    '#!/bin/sh\ncase " $* " in *" ps --format json "*) printf \'[]\\n\';; *" config --format json "*) printf \'{"services":{}}\\n\';; *) printf \'ok\\n\';; esac\n',
-    { mode: 0o700 },
-  );
-  await chmod(fakeDocker, 0o700);
   const port = 18080 + Math.floor(Math.random() * 1000);
   baseURL = `http://127.0.0.1:${port}`;
   server = spawn(
     process.env.PORTY_E2E_BINARY || join(tmpdir(), "porty-e2e"),
     ["--listen", `127.0.0.1:${port}`, "--data-dir", dataDir],
     {
-      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}` },
+      env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -69,6 +61,23 @@ async function register(page: Page) {
 test("administrator creates, edits, commits, and deploys a stack", async ({
   page,
 }, testInfo) => {
+  await page.route("**/api/v1/stacks/*/state", async (route) => {
+    await route.fulfill({ json: { runtime: "stopped", freshness: "never_deployed" } });
+  });
+  await page.route("**/api/v1/stacks/*/actions/deploy", async (route) => {
+    await route.fulfill({
+      status: 202,
+      json: {
+        id: "opr_e2e_deploy",
+        kind: "deploy",
+        scopeType: "stack",
+        scopeId: "paperless",
+        status: "succeeded",
+        output: "deployment completed",
+        outputTruncated: false,
+      },
+    });
+  });
   await register(page);
   await page.getByRole("button", { name: "New stack" }).click();
   await page.getByLabel("Stack name").fill("paperless");

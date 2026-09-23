@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -19,19 +18,6 @@ import (
 )
 
 func main() {
-	if handled, exitCode := runGitHelper(context.Background(), os.Args[1:], os.LookupEnv, os.Stdout, func(ctx context.Context, name string, args ...string) error {
-		command := exec.CommandContext(ctx, name, args...)
-		command.Env = []string{}
-		command.Stdin = os.Stdin
-		command.Stdout = os.Stdout
-		command.Stderr = os.Stderr
-		return command.Run()
-	}); handled {
-		if exitCode != 0 {
-			os.Exit(exitCode)
-		}
-		return
-	}
 	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
 		if err := resetPassword(os.Args[2:], os.LookupEnv); err != nil {
 			slog.Error("reset password", "error", err)
