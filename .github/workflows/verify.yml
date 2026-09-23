@@ -21,6 +21,18 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Install sqlc v1.31.1
+        run: |
+          curl -fsSL https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz
+          echo '497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354  /tmp/sqlc.tar.gz' | sha256sum -c -
+          mkdir -p /tmp/sqlc-bin
+          tar -xzf /tmp/sqlc.tar.gz -C /tmp/sqlc-bin sqlc
+          echo /tmp/sqlc-bin >> "$GITHUB_PATH"
+      - name: Verify generated SQLite queries
+        run: |
+          sqlc generate
+          git status --porcelain -- internal/sqlite/generated > /tmp/sqlc-status
+          test ! -s /tmp/sqlc-status
       - run: npm --prefix web ci
       - run: npm --prefix web test
       - run: npm --prefix web run typecheck

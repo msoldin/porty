@@ -2,6 +2,8 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -35,6 +37,43 @@ func TestOperationStoreTracksLifecycle(t *testing.T) {
 	}
 	if loaded.Status != domain.OperationSucceeded || loaded.Output != "done" || loaded.RequestKey != "request-1" {
 		t.Fatalf("Operation() = %#v", loaded)
+	}
+}
+
+func TestOperationStorePreservesNullsPaginationAndErrors(t *testing.T) {
+	ctx := context.Background()
+	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := portysqlite.NewOperationStore(db)
+	for _, id := range []string{"op_1", "op_2"} {
+		if err := store.CreateOperation(ctx, domain.Operation{ID: id, Kind: "pull", ScopeType: "repository", Status: domain.OperationQueued}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := store.OperationsPage(ctx, 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.OperationsPage(ctx, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 || len(second) != 1 || first[0].ID != "op_2" || second[0].ID != "op_1" || !first[0].StartedAt.IsZero() || !first[0].CompletedAt.IsZero() {
+		t.Fatalf("pages %#v %#v", first, second)
+	}
+	if _, err := store.Operation(ctx, "missing"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing row: %v", err)
+	}
+	if err := store.UpdateOperation(ctx, domain.Operation{ID: "missing"}); err == nil {
+		t.Fatal("missing update accepted")
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := store.OperationsPage(cancelled, 1, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled query: %v", err)
 	}
 }
 

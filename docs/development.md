@@ -16,6 +16,8 @@ go test -race ./...
 go vet ./...
 ```
 
+SQLite read queries are generated with [sqlc v1.31.1](https://github.com/sqlc-dev/sqlc/releases/tag/v1.31.1) from `internal/sqlite/migrations/` and `internal/sqlite/queries/`. The migration directory is the only schema source. Install that exact version and run `sqlc generate` from the repository root. The generated files in `internal/sqlite/generated/` are committed; CI regenerates them and rejects any diff. Nullable database columns use sqlc's `sql.Null*` defaults so the SQLite stores can map them explicitly to domain values. Transactional writes remain handwritten where they enforce cross-table behavior.
+
 The Go binary embeds `web/dist`; rebuild the frontend before building a release binary. Run the browser journey after building `/tmp/porty-e2e`:
 
 ```sh

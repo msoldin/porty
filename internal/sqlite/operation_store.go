@@ -7,11 +7,17 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/domain"
+	"github.com/msoldin/porty/internal/sqlite/generated"
 )
 
-type OperationStore struct{ db *sql.DB }
+type OperationStore struct {
+	db      *sql.DB
+	queries *generated.Queries
+}
 
-func NewOperationStore(db *sql.DB) *OperationStore { return &OperationStore{db: db} }
+func NewOperationStore(db *sql.DB) *OperationStore {
+	return &OperationStore{db: db, queries: generated.New(db)}
+}
 
 func (s *OperationStore) CreateOperation(ctx context.Context, operation domain.Operation) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO operations(id,kind,scope_type,scope_id,request_key,status,output_truncated,initiated_by) VALUES(?,?,?,?,?,?,?,?)`,
@@ -33,7 +39,11 @@ func (s *OperationStore) UpdateOperation(ctx context.Context, operation domain.O
 }
 
 func (s *OperationStore) Operation(ctx context.Context, id string) (domain.Operation, error) {
-	return scanOperation(s.db.QueryRowContext(ctx, operationSelect+` WHERE id=?`, id))
+	row, err := s.queries.GetOperation(ctx, id)
+	if err != nil {
+		return domain.Operation{}, err
+	}
+	return operationFromRow(row), nil
 }
 
 func (s *OperationStore) Operations(ctx context.Context, limit int) ([]domain.Operation, error) {
@@ -47,20 +57,15 @@ func (s *OperationStore) OperationsPage(ctx context.Context, limit, offset int) 
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := s.db.QueryContext(ctx, operationSelect+` ORDER BY COALESCE(started_at,'') DESC, rowid DESC LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := s.queries.ListOperations(ctx, generated.ListOperationsParams{Limit: int64(limit), Offset: int64(offset)})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]domain.Operation, 0)
-	for rows.Next() {
-		operation, err := scanOperation(rows)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, operation)
+	result := make([]domain.Operation, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, operationFromRow(row))
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (s *OperationStore) FailInterrupted(ctx context.Context, at time.Time) error {
@@ -69,29 +74,20 @@ func (s *OperationStore) FailInterrupted(ctx context.Context, at time.Time) erro
 	return err
 }
 
-const operationSelect = `SELECT id,kind,scope_type,scope_id,request_key,status,started_at,completed_at,exit_code,error_code,output_tail,output_truncated,initiated_by FROM operations`
-
-func scanOperation(row rowScanner) (domain.Operation, error) {
-	var operation domain.Operation
-	var scopeID, requestKey, startedAt, completedAt, errorCode, initiatedBy sql.NullString
-	var exitCode sql.NullInt64
-	var output []byte
-	if err := row.Scan(&operation.ID, &operation.Kind, &operation.ScopeType, &scopeID, &requestKey, &operation.Status, &startedAt, &completedAt, &exitCode, &errorCode, &output, &operation.OutputTruncated, &initiatedBy); err != nil {
-		return domain.Operation{}, err
+func operationFromRow(row generated.Operation) domain.Operation {
+	operation := domain.Operation{
+		ID: row.ID, Kind: row.Kind, ScopeType: row.ScopeType, ScopeID: row.ScopeID.String,
+		RequestKey: row.RequestKey.String, Status: domain.OperationStatus(row.Status),
+		ExitCode: int(row.ExitCode.Int64), ErrorCode: row.ErrorCode.String, Output: string(row.OutputTail),
+		OutputTruncated: row.OutputTruncated != 0, InitiatedBy: row.InitiatedBy.String,
 	}
-	operation.ScopeID = scopeID.String
-	operation.RequestKey = requestKey.String
-	operation.ErrorCode = errorCode.String
-	operation.InitiatedBy = initiatedBy.String
-	operation.ExitCode = int(exitCode.Int64)
-	operation.Output = string(output)
-	if startedAt.Valid {
-		operation.StartedAt, _ = time.Parse(time.RFC3339Nano, startedAt.String)
+	if row.StartedAt.Valid {
+		operation.StartedAt, _ = time.Parse(time.RFC3339Nano, row.StartedAt.String)
 	}
-	if completedAt.Valid {
-		operation.CompletedAt, _ = time.Parse(time.RFC3339Nano, completedAt.String)
+	if row.CompletedAt.Valid {
+		operation.CompletedAt, _ = time.Parse(time.RFC3339Nano, row.CompletedAt.String)
 	}
-	return operation, nil
+	return operation
 }
 
 func nullableTime(value time.Time) any {
