@@ -58,6 +58,7 @@ type RepositoryRemoteProvisionRequest struct {
 
 type RepositoryProvisioner interface {
 	InspectPath(context.Context) (domain.RepositoryPathInspection, error)
+	InspectSSHMaterial() domain.SSHMaterialStatus
 	InspectRemote(context.Context, string, domain.RepositoryAuthentication) (domain.RemoteInspection, error)
 	Provision(context.Context, RepositoryProvisionRequest) (GitRepository, domain.RepositoryConfiguration, error)
 	ConfigureRemote(context.Context, RepositoryRemoteProvisionRequest, domain.RepositoryConfiguration) (GitRepository, domain.RepositoryConfiguration, error)
@@ -318,11 +319,7 @@ func (s *RepositorySetupService) status(ctx context.Context, configuration domai
 		DefaultAuthor:  defaultGitIdentity(),
 		ExistingRemote: inspection.ExistingRemote,
 		ManagedRemote:  configuration.Remote,
-		SSH: domain.SSHMaterialStatus{
-			IdentityAvailable:   s.options.SSHKeyPath != "",
-			KnownHostsAvailable: s.options.KnownHostsPath != "",
-			Usable:              s.options.SSHKeyPath != "" && s.options.KnownHostsPath != "",
-		},
+		SSH:            s.provisioner.InspectSSHMaterial(),
 	}
 	if configuration.State == domain.RepositorySetupReady {
 		status.Branch = configuration.Branch

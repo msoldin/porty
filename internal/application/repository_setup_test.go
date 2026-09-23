@@ -297,6 +297,22 @@ func TestRepositoryAuthenticationJSONExcludesCredentials(t *testing.T) {
 	}
 }
 
+func TestRepositorySetupStatusReportsMountedSSHMaterial(t *testing.T) {
+	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	provisioner := &fakeRepositoryProvisioner{
+		path:      domain.RepositoryPathInspection{State: domain.RepositoryPathEmpty},
+		sshStatus: domain.SSHMaterialStatus{IdentityAvailable: true, KnownHostsAvailable: false, Usable: false},
+	}
+	service, _ := newRepositorySetupService(store, provisioner)
+	status, err := service.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SSH != provisioner.sshStatus {
+		t.Fatalf("SSH status = %+v, want %+v", status.SSH, provisioner.sshStatus)
+	}
+}
+
 func newRepositorySetupService(store *fakeRepositorySetupStore, provisioner *fakeRepositoryProvisioner) (*application.RepositorySetupService, *application.RepositoryService) {
 	repository := application.NewRepositoryService(&setupGitRepository{head: "original"})
 	return application.NewRepositorySetupService(store, provisioner, repository, application.NewCoordinator(), application.RepositorySetupOptions{
@@ -371,6 +387,7 @@ func (s *fakeRepositorySetupStore) Save(_ context.Context, configuration domain.
 type fakeRepositoryProvisioner struct {
 	mu                     sync.Mutex
 	path                   domain.RepositoryPathInspection
+	sshStatus              domain.SSHMaterialStatus
 	inspection             domain.RemoteInspection
 	provisionConfiguration domain.RepositoryConfiguration
 	provisionErr           error
@@ -383,6 +400,10 @@ type fakeRepositoryProvisioner struct {
 	maxConcurrent          int
 	entered                chan struct{}
 	release                chan struct{}
+}
+
+func (f *fakeRepositoryProvisioner) InspectSSHMaterial() domain.SSHMaterialStatus {
+	return f.sshStatus
 }
 
 func (f *fakeRepositoryProvisioner) InspectPath(context.Context) (domain.RepositoryPathInspection, error) {

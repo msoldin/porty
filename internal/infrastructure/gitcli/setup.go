@@ -168,6 +168,19 @@ func (p *Provisioner) InspectPath(ctx context.Context) (domain.RepositoryPathIns
 	return inspection, nil
 }
 
+func (p *Provisioner) InspectSSHMaterial() domain.SSHMaterialStatus {
+	if !safeSSHDirectory(p.sshKeyPath, p.knownHostsPath) {
+		return domain.SSHMaterialStatus{}
+	}
+	keyPresent, keyUsable := sshMaterialFileStatus(p.sshKeyPath, 0o077)
+	hostsPresent, hostsUsable := sshMaterialFileStatus(p.knownHostsPath, 0o022)
+	return domain.SSHMaterialStatus{
+		IdentityAvailable:   keyPresent,
+		KnownHostsAvailable: hostsPresent,
+		Usable:              keyUsable && hostsUsable,
+	}
+}
+
 func (p *Provisioner) InspectRemote(ctx context.Context, remoteURL string, authentication domain.RepositoryAuthentication) (domain.RemoteInspection, error) {
 	if err := ValidateRemoteURL(remoteURL); err != nil {
 		return domain.RemoteInspection{}, application.ErrInvalidRequest
@@ -527,7 +540,8 @@ func (p *Provisioner) ConfigureRemote(ctx context.Context, request application.R
 	if err != nil || inspection.State != domain.RepositoryPathWorktree || inspection.Detached || inspection.Branch != request.Branch {
 		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
 	}
-	if inspection.ExistingRemote != nil && (configuration.Remote == nil || !configuration.Remote.Managed) && !request.ReplaceExisting {
+	if inspection.ExistingRemote != nil && !request.ReplaceExisting &&
+		(configuration.Remote == nil || !configuration.Remote.Managed || configuration.Remote.Name != "origin" || configuration.Remote.URL != inspection.ExistingRemote.URL) {
 		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteConflict
 	}
 	remotes, err := p.git(ctx, "remote")

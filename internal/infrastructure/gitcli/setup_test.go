@@ -22,6 +22,71 @@ const (
 	testObjectID  = "0123456789012345678901234567890123456789"
 )
 
+func TestProvisionerReportsActualSSHMaterialAvailability(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
+	if got := provisioner.InspectSSHMaterial(); got.IdentityAvailable || got.KnownHostsAvailable || got.Usable {
+		t.Fatalf("missing SSH material = %+v", got)
+	}
+	sshRoot := filepath.Join(filepath.Dir(repository), "ssh")
+	if err := os.Mkdir(sshRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(sshRoot, "id")
+	hosts := filepath.Join(sshRoot, "known_hosts")
+	if err := os.WriteFile(key, []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := provisioner.InspectSSHMaterial(); !got.IdentityAvailable || got.KnownHostsAvailable || got.Usable {
+		t.Fatalf("key only = %+v", got)
+	}
+	if err := os.WriteFile(hosts, []byte("hosts"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := provisioner.InspectSSHMaterial(); !got.IdentityAvailable || !got.KnownHostsAvailable || !got.Usable {
+		t.Fatalf("safe SSH material = %+v", got)
+	}
+	if err := os.Chmod(key, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := provisioner.InspectSSHMaterial(); !got.IdentityAvailable || !got.KnownHostsAvailable || got.Usable {
+		t.Fatalf("permissive key = %+v", got)
+	}
+	if err := os.Remove(key); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(hosts, key); err != nil {
+		t.Fatal(err)
+	}
+	if got := provisioner.InspectSSHMaterial(); got.IdentityAvailable || !got.KnownHostsAvailable || got.Usable {
+		t.Fatalf("symlink key = %+v", got)
+	}
+}
+
+func TestProvisionerRejectsSymlinkedSSHDirectory(t *testing.T) {
+	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
+	external := t.TempDir()
+	if err := os.WriteFile(filepath.Join(external, "id"), []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(external, "known_hosts"), []byte("hosts"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(filepath.Dir(repository), "ssh")); err != nil {
+		t.Fatal(err)
+	}
+	if got := provisioner.InspectSSHMaterial(); got.IdentityAvailable || got.KnownHostsAvailable || got.Usable {
+		t.Fatalf("symlinked SSH directory = %+v", got)
+	}
+	client, err := gitcli.New(portyprocess.NewRunner(), repository, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.WithSSHCredentials("/bin/true", filepath.Join(filepath.Dir(repository), "ssh", "id"), filepath.Join(filepath.Dir(repository), "ssh", "known_hosts"))
+	if err == nil {
+		t.Fatal("WithSSHCredentials accepted symlinked SSH directory")
+	}
+}
+
 func TestProvisionerInspectRemoteUsesSymbolicHEAD(t *testing.T) {
 	runner := &remoteInspectionRunner{result: portyprocess.Result{Output: "ref: refs/heads/trunk\tHEAD\n" + testObjectID + "\tHEAD\n" + testObjectID + "\trefs/heads/trunk\n"}}
 	provisioner, _ := newTestProvisioner(t, runner)
@@ -394,6 +459,30 @@ func TestProvisionerConfigureRemoteRequiresConfirmationForUnmanagedOrigin(t *tes
 	}
 	if got := strings.TrimSpace(runGit(t, repository, "remote", "get-url", "origin")); got != "https://example.com/team/repo.git" {
 		t.Fatalf("origin = %q", got)
+	}
+}
+
+func TestProvisionerConfigureRemoteRequiresConfirmationForChangedManagedOrigin(t *testing.T) {
+	remote := createLocalRemote(t, "main", false)
+	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
+	initializeRepositoryAt(t, repository)
+	changedURL := "https://changed.example/repo.git"
+	runGit(t, repository, "remote", "add", "origin", changedURL)
+	configuration := domain.RepositoryConfiguration{
+		State: domain.RepositorySetupReady, Root: repository, Branch: "main",
+		Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"},
+		Remote: &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://expected.example/repo.git", Managed: true},
+	}
+	request := application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}
+	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); !errors.Is(err, application.ErrRepositoryRemoteConflict) {
+		t.Fatalf("error = %v, want remote conflict", err)
+	}
+	if got := strings.TrimSpace(runGit(t, repository, "remote", "get-url", "origin")); got != changedURL {
+		t.Fatalf("origin = %q, want %q", got, changedURL)
+	}
+	request.ReplaceExisting = true
+	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); err != nil {
+		t.Fatal(err)
 	}
 }
 

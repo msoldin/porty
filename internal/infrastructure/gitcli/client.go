@@ -178,15 +178,31 @@ func (c *Client) WithSSHCredentials(helper, keyPath, knownHostsPath string) (*Cl
 }
 
 func validateSSHMaterial(keyPath, knownHostsPath string) error {
-	keyInfo, err := os.Lstat(keyPath)
-	if err != nil || !keyInfo.Mode().IsRegular() || keyInfo.Mode()&os.ModeSymlink != 0 || keyInfo.Mode().Perm()&0o077 != 0 {
+	if !safeSSHDirectory(keyPath, knownHostsPath) {
 		return errors.New("SSH material unavailable")
 	}
-	hostInfo, err := os.Lstat(knownHostsPath)
-	if err != nil || !hostInfo.Mode().IsRegular() || hostInfo.Mode()&os.ModeSymlink != 0 || hostInfo.Mode().Perm()&0o022 != 0 {
+	_, keyUsable := sshMaterialFileStatus(keyPath, 0o077)
+	_, hostsUsable := sshMaterialFileStatus(knownHostsPath, 0o022)
+	if !keyUsable || !hostsUsable {
 		return errors.New("SSH material unavailable")
 	}
 	return nil
+}
+
+func safeSSHDirectory(keyPath, knownHostsPath string) bool {
+	if filepath.Dir(keyPath) != filepath.Dir(knownHostsPath) {
+		return false
+	}
+	info, err := os.Lstat(filepath.Dir(keyPath))
+	return err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0
+}
+
+func sshMaterialFileStatus(path string, forbiddenMode os.FileMode) (bool, bool) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return false, false
+	}
+	return true, info.Mode().Perm()&forbiddenMode == 0
 }
 
 func ValidateRemoteURL(value string) error {
