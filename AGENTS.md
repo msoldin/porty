@@ -14,44 +14,69 @@ test, and maintain.
 
 Porty is a Go modular monolith with an embedded Preact frontend.
 
-Backend code lives under `cmd/porty/` and `internal/`. `internal/app/` wires concrete implementations. Feature behavior
-lives in `internal/auth/`, `internal/stack/`, `internal/repository/`, `internal/operation/`, and `internal/control/`.
-HTTP contracts and auth guards live in `internal/http/`; middleware in `internal/http/middleware/`; WebSocket streaming
-in `internal/websocket/`.
-
-Frontend source lives in `web/src/`, Playwright tests in `web/e2e/`, and generated assets in `web/dist/`.
-
-Deployment files live in `deploy/`; documentation in `docs/`.
+Backend code lives in `cmd/porty/` and `internal/`; frontend code in `web/`; deployment files in `deploy/`; documentation
+in `docs/`.
 
 ## Backend
 
 Follow idiomatic Go and format with `gofmt`.
 
+Organize backend code by domain and responsibility:
+
+```
+cmd/
+└── porty/                  # Application entry point
+internal/
+├── app/                    # Dependency wiring
+├── auth/                   # Authentication
+├── stack/                  # Stack management
+├── repository/             # Repository management
+├── operation/              # Operations
+├── control/                # Control behavior
+├── http/                   # HTTP contracts and auth guards
+│   └── middleware/         # HTTP middleware
+└── websocket/              # WebSocket streaming
+```
+
 Feature packages own their behavior and types. Keep interfaces narrow and near their consumers. Use subpackages only for
 meaningful API, dependency, or domain boundaries.
 
-Split packages into focused files when they contain distinct responsibilities. Group code by responsibility or domain
-concept, not line count. Keep related types, functions, and helpers together.
+Group files by responsibility or domain concept, not line count. Avoid one-file-per-function/type organization and
+large files containing unrelated responsibilities. Filenames should make their responsibility obvious.
 
-Do not use one-file-per-function or one-file-per-type organization. Do not keep unrelated responsibilities in one large
-file when they can be separated clearly.
-
-Package filenames should make the package's major responsibilities obvious.
-
-Use standard Go naming conventions. Prefer explicit error handling and simple control flow. Do not construct shell
-commands from strings; use fixed executables and argument arrays.
+Use standard Go naming, explicit error handling, and simple control flow. Do not construct shell commands from strings;
+use fixed executables and argument arrays.
 
 Goose runs embedded migrations. sqlc generates selected stable reads.
+
 
 ## Frontend
 
 Use focused Preact components and modules with clear responsibilities.
 
-Separate UI, state, API access, hooks, and utilities when they represent distinct concerns. Prefer local state unless
-state is genuinely shared.
+Organize `web/src/` primarily by feature:
 
-Split large files by coherent responsibility, not arbitrary size. Avoid unnecessary generic abstractions and premature
-shared components.
+```
+src/
+├── app/ # Bootstrap, routing, global setup
+├── features/ # Feature/domain code
+├── components/ # Shared UI components
+├── hooks/ # Shared hooks
+├── lib/ # API client and shared infrastructure
+├── utils/ # Shared pure utilities
+├── types/ # Shared types
+└── main.tsx
+```
+
+Keep feature-specific components, hooks, API calls, types, and utilities together under features/<feature>/. Move code
+to shared directories only when it is genuinely reused across features. Do not create directories or abstractions just
+to match the structure.
+
+Prefer local state unless state is genuinely shared. Keep API access out of presentation components. Colocate unit and
+component tests with the code they test; keep cross-feature browser tests in web/e2e/.
+
+Split large files by coherent responsibility, not arbitrary size. Avoid unnecessary generic abstractions, barrel files,
+deep nesting, and premature shared components.
 
 Format with Prettier. Use PascalCase for components and camelCase for functions, variables, and hooks. Use explicit
 TypeScript types at API and external boundaries.
