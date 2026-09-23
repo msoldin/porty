@@ -14,6 +14,7 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/compose/v5/pkg/api"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	"gopkg.in/yaml.v3"
 )
@@ -52,7 +53,7 @@ func Load(ctx context.Context, request Request) (*types.Project, error) {
 	if len(project.Models) != 0 {
 		return nil, errors.New("Compose model services require a helper process")
 	}
-	for _, service := range project.Services {
+	for name, service := range project.Services {
 		if service.Provider != nil || len(service.Models) != 0 {
 			return nil, errors.New("Compose provider and model services require a helper process")
 		}
@@ -62,6 +63,15 @@ func Load(ctx context.Context, request Request) (*types.Project, error) {
 				return nil, errors.New("Compose build requires a helper process or remote resource")
 			}
 		}
+		service.CustomLabels = types.Labels{
+			api.ProjectLabel:     project.Name,
+			api.ServiceLabel:     name,
+			api.VersionLabel:     api.ComposeVersion,
+			api.WorkingDirLabel:  project.WorkingDir,
+			api.ConfigFilesLabel: strings.Join(project.ComposeFiles, ","),
+			api.OneoffLabel:      "False",
+		}
+		project.Services[name] = service
 	}
 	return project, nil
 }

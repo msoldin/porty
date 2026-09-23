@@ -195,7 +195,10 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 				diffDigest = "sha256:" + hex.EncodeToString(digest[:])
 			}
 			deployment, err := c.deployments.DeployLocked(jobCtx, portyop.DeployRequest{StackID: id, OperationID: operationID, StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: values, GitCommit: head, Dirty: status.Dirty, DiffDigest: diffDigest, Recreate: action == "recreate"})
-			return fmt.Sprintf("deployment %s", deployment.ID), err
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("deployment %s", deployment.ID), nil
 		})
 		if startErr != nil {
 			release()

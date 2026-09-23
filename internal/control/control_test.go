@@ -3,14 +3,15 @@ package control_test
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/docker/compose/v5/pkg/api"
 	portycompose "github.com/msoldin/porty/internal/compose"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
-	"testing"
-	"time"
 )
 
 func TestControlPlaneRejectsConflictBeforeAcceptAndRecordsDeploymentProvenance(t *testing.T) {
@@ -49,6 +50,32 @@ func TestControlPlaneRejectsConflictBeforeAcceptAndRecordsDeploymentProvenance(t
 	}
 }
 
+func TestFailedDeploymentReportsComposeError(t *testing.T) {
+	coordinator := portyop.NewCoordinator()
+	operations := &countingOperationStore{updated: make(chan portyop.Operation, 4)}
+	runtime := &controlRuntime{deployErr: errors.New("cannot start Compose service")}
+	environment := portystack.NewEnvironmentService(controlEnvironmentStore{})
+	service := portyop.NewDeploymentService(runtime, &capturingDeploymentStore{saved: make(chan portyop.Deployment, 1)}, coordinator)
+	control := portycontrol.NewControlPlane("/srv/repository", controlLookup{}, environment, portyrepo.NewRepositoryService(controlGit{}), runtime, portyop.NewOperationService(operations, nil, time.Second, 1024), service, coordinator, nil, nil)
+	if _, err := control.StartAction(context.Background(), "stk_gateway", "deploy"); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		select {
+		case operation := <-operations.updated:
+			if operation.Status != portyop.OperationFailed {
+				continue
+			}
+			if operation.Output != "cannot start Compose service" {
+				t.Fatalf("failed deployment output = %q", operation.Output)
+			}
+			return
+		case <-time.After(time.Second):
+			t.Fatal("failed operation was not recorded")
+		}
+	}
+}
+
 type controlLookup struct{}
 
 func (controlLookup) ByID(context.Context, portystack.StackID) (portystack.Stack, error) {
@@ -80,7 +107,7 @@ func (controlGit) Fetch(context.Context) error                                 {
 func (controlGit) PullFastForward(context.Context) error                       { return nil }
 func (controlGit) Push(context.Context) error                                  { return nil }
 
-type controlRuntime struct{}
+type controlRuntime struct{ deployErr error }
 
 func (*controlRuntime) Validate(context.Context, portycompose.Request) error { return nil }
 func (*controlRuntime) Digest(context.Context, portycompose.Request) (string, error) {
@@ -89,22 +116,32 @@ func (*controlRuntime) Digest(context.Context, portycompose.Request) (string, er
 func (*controlRuntime) Status(context.Context, portycompose.Request) ([]api.ContainerSummary, error) {
 	return []api.ContainerSummary{}, nil
 }
-func (*controlRuntime) Start(context.Context, portycompose.Request) error        { return nil }
-func (*controlRuntime) Stop(context.Context, portycompose.Request) error         { return nil }
-func (*controlRuntime) Restart(context.Context, portycompose.Request) error      { return nil }
-func (*controlRuntime) Deploy(context.Context, portycompose.Request, bool) error { return nil }
-func (*controlRuntime) Pull(context.Context, portycompose.Request) error         { return nil }
+func (*controlRuntime) Start(context.Context, portycompose.Request) error   { return nil }
+func (*controlRuntime) Stop(context.Context, portycompose.Request) error    { return nil }
+func (*controlRuntime) Restart(context.Context, portycompose.Request) error { return nil }
+func (r *controlRuntime) Deploy(context.Context, portycompose.Request, bool) error {
+	return r.deployErr
+}
+func (*controlRuntime) Pull(context.Context, portycompose.Request) error { return nil }
 func (*controlRuntime) Logs(context.Context, portycompose.Request, int) (string, error) {
 	return "", nil
 }
 
-type countingOperationStore struct{ created int }
+type countingOperationStore struct {
+	created int
+	updated chan portyop.Operation
+}
 
 func (s *countingOperationStore) CreateOperation(context.Context, portyop.Operation) error {
 	s.created++
 	return nil
 }
-func (*countingOperationStore) UpdateOperation(context.Context, portyop.Operation) error { return nil }
+func (s *countingOperationStore) UpdateOperation(_ context.Context, operation portyop.Operation) error {
+	if s.updated != nil {
+		s.updated <- operation
+	}
+	return nil
+}
 
 type capturingDeploymentStore struct{ saved chan portyop.Deployment }
 
