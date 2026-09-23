@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	portyauth "github.com/msoldin/porty/internal/auth"
+	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
@@ -16,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	"github.com/msoldin/porty/internal/http/middleware"
 )
@@ -44,15 +44,15 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 			if decodeBody(w, r, &input) != nil {
 				return
 			}
-			item, err := options.Stacks.RenameStack(r.Context(), domain.StackID(r.PathValue("id")), input.Name)
+			item, err := options.Stacks.RenameStack(r.Context(), portystack.StackID(r.PathValue("id")), input.Name)
 			writeResult(w, r, item, err, stdhttp.StatusOK)
 		}))
 		mux.HandleFunc("DELETE /api/v1/stacks/{id}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			var err error
 			if r.URL.Query().Get("purge") == "true" {
-				err = options.Stacks.PurgeStack(r.Context(), domain.StackID(r.PathValue("id")))
+				err = options.Stacks.PurgeStack(r.Context(), portystack.StackID(r.PathValue("id")))
 			} else {
-				err = options.Stacks.DeleteStack(r.Context(), domain.StackID(r.PathValue("id")))
+				err = options.Stacks.DeleteStack(r.Context(), portystack.StackID(r.PathValue("id")))
 			}
 			if err != nil {
 				writeAPIError(w, r, err)
@@ -63,11 +63,11 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 	}
 	if options.Files != nil {
 		mux.HandleFunc("GET /api/v1/stacks/{id}/tree", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			items, err := options.Files.Tree(r.Context(), domain.StackID(r.PathValue("id")))
+			items, err := options.Files.Tree(r.Context(), portystack.StackID(r.PathValue("id")))
 			writeResult(w, r, items, err, stdhttp.StatusOK)
 		}))
 		mux.HandleFunc("GET /api/v1/stacks/{id}/files", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			file, err := options.Files.ReadFile(r.Context(), domain.StackID(r.PathValue("id")), r.URL.Query().Get("path"))
+			file, err := options.Files.ReadFile(r.Context(), portystack.StackID(r.PathValue("id")), r.URL.Query().Get("path"))
 			if err != nil {
 				writeAPIError(w, r, err)
 				return
@@ -87,7 +87,7 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 			if decodeBody(w, r, &input) != nil {
 				return
 			}
-			file, err := options.Files.WriteFile(r.Context(), domain.StackID(r.PathValue("id")), r.URL.Query().Get("path"), []byte(input.Content), expected)
+			file, err := options.Files.WriteFile(r.Context(), portystack.StackID(r.PathValue("id")), r.URL.Query().Get("path"), []byte(input.Content), expected)
 			if err != nil {
 				writeAPIError(w, r, err)
 				return
@@ -106,14 +106,14 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 					return
 				}
 				if input.Directory {
-					if err := mutations.CreateDirectory(r.Context(), domain.StackID(r.PathValue("id")), input.Path); err != nil {
+					if err := mutations.CreateDirectory(r.Context(), portystack.StackID(r.PathValue("id")), input.Path); err != nil {
 						writeAPIError(w, r, err)
 						return
 					}
 					writeJSON(w, stdhttp.StatusCreated, map[string]any{"path": input.Path, "directory": true})
 					return
 				}
-				file, err := mutations.CreateFile(r.Context(), domain.StackID(r.PathValue("id")), input.Path, []byte(input.Content))
+				file, err := mutations.CreateFile(r.Context(), portystack.StackID(r.PathValue("id")), input.Path, []byte(input.Content))
 				writeResult(w, r, file, err, stdhttp.StatusCreated)
 			}))
 			mux.HandleFunc("POST /api/v1/stacks/{id}/files/move", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
@@ -124,14 +124,14 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 				if decodeBody(w, r, &input) != nil {
 					return
 				}
-				if err := mutations.MoveFile(r.Context(), domain.StackID(r.PathValue("id")), input.From, input.To); err != nil {
+				if err := mutations.MoveFile(r.Context(), portystack.StackID(r.PathValue("id")), input.From, input.To); err != nil {
 					writeAPIError(w, r, err)
 					return
 				}
 				w.WriteHeader(stdhttp.StatusNoContent)
 			}))
 			mux.HandleFunc("DELETE /api/v1/stacks/{id}/files", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-				if err := mutations.RemoveFile(r.Context(), domain.StackID(r.PathValue("id")), r.URL.Query().Get("path")); err != nil {
+				if err := mutations.RemoveFile(r.Context(), portystack.StackID(r.PathValue("id")), r.URL.Query().Get("path")); err != nil {
 					writeAPIError(w, r, err)
 					return
 				}
@@ -187,7 +187,7 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 	}
 	if options.State != nil {
 		mux.HandleFunc("GET /api/v1/stacks/{id}/state", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			value, err := options.State.StackState(r.Context(), domain.StackID(r.PathValue("id")))
+			value, err := options.State.StackState(r.Context(), portystack.StackID(r.PathValue("id")))
 			writeResult(w, r, value, err, stdhttp.StatusOK)
 		}))
 	}
@@ -205,117 +205,6 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 			ctx, cancel := context.WithDeadline(r.Context(), principalFrom(r.Context()).ExpiresAt)
 			defer cancel()
 			options.Stream.ServeHTTP(w, r.WithContext(ctx))
-		}))
-	}
-}
-
-func registerEnvironmentRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
-	if options.Environment == nil {
-		return
-	}
-	mux.HandleFunc("GET /api/v1/stacks/{id}/environment", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-		keys, err := options.Environment.EnvironmentKeys(r.Context(), domain.StackID(r.PathValue("id")))
-		writeResult(w, r, map[string]any{"keys": keys}, err, stdhttp.StatusOK)
-	}))
-	mux.HandleFunc("PUT /api/v1/stacks/{id}/environment/{key}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-		var input struct {
-			Value string `json:"value"`
-		}
-		if decodeBody(w, r, &input) != nil {
-			return
-		}
-		if err := options.Environment.SetEnvironment(r.Context(), domain.StackID(r.PathValue("id")), r.PathValue("key"), input.Value); err != nil {
-			writeAPIError(w, r, err)
-			return
-		}
-		w.WriteHeader(stdhttp.StatusNoContent)
-	}))
-	mux.HandleFunc("DELETE /api/v1/stacks/{id}/environment/{key}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-		if err := options.Environment.DeleteEnvironment(r.Context(), domain.StackID(r.PathValue("id")), r.PathValue("key")); err != nil {
-			writeAPIError(w, r, err)
-			return
-		}
-		w.WriteHeader(stdhttp.StatusNoContent)
-	}))
-}
-
-func registerRepositoryRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
-	if options.Repository != nil {
-		mux.HandleFunc("GET /api/v1/repository/status", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			value, err := options.Repository.RepositoryStatus(r.Context())
-			writeResult(w, r, value, err, stdhttp.StatusOK)
-		}))
-		mux.HandleFunc("GET /api/v1/repository/history", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			var value []portyrepo.GitCommit
-			var err error
-			if paged, ok := options.Repository.(interface {
-				RepositoryHistoryPage(context.Context, int, int) ([]portyrepo.GitCommit, error)
-			}); ok {
-				value, err = paged.RepositoryHistoryPage(r.Context(), queryLimit(r), queryOffset(r))
-			} else {
-				value, err = options.Repository.RepositoryHistory(r.Context(), queryLimit(r))
-			}
-			writeResult(w, r, value, err, stdhttp.StatusOK)
-		}))
-		mux.HandleFunc("GET /api/v1/stacks/{id}/diff", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			value, err := options.Repository.StackDiff(r.Context(), domain.StackID(r.PathValue("id")))
-			writeResult(w, r, map[string]string{"diff": value}, err, stdhttp.StatusOK)
-		}))
-		mux.HandleFunc("POST /api/v1/stacks/{id}/commit", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			var input struct {
-				Message string `json:"message"`
-			}
-			if decodeBody(w, r, &input) != nil {
-				return
-			}
-			sha, err := options.Repository.CommitStack(r.Context(), domain.StackID(r.PathValue("id")), input.Message)
-			writeResult(w, r, map[string]string{"sha": sha}, err, stdhttp.StatusCreated)
-		}))
-	}
-	if options.Actions != nil {
-		mux.HandleFunc("POST /api/v1/stacks/{id}/actions/{action}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			value, err := options.Actions.StartAction(r.Context(), domain.StackID(r.PathValue("id")), r.PathValue("action"))
-			writeResult(w, r, value, err, stdhttp.StatusAccepted)
-		}))
-		mux.HandleFunc("POST /api/v1/repository/actions/{action}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			value, err := options.Actions.StartRepositoryAction(r.Context(), r.PathValue("action"))
-			writeResult(w, r, value, err, stdhttp.StatusAccepted)
-		}))
-	}
-}
-
-func registerOperationRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
-	if options.Operations != nil {
-		mux.HandleFunc("GET /api/v1/operations", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			var value []domain.Operation
-			var err error
-			if paged, ok := options.Operations.(interface {
-				OperationsPage(context.Context, int, int) ([]domain.Operation, error)
-			}); ok {
-				value, err = paged.OperationsPage(r.Context(), queryLimit(r), queryOffset(r))
-			} else {
-				value, err = options.Operations.Operations(r.Context(), queryLimit(r))
-			}
-			writeResult(w, r, value, err, stdhttp.StatusOK)
-		}))
-		mux.HandleFunc("GET /api/v1/operations/{id}", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			value, err := options.Operations.Operation(r.Context(), r.PathValue("id"))
-			writeResult(w, r, value, err, stdhttp.StatusOK)
-		}))
-	}
-	if options.Deployments != nil {
-		mux.HandleFunc("GET /api/v1/stacks/{id}/deployments", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-			id := domain.StackID(r.PathValue("id"))
-			var value []domain.Deployment
-			var err error
-			if paged, ok := options.Deployments.(interface {
-				DeploymentsPage(context.Context, domain.StackID, int, int) ([]domain.Deployment, error)
-			}); ok {
-				value, err = paged.DeploymentsPage(r.Context(), id, queryLimit(r), queryOffset(r))
-			} else {
-				value, err = options.Deployments.Deployments(r.Context(), id, queryLimit(r))
-			}
-			writeResult(w, r, value, err, stdhttp.StatusOK)
 		}))
 	}
 }
@@ -430,7 +319,7 @@ func recordAudit(options RouterOptions, r *stdhttp.Request, actor, action, targe
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
 	var random [12]byte
 	_, _ = rand.Read(random[:])
-	_ = options.Audit.RecordAudit(r.Context(), domain.AuditEvent{ID: "aud_" + hex.EncodeToString(random[:]), ActorUserID: actor, Action: action, TargetType: targetType, TargetID: targetID, Outcome: outcome, RequestID: middleware.RequestID(r.Context()), SourceIP: host, OccurredAt: time.Now().UTC()})
+	_ = options.Audit.RecordAudit(r.Context(), portycontrol.AuditEvent{ID: "aud_" + hex.EncodeToString(random[:]), ActorUserID: actor, Action: action, TargetType: targetType, TargetID: targetID, Outcome: outcome, RequestID: middleware.RequestID(r.Context()), SourceIP: host, OccurredAt: time.Now().UTC()})
 }
 func (w *statusWriter) Write(value []byte) (int, error) { return w.ResponseWriter.Write(value) }
 

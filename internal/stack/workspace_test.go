@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/msoldin/porty/internal/domain"
+	portycompose "github.com/msoldin/porty/internal/compose"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
@@ -27,7 +27,7 @@ func TestWorkspaceResolvesOpaqueStackIDForFileAndEnvironmentOperations(t *testin
 	}
 	defer db.Close()
 	store := portysqlite.NewStackStore(db)
-	workspace := portystack.NewWorkspaceService(portystack.NewStackService(files, store), store, files, portystack.NewEnvironmentService(store))
+	workspace := portystack.NewCoordinatedWorkspaceService(portystack.NewStackService(files, store), store, files, portystack.NewEnvironmentService(store), nil, nil, "")
 	stack, err := workspace.CreateStack(ctx, "gateway")
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ type deletionRuntime struct {
 	downCalled  bool
 }
 
-func (r *deletionRuntime) Down(_ context.Context, request domain.ComposeRequest) error {
+func (r *deletionRuntime) Down(_ context.Context, request portycompose.Request) error {
 	r.downCalled = true
 	if request.StackDir != filepath.Dir(r.wantCompose) {
 		r.t.Fatalf("Down() stack dir = %q", request.StackDir)

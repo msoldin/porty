@@ -3,11 +3,10 @@ package operation_test
 import (
 	"context"
 	"errors"
+	portycompose "github.com/msoldin/porty/internal/compose"
 	portyop "github.com/msoldin/porty/internal/operation"
 	"reflect"
 	"testing"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestDeployValidatesBeforeApplyingAndRecordsDigest(t *testing.T) {
@@ -22,7 +21,7 @@ func TestDeployValidatesBeforeApplyingAndRecordsDigest(t *testing.T) {
 	if !reflect.DeepEqual(runtime.calls, []string{"validate", "digest", "deploy"}) {
 		t.Fatalf("runtime calls = %#v", runtime.calls)
 	}
-	if deployment.ComposeDigest != "sha256:desired" || deployment.Status != domain.DeploymentSucceeded || len(store.saved) != 1 {
+	if deployment.ComposeDigest != "sha256:desired" || deployment.Status != portyop.DeploymentSucceeded || len(store.saved) != 1 {
 		t.Fatalf("deployment = %#v saved = %#v", deployment, store.saved)
 	}
 	if deployment.OperationID != "op_request" || deployment.GitCommit != "abc123" || !deployment.Dirty {
@@ -44,22 +43,22 @@ func TestCoordinatorRejectsConflictingStackOperation(t *testing.T) {
 
 type fakeComposeRuntime struct{ calls []string }
 
-func (f *fakeComposeRuntime) Validate(context.Context, portyop.ComposeRequest) error {
+func (f *fakeComposeRuntime) Validate(context.Context, portycompose.Request) error {
 	f.calls = append(f.calls, "validate")
 	return nil
 }
-func (f *fakeComposeRuntime) Digest(context.Context, portyop.ComposeRequest) (string, error) {
+func (f *fakeComposeRuntime) Digest(context.Context, portycompose.Request) (string, error) {
 	f.calls = append(f.calls, "digest")
 	return "sha256:desired", nil
 }
-func (f *fakeComposeRuntime) Deploy(context.Context, portyop.ComposeRequest, bool) error {
+func (f *fakeComposeRuntime) Deploy(context.Context, portycompose.Request, bool) error {
 	f.calls = append(f.calls, "deploy")
 	return nil
 }
 
-type fakeDeploymentStore struct{ saved []domain.Deployment }
+type fakeDeploymentStore struct{ saved []portyop.Deployment }
 
-func (f *fakeDeploymentStore) SaveDeployment(_ context.Context, deployment domain.Deployment) error {
+func (f *fakeDeploymentStore) SaveDeployment(_ context.Context, deployment portyop.Deployment) error {
 	f.saved = append(f.saved, deployment)
 	return nil
 }

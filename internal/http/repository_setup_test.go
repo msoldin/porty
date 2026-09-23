@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/msoldin/porty/internal/domain"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
 func TestRepositorySetupStatusRequiresAuthenticationButNotReadyState(t *testing.T) {
@@ -107,7 +107,7 @@ func TestRepositorySetupErrorsUseStableCodes(t *testing.T) {
 }
 
 func TestNormalReadRouteRequiresRepositorySetup(t *testing.T) {
-	stacks := &fakeStackAPI{items: []domain.Stack{{ID: "stk_one", DirectoryName: "one"}}}
+	stacks := &fakeStackAPI{items: []portystack.Stack{{ID: "stk_one", DirectoryName: "one"}}}
 	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup(), Stacks: stacks})
 	response := doAuthenticatedRequest(handler, session, "", stdhttp.MethodGet, "/api/v1/stacks", "")
 	assertAPIError(t, response, 409, "RepositorySetupRequired")

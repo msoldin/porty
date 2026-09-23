@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portyop "github.com/msoldin/porty/internal/operation"
 	"github.com/msoldin/porty/internal/sqlite/generated"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
 type DeploymentStore struct {
@@ -18,7 +19,7 @@ func NewDeploymentStore(db *sql.DB) *DeploymentStore {
 	return &DeploymentStore{db: db, queries: generated.New(db)}
 }
 
-func (s *DeploymentStore) SaveDeployment(ctx context.Context, deployment domain.Deployment) error {
+func (s *DeploymentStore) SaveDeployment(ctx context.Context, deployment portyop.Deployment) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -33,19 +34,19 @@ func (s *DeploymentStore) SaveDeployment(ctx context.Context, deployment domain.
 	return tx.Commit()
 }
 
-func (s *DeploymentStore) LatestDeployment(ctx context.Context, stackID domain.StackID) (domain.Deployment, error) {
+func (s *DeploymentStore) LatestDeployment(ctx context.Context, stackID portystack.StackID) (portyop.Deployment, error) {
 	row, err := s.queries.GetLatestDeployment(ctx, string(stackID))
 	if err != nil {
-		return domain.Deployment{}, err
+		return portyop.Deployment{}, err
 	}
 	return deploymentFromRow(row), nil
 }
 
-func (s *DeploymentStore) Deployments(ctx context.Context, stackID domain.StackID, limit int) ([]domain.Deployment, error) {
+func (s *DeploymentStore) Deployments(ctx context.Context, stackID portystack.StackID, limit int) ([]portyop.Deployment, error) {
 	return s.DeploymentsPage(ctx, stackID, limit, 0)
 }
 
-func (s *DeploymentStore) DeploymentsPage(ctx context.Context, stackID domain.StackID, limit, offset int) ([]domain.Deployment, error) {
+func (s *DeploymentStore) DeploymentsPage(ctx context.Context, stackID portystack.StackID, limit, offset int) ([]portyop.Deployment, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -56,19 +57,19 @@ func (s *DeploymentStore) DeploymentsPage(ctx context.Context, stackID domain.St
 	if err != nil {
 		return nil, err
 	}
-	result := make([]domain.Deployment, 0, len(rows))
+	result := make([]portyop.Deployment, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, deploymentFromRow(row))
 	}
 	return result, nil
 }
 
-func deploymentFromRow(row generated.Deployment) domain.Deployment {
-	deployment := domain.Deployment{
-		ID: row.ID, StackID: domain.StackID(row.StackID), OperationID: row.OperationID,
+func deploymentFromRow(row generated.Deployment) portyop.Deployment {
+	deployment := portyop.Deployment{
+		ID: row.ID, StackID: portystack.StackID(row.StackID), OperationID: row.OperationID,
 		GitCommit: row.GitCommit.String, Dirty: row.Dirty != 0,
 		DiffDigest: row.DiffDigest.String, ComposeDigest: row.ComposeDigest.String,
-		Status: domain.DeploymentStatus(row.Status), ErrorCode: row.ErrorCode.String,
+		Status: portyop.DeploymentStatus(row.Status), ErrorCode: row.ErrorCode.String,
 	}
 	deployment.StartedAt, _ = time.Parse(time.RFC3339Nano, row.StartedAt)
 	if row.CompletedAt.Valid {

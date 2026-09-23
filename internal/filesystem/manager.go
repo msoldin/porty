@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 var (
@@ -109,52 +107,52 @@ func (m *Manager) RemoveStack(name string) error {
 	return m.root.RemoveAll(name)
 }
 
-func (m *Manager) Read(stackName, path string) (domain.FileContent, error) {
+func (m *Manager) Read(stackName, path string) (FileContent, error) {
 	stack, err := m.openStack(stackName)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	defer stack.Close()
 	clean, info, err := validateRegularFile(stack, path)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if info.Size() > m.limits.MaxEditableBytes {
-		return domain.FileContent{}, ErrTooLarge
+		return FileContent{}, ErrTooLarge
 	}
 	contents, err := stack.ReadFile(clean)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
-	return domain.FileContent{Path: clean, Content: contents, Hash: hash(contents), Size: int64(len(contents))}, nil
+	return FileContent{Path: clean, Content: contents, Hash: hash(contents), Size: int64(len(contents))}, nil
 }
 
-func (m *Manager) Write(stackName, path string, contents []byte, expectedHash string) (domain.FileContent, error) {
+func (m *Manager) Write(stackName, path string, contents []byte, expectedHash string) (FileContent, error) {
 	if int64(len(contents)) > m.limits.MaxEditableBytes {
-		return domain.FileContent{}, ErrTooLarge
+		return FileContent{}, ErrTooLarge
 	}
 	stack, err := m.openStack(stackName)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	defer stack.Close()
 	clean, info, err := validateRegularFile(stack, path)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	current, err := stack.ReadFile(clean)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if expectedHash == "" || hash(current) != expectedHash {
-		return domain.FileContent{}, ErrStaleFile
+		return FileContent{}, ErrStaleFile
 	}
 
 	dir := filepath.Dir(clean)
 	temporary := filepath.Join(dir, ".porty-write-"+randomSuffix())
 	file, err := stack.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm()&0o666)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	removeTemporary := true
 	defer func() {
@@ -164,19 +162,19 @@ func (m *Manager) Write(stackName, path string, contents []byte, expectedHash st
 		}
 	}()
 	if _, err := file.Write(contents); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if err := file.Sync(); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if err := file.Close(); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if err := stack.Rename(temporary, clean); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	removeTemporary = false
-	return domain.FileContent{Path: clean, Content: contents, Hash: hash(contents), Size: int64(len(contents))}, nil
+	return FileContent{Path: clean, Content: contents, Hash: hash(contents), Size: int64(len(contents))}, nil
 }
 
 func (m *Manager) CreateDirectory(stackName, path string) error {
@@ -209,25 +207,25 @@ func (m *Manager) CreateDirectory(stackName, path string) error {
 	return nil
 }
 
-func (m *Manager) CreateFile(stackName, path string, contents []byte) (domain.FileContent, error) {
+func (m *Manager) CreateFile(stackName, path string, contents []byte) (FileContent, error) {
 	if int64(len(contents)) > m.limits.MaxEditableBytes {
-		return domain.FileContent{}, ErrTooLarge
+		return FileContent{}, ErrTooLarge
 	}
 	stack, err := m.openStack(stackName)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	defer stack.Close()
 	clean, err := cleanLocalPath(path)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if err := validateDirectory(stack, filepath.Dir(clean)); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	file, err := stack.OpenFile(clean, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
 	if err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	removeCreated := true
 	defer func() {
@@ -237,16 +235,16 @@ func (m *Manager) CreateFile(stackName, path string, contents []byte) (domain.Fi
 		}
 	}()
 	if _, err := file.Write(contents); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if err := file.Sync(); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	if err := file.Close(); err != nil {
-		return domain.FileContent{}, err
+		return FileContent{}, err
 	}
 	removeCreated = false
-	return domain.FileContent{Path: clean, Content: contents, Hash: hash(contents), Size: int64(len(contents))}, nil
+	return FileContent{Path: clean, Content: contents, Hash: hash(contents), Size: int64(len(contents))}, nil
 }
 
 func (m *Manager) Move(stackName, from, to string) error {
@@ -297,13 +295,13 @@ func (m *Manager) Remove(stackName, path string) error {
 	return stack.Remove(clean)
 }
 
-func (m *Manager) Tree(stackName string) ([]domain.FileEntry, error) {
+func (m *Manager) Tree(stackName string) ([]FileEntry, error) {
 	stack, err := m.openStack(stackName)
 	if err != nil {
 		return nil, err
 	}
 	defer stack.Close()
-	result := make([]domain.FileEntry, 0)
+	result := make([]FileEntry, 0)
 	err = fs.WalkDir(stack.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -321,7 +319,7 @@ func (m *Manager) Tree(stackName string) ([]domain.FileEntry, error) {
 		if err != nil {
 			return err
 		}
-		result = append(result, domain.FileEntry{Path: path, Size: info.Size(), IsDir: entry.IsDir(), Editable: info.Mode().IsRegular() && info.Size() <= m.limits.MaxEditableBytes})
+		result = append(result, FileEntry{Path: path, Size: info.Size(), IsDir: entry.IsDir(), Editable: info.Mode().IsRegular() && info.Size() <= m.limits.MaxEditableBytes})
 		return nil
 	})
 	return result, err

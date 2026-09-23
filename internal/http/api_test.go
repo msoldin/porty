@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	stdhttp "net/http"
 	"net/http/httptest"
@@ -12,12 +13,15 @@ import (
 	"time"
 
 	portyauth "github.com/msoldin/porty/internal/auth"
-	"github.com/msoldin/porty/internal/domain"
+	portycontrol "github.com/msoldin/porty/internal/control"
+	portyfs "github.com/msoldin/porty/internal/filesystem"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
 func TestStackEndpointsRequireSessionAndMutationsRequireCSRF(t *testing.T) {
-	stacks := &fakeStackAPI{items: []domain.Stack{{ID: "stk_gateway", DirectoryName: "gateway"}}}
+	stacks := &fakeStackAPI{items: []portystack.Stack{{ID: "stk_gateway", DirectoryName: "gateway"}}}
 	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{Stacks: stacks})
 
 	unauthorized := httptest.NewRecorder()
@@ -55,8 +59,20 @@ func TestStackEndpointsRequireSessionAndMutationsRequireCSRF(t *testing.T) {
 	}
 }
 
+func TestDatabaseErrorDoesNotLeakToHTTPResponse(t *testing.T) {
+	stacks := &fakeStackAPI{err: errors.New("sqlite: private-path-and-secret")}
+	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{Stacks: stacks})
+	request := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/stacks", nil)
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != stdhttp.StatusInternalServerError || !bytes.Contains(response.Body.Bytes(), []byte(`"code":"InternalError"`)) || bytes.Contains(response.Body.Bytes(), []byte("private-path-and-secret")) {
+		t.Fatalf("unsafe error response: %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestFileUpdateRequiresMatchingETag(t *testing.T) {
-	files := &fakeFileAPI{content: domain.FileContent{Path: "docker-compose.yml", Content: []byte("services: {}\n"), Hash: "sha256:old", Size: 13}}
+	files := &fakeFileAPI{content: portyfs.FileContent{Path: "docker-compose.yml", Content: []byte("services: {}\n"), Hash: "sha256:old", Size: 13}}
 	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{Files: files})
 
 	request := httptest.NewRequest(stdhttp.MethodPut, "http://porty.local/api/v1/stacks/stk_gateway/files?path=docker-compose.yml", bytes.NewBufferString(`{"content":"services:\n  web: {}\n"}`))
@@ -100,7 +116,7 @@ func TestLongRunningActionReturnsAcceptedOperationResource(t *testing.T) {
 
 func TestRepositorySetupAuditStateAndPaginationContracts(t *testing.T) {
 	setup := &fakeRepositorySetup{}
-	audit := &fakeAuditAPI{events: []domain.AuditEvent{{ID: "aud_1", Action: "stack.delete"}}}
+	audit := &fakeAuditAPI{events: []portycontrol.AuditEvent{{ID: "aud_1", Action: "stack.delete"}}}
 	state := &fakeStateAPI{}
 	operations := &fakePagedOperations{}
 	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup, Audit: audit, State: state, Operations: operations})
@@ -164,30 +180,31 @@ func authenticatedAPIRouter(t *testing.T, extra RouterOptions) (stdhttp.Handler,
 }
 
 type fakeStackAPI struct {
-	items   []domain.Stack
+	items   []portystack.Stack
 	created string
+	err     error
 }
 
-func (f *fakeStackAPI) ListStacks(context.Context) ([]domain.Stack, error) { return f.items, nil }
-func (f *fakeStackAPI) CreateStack(_ context.Context, name string) (domain.Stack, error) {
+func (f *fakeStackAPI) ListStacks(context.Context) ([]portystack.Stack, error) { return f.items, f.err }
+func (f *fakeStackAPI) CreateStack(_ context.Context, name string) (portystack.Stack, error) {
 	f.created = name
-	return domain.Stack{ID: "stk_worker", DirectoryName: name}, nil
+	return portystack.Stack{ID: "stk_worker", DirectoryName: name}, nil
 }
-func (f *fakeStackAPI) RenameStack(context.Context, domain.StackID, string) (domain.Stack, error) {
-	return domain.Stack{}, nil
+func (f *fakeStackAPI) RenameStack(context.Context, portystack.StackID, string) (portystack.Stack, error) {
+	return portystack.Stack{}, nil
 }
-func (f *fakeStackAPI) DeleteStack(context.Context, domain.StackID) error { return nil }
-func (f *fakeStackAPI) PurgeStack(context.Context, domain.StackID) error  { return nil }
+func (f *fakeStackAPI) DeleteStack(context.Context, portystack.StackID) error { return nil }
+func (f *fakeStackAPI) PurgeStack(context.Context, portystack.StackID) error  { return nil }
 
 type fakeFileAPI struct {
-	content      domain.FileContent
+	content      portyfs.FileContent
 	expectedHash string
 }
 
 type fakeActionAPI struct{}
 
-func (*fakeActionAPI) StartAction(context.Context, domain.StackID, string) (domain.Operation, error) {
-	return domain.Operation{ID: "op_1", Status: domain.OperationQueued}, nil
+func (*fakeActionAPI) StartAction(context.Context, portystack.StackID, string) (portyop.Operation, error) {
+	return portyop.Operation{ID: "op_1", Status: portyop.OperationQueued}, nil
 }
 
 type fakeRepositorySetup struct {
@@ -225,49 +242,49 @@ func (f *fakeRepositorySetup) Ready(context.Context) (bool, error) {
 }
 
 type fakeAuditAPI struct {
-	events   []domain.AuditEvent
+	events   []portycontrol.AuditEvent
 	offset   int
-	recorded []domain.AuditEvent
+	recorded []portycontrol.AuditEvent
 }
 
-func (f *fakeAuditAPI) AuditEvents(_ context.Context, _ int, offset int) ([]domain.AuditEvent, error) {
+func (f *fakeAuditAPI) AuditEvents(_ context.Context, _ int, offset int) ([]portycontrol.AuditEvent, error) {
 	f.offset = offset
 	return f.events, nil
 }
-func (f *fakeAuditAPI) RecordAudit(_ context.Context, event domain.AuditEvent) error {
+func (f *fakeAuditAPI) RecordAudit(_ context.Context, event portycontrol.AuditEvent) error {
 	f.recorded = append(f.recorded, event)
 	return nil
 }
 
 type fakeStateAPI struct{}
 
-func (*fakeStateAPI) StackState(context.Context, domain.StackID) (domain.StackState, error) {
-	return domain.StackState{Runtime: domain.RuntimeRunning, Freshness: domain.DeploymentCurrent}, nil
+func (*fakeStateAPI) StackState(context.Context, portystack.StackID) (portycontrol.StackState, error) {
+	return portycontrol.StackState{Runtime: portycontrol.RuntimeRunning, Freshness: portycontrol.DeploymentCurrent}, nil
 }
 
 type fakePagedOperations struct{ offset int }
 
-func (f *fakePagedOperations) Operation(context.Context, string) (domain.Operation, error) {
-	return domain.Operation{}, nil
+func (f *fakePagedOperations) Operation(context.Context, string) (portyop.Operation, error) {
+	return portyop.Operation{}, nil
 }
-func (f *fakePagedOperations) Operations(context.Context, int) ([]domain.Operation, error) {
+func (f *fakePagedOperations) Operations(context.Context, int) ([]portyop.Operation, error) {
 	return nil, nil
 }
-func (f *fakePagedOperations) OperationsPage(_ context.Context, _, offset int) ([]domain.Operation, error) {
+func (f *fakePagedOperations) OperationsPage(_ context.Context, _, offset int) ([]portyop.Operation, error) {
 	f.offset = offset
-	return []domain.Operation{{ID: "op_page"}}, nil
+	return []portyop.Operation{{ID: "op_page"}}, nil
 }
-func (*fakeActionAPI) StartRepositoryAction(context.Context, string) (domain.Operation, error) {
-	return domain.Operation{ID: "op_2", Status: domain.OperationQueued}, nil
+func (*fakeActionAPI) StartRepositoryAction(context.Context, string) (portyop.Operation, error) {
+	return portyop.Operation{ID: "op_2", Status: portyop.OperationQueued}, nil
 }
 
-func (f *fakeFileAPI) Tree(context.Context, domain.StackID) ([]domain.FileEntry, error) {
+func (f *fakeFileAPI) Tree(context.Context, portystack.StackID) ([]portyfs.FileEntry, error) {
 	return nil, nil
 }
-func (f *fakeFileAPI) ReadFile(context.Context, domain.StackID, string) (domain.FileContent, error) {
+func (f *fakeFileAPI) ReadFile(context.Context, portystack.StackID, string) (portyfs.FileContent, error) {
 	return f.content, nil
 }
-func (f *fakeFileAPI) WriteFile(_ context.Context, _ domain.StackID, _ string, contents []byte, expected string) (domain.FileContent, error) {
+func (f *fakeFileAPI) WriteFile(_ context.Context, _ portystack.StackID, _ string, contents []byte, expected string) (portyfs.FileContent, error) {
 	f.expectedHash = expected
 	f.content.Content = contents
 	f.content.Hash = "sha256:new"

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
 func TestArchivedStackRetainsEnvironmentUntilExplicitPurge(t *testing.T) {
@@ -18,7 +18,7 @@ func TestArchivedStackRetainsEnvironmentUntilExplicitPurge(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewStackStore(db)
-	stack := domain.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway-a1b2", CreatedAt: time.Now().UTC()}
+	stack := portystack.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway-a1b2", CreatedAt: time.Now().UTC()}
 	if err := store.Create(context.Background(), stack); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestStackReadsPreserveOrderingArchiveAndMissingRows(t *testing.T) {
 	defer db.Close()
 	store := NewStackStore(db)
 	now := time.Now().UTC()
-	for _, stack := range []domain.Stack{
+	for _, stack := range []portystack.Stack{
 		{ID: "stk_z", DirectoryName: "zulu", ComposeProjectName: "porty-zulu", CreatedAt: now},
 		{ID: "stk_a", DirectoryName: "alpha", ComposeProjectName: "porty-alpha", CreatedAt: now},
 		{ID: "stk_m", DirectoryName: "middle", ComposeProjectName: "porty-middle", CreatedAt: now},

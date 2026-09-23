@@ -29,10 +29,6 @@ type Runner interface {
 	Run(context.Context, portyprocess.Request) (portyprocess.Result, error)
 }
 
-type Status = portyrepo.GitStatus
-
-type Commit = portyrepo.GitCommit
-
 type Client struct {
 	runner         Runner
 	repo           string
@@ -258,18 +254,18 @@ func unsafeConfigKey(key string) bool {
 		(strings.HasPrefix(key, "gpg.") && strings.HasSuffix(key, ".program"))
 }
 
-func (c *Client) Status(ctx context.Context) (Status, error) {
+func (c *Client) Status(ctx context.Context) (portyrepo.GitStatus, error) {
 	configured, err := c.configured()
 	if err != nil {
-		return Status{}, err
+		return portyrepo.GitStatus{}, err
 	}
-	status := Status{Configured: configured, Branch: c.branch}
+	status := portyrepo.GitStatus{Configured: configured, Branch: c.branch}
 	if !configured {
 		return status, nil
 	}
 	result, err := c.run(ctx, "status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all")
 	if err != nil {
-		return Status{}, err
+		return portyrepo.GitStatus{}, err
 	}
 	items := strings.Split(result.Output, "\x00")
 	for index := 0; index < len(items); index++ {
@@ -298,7 +294,7 @@ func (c *Client) Status(ctx context.Context) (Status, error) {
 	return status, nil
 }
 
-func parseBranchHeader(status *Status, header string) {
+func parseBranchHeader(status *portyrepo.GitStatus, header string) {
 	if branch, found := strings.CutPrefix(header, "No commits yet on "); found {
 		status.Branch = strings.TrimSpace(branch)
 	} else if branch, _, found := strings.Cut(header, "..."); found {
@@ -410,11 +406,11 @@ func (c *Client) Commit(ctx context.Context, stack, message string) (string, err
 	return strings.TrimSpace(result.Output), err
 }
 
-func (c *Client) History(ctx context.Context, limit int) ([]Commit, error) {
+func (c *Client) History(ctx context.Context, limit int) ([]portyrepo.GitCommit, error) {
 	return c.HistoryPage(ctx, limit, 0)
 }
 
-func (c *Client) HistoryPage(ctx context.Context, limit, offset int) ([]Commit, error) {
+func (c *Client) HistoryPage(ctx context.Context, limit, offset int) ([]portyrepo.GitCommit, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -426,12 +422,12 @@ func (c *Client) HistoryPage(ctx context.Context, limit, offset int) ([]Commit, 
 		return nil, err
 	}
 	if !configured {
-		return []Commit{}, nil
+		return []portyrepo.GitCommit{}, nil
 	}
 	head, err := c.run(ctx, "rev-parse", "--verify", "--quiet", "HEAD")
 	if err != nil {
 		if head.ExitCode == 1 {
-			return []Commit{}, nil
+			return []portyrepo.GitCommit{}, nil
 		}
 		return nil, err
 	}
@@ -440,9 +436,9 @@ func (c *Client) HistoryPage(ctx context.Context, limit, offset int) ([]Commit, 
 		return nil, err
 	}
 	parts := strings.Split(strings.Trim(result.Output, "\x00\n"), "\x00")
-	history := make([]Commit, 0, len(parts)/4)
+	history := make([]portyrepo.GitCommit, 0, len(parts)/4)
 	for index := 0; index+3 < len(parts); index += 4 {
-		history = append(history, Commit{SHA: parts[index], Subject: parts[index+1], Author: parts[index+2], Time: strings.TrimSpace(parts[index+3])})
+		history = append(history, portyrepo.GitCommit{SHA: parts[index], Subject: parts[index+1], Author: parts[index+2], Time: strings.TrimSpace(parts[index+3])})
 	}
 	return history, nil
 }

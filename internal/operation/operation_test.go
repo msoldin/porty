@@ -8,12 +8,10 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestOperationContinuesAfterRequestDisconnectAndRedactsOutput(t *testing.T) {
-	store := &memoryOperationStore{completed: make(chan domain.Operation, 1)}
+	store := &memoryOperationStore{completed: make(chan portyop.Operation, 1)}
 	service := portyop.NewOperationService(store, nil, time.Second, 64)
 	requestContext, cancel := context.WithCancel(context.Background())
 	operation, err := service.Start(requestContext, portyop.OperationRequest{Kind: "pull", ScopeType: "repository", Secrets: []string{"secret"}}, func(context.Context) (string, error) {
@@ -26,7 +24,7 @@ func TestOperationContinuesAfterRequestDisconnectAndRedactsOutput(t *testing.T) 
 	cancel()
 	select {
 	case completed := <-store.completed:
-		if completed.ID != operation.ID || completed.Status != domain.OperationSucceeded {
+		if completed.ID != operation.ID || completed.Status != portyop.OperationSucceeded {
 			t.Fatalf("completed operation = %#v", completed)
 		}
 		if strings.Contains(completed.Output, "secret") || len(completed.Output) != 64 || !completed.OutputTruncated {
@@ -38,7 +36,7 @@ func TestOperationContinuesAfterRequestDisconnectAndRedactsOutput(t *testing.T) 
 }
 
 func TestOperationCanDiscardSensitiveOutput(t *testing.T) {
-	store := &memoryOperationStore{completed: make(chan domain.Operation, 1)}
+	store := &memoryOperationStore{completed: make(chan portyop.Operation, 1)}
 	service := portyop.NewOperationService(store, nil, time.Second, 64)
 	_, err := service.Start(context.Background(), portyop.OperationRequest{Kind: "logs", ScopeType: "stack", DiscardOutput: true}, func(context.Context) (string, error) {
 		return "container secret output", nil
@@ -57,7 +55,7 @@ func TestOperationCanDiscardSensitiveOutput(t *testing.T) {
 }
 
 func TestFailedOperationRecordsBoundedRedactedError(t *testing.T) {
-	store := &memoryOperationStore{completed: make(chan domain.Operation, 1)}
+	store := &memoryOperationStore{completed: make(chan portyop.Operation, 1)}
 	service := portyop.NewOperationService(store, nil, time.Second, 64)
 	_, err := service.Start(context.Background(), portyop.OperationRequest{Kind: "start", ScopeType: "stack", Secrets: []string{"secret"}}, func(context.Context) (string, error) {
 		return "", errors.New("docker compose up: permission denied for secret: " + strings.Repeat("x", 80))
@@ -67,7 +65,7 @@ func TestFailedOperationRecordsBoundedRedactedError(t *testing.T) {
 	}
 	select {
 	case completed := <-store.completed:
-		if completed.Status != domain.OperationFailed || completed.ErrorCode != "operation_failed" {
+		if completed.Status != portyop.OperationFailed || completed.ErrorCode != "operation_failed" {
 			t.Fatalf("completed operation = %#v", completed)
 		}
 		if !strings.Contains(completed.Output, "permission denied") || strings.Contains(completed.Output, "secret") || len(completed.Output) != 64 || !completed.OutputTruncated {
@@ -80,22 +78,22 @@ func TestFailedOperationRecordsBoundedRedactedError(t *testing.T) {
 
 type memoryOperationStore struct {
 	mu        sync.Mutex
-	operation domain.Operation
-	completed chan domain.Operation
+	operation portyop.Operation
+	completed chan portyop.Operation
 }
 
-func (s *memoryOperationStore) CreateOperation(_ context.Context, operation domain.Operation) error {
+func (s *memoryOperationStore) CreateOperation(_ context.Context, operation portyop.Operation) error {
 	s.mu.Lock()
 	s.operation = operation
 	s.mu.Unlock()
 	return nil
 }
 
-func (s *memoryOperationStore) UpdateOperation(_ context.Context, operation domain.Operation) error {
+func (s *memoryOperationStore) UpdateOperation(_ context.Context, operation portyop.Operation) error {
 	s.mu.Lock()
 	s.operation = operation
 	s.mu.Unlock()
-	if operation.Status == domain.OperationSucceeded || operation.Status == domain.OperationFailed || operation.Status == domain.OperationCancelled {
+	if operation.Status == portyop.OperationSucceeded || operation.Status == portyop.OperationFailed || operation.Status == portyop.OperationCancelled {
 		s.completed <- operation
 	}
 	return nil

@@ -10,7 +10,7 @@ import (
 
 	coderws "github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/msoldin/porty/internal/domain"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portyws "github.com/msoldin/porty/internal/websocket"
 )
 
@@ -31,7 +31,7 @@ func TestAuthenticatedWebSocketSubscriptionStreamsSequencedEvents(t *testing.T) 
 	if err := wsjson.Write(ctx, connection, map[string]any{"type": "subscribe", "subscriptionId": "ops", "topic": "operations", "since": 0}); err != nil {
 		t.Fatal(err)
 	}
-	hub.PublishOperation(domain.Operation{ID: "op_1", Status: domain.OperationRunning})
+	hub.PublishOperation(portyop.Operation{ID: "op_1", Status: portyop.OperationRunning})
 	var message struct {
 		Type           string         `json:"type"`
 		SubscriptionID string         `json:"subscriptionId"`

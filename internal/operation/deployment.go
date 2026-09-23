@@ -8,23 +8,22 @@ import (
 	"sync"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portycompose "github.com/msoldin/porty/internal/compose"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
-type ComposeRequest = domain.ComposeRequest
-
 type ComposeRuntime interface {
-	Validate(context.Context, ComposeRequest) error
-	Digest(context.Context, ComposeRequest) (string, error)
-	Deploy(context.Context, ComposeRequest, bool) error
+	Validate(context.Context, portycompose.Request) error
+	Digest(context.Context, portycompose.Request) (string, error)
+	Deploy(context.Context, portycompose.Request, bool) error
 }
 
 type DeploymentRepository interface {
-	SaveDeployment(context.Context, domain.Deployment) error
+	SaveDeployment(context.Context, Deployment) error
 }
 
 type DeployRequest struct {
-	StackID     domain.StackID
+	StackID     portystack.StackID
 	OperationID string
 	StackDir    string
 	ProjectName string
@@ -46,27 +45,27 @@ func NewDeploymentService(runtime ComposeRuntime, store DeploymentRepository, co
 	return &DeploymentService{runtime: runtime, store: store, coordinator: coordinator, now: time.Now}
 }
 
-func (s *DeploymentService) Deploy(ctx context.Context, request DeployRequest) (domain.Deployment, error) {
+func (s *DeploymentService) Deploy(ctx context.Context, request DeployRequest) (Deployment, error) {
 	release, err := s.coordinator.Try(false, string(request.StackID))
 	if err != nil {
-		return domain.Deployment{}, err
+		return Deployment{}, err
 	}
 	defer release()
 	return s.DeployLocked(ctx, request)
 }
 
 // DeployLocked runs a deployment while the caller holds the stack coordinator.
-func (s *DeploymentService) DeployLocked(ctx context.Context, request DeployRequest) (domain.Deployment, error) {
+func (s *DeploymentService) DeployLocked(ctx context.Context, request DeployRequest) (Deployment, error) {
 	started := s.now().UTC()
 	if request.OperationID == "" {
 		request.OperationID = NewOperationID()
 	}
-	deployment := domain.Deployment{
+	deployment := Deployment{
 		ID: "dep_" + randomID(12), StackID: request.StackID, OperationID: request.OperationID,
 		GitCommit: request.GitCommit, Dirty: request.Dirty, DiffDigest: request.DiffDigest,
-		Status: domain.DeploymentFailed, StartedAt: started,
+		Status: DeploymentFailed, StartedAt: started,
 	}
-	composeRequest := ComposeRequest{StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: request.Environment}
+	composeRequest := portycompose.Request{StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: request.Environment}
 	if err := s.runtime.Validate(ctx, composeRequest); err != nil {
 		deployment.ErrorCode = "compose_validation_failed"
 		return s.finish(ctx, deployment, err)
@@ -81,11 +80,11 @@ func (s *DeploymentService) DeployLocked(ctx context.Context, request DeployRequ
 		deployment.ErrorCode = "compose_deploy_failed"
 		return s.finish(ctx, deployment, err)
 	}
-	deployment.Status = domain.DeploymentSucceeded
+	deployment.Status = DeploymentSucceeded
 	return s.finish(ctx, deployment, nil)
 }
 
-func (s *DeploymentService) finish(ctx context.Context, deployment domain.Deployment, operationErr error) (domain.Deployment, error) {
+func (s *DeploymentService) finish(ctx context.Context, deployment Deployment, operationErr error) (Deployment, error) {
 	deployment.CompletedAt = s.now().UTC()
 	deployment.Duration = deployment.CompletedAt.Sub(deployment.StartedAt)
 	if err := s.store.SaveDeployment(ctx, deployment); err != nil {

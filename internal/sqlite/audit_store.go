@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portycontrol "github.com/msoldin/porty/internal/control"
 	"github.com/msoldin/porty/internal/sqlite/generated"
 )
 
@@ -16,13 +16,13 @@ type AuditStore struct {
 
 func NewAuditStore(db *sql.DB) *AuditStore { return &AuditStore{db: db, queries: generated.New(db)} }
 
-func (s *AuditStore) RecordAudit(ctx context.Context, event domain.AuditEvent) error {
+func (s *AuditStore) RecordAudit(ctx context.Context, event portycontrol.AuditEvent) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO audit_events(id,actor_user_id,action,target_type,target_id,outcome,request_id,source_ip,occurred_at) VALUES(?,?,?,?,?,?,?,?,?)`,
 		event.ID, nullableString(event.ActorUserID), event.Action, event.TargetType, nullableString(event.TargetID), event.Outcome, event.RequestID, nullableString(event.SourceIP), encodeTime(event.OccurredAt))
 	return err
 }
 
-func (s *AuditStore) AuditEvents(ctx context.Context, limit, offset int) ([]domain.AuditEvent, error) {
+func (s *AuditStore) AuditEvents(ctx context.Context, limit, offset int) ([]portycontrol.AuditEvent, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -33,10 +33,10 @@ func (s *AuditStore) AuditEvents(ctx context.Context, limit, offset int) ([]doma
 	if err != nil {
 		return nil, err
 	}
-	result := make([]domain.AuditEvent, 0, len(rows))
+	result := make([]portycontrol.AuditEvent, 0, len(rows))
 	for _, row := range rows {
 		occurred, _ := time.Parse(time.RFC3339Nano, row.OccurredAt)
-		result = append(result, domain.AuditEvent{
+		result = append(result, portycontrol.AuditEvent{
 			ID: row.ID, ActorUserID: row.ActorUserID.String, Action: row.Action,
 			TargetType: row.TargetType, TargetID: row.TargetID.String,
 			Outcome: row.Outcome, RequestID: row.RequestID, SourceIP: row.SourceIp.String,

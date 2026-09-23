@@ -26,6 +26,12 @@ sudo systemctl enable --now porty
 
 The service creates `/var/lib/porty` with mode `0700`. Porty tightens its configured data directory to `0700` before opening the database and refuses to use the filesystem root. The service account needs membership in the Docker socket's group. This grants Docker-equivalent host privileges.
 
+## Browser authentication and TLS proxies
+
+Porty issues a signed access JWT in the `HttpOnly` `porty_session` cookie for 15 minutes. A separate `HttpOnly` `porty_refresh` cookie is scoped to `/api/v1/session`; each refresh rotates its random token while retaining the original seven-day login expiry. The readable `porty_csrf` cookie must match the request header for mutations and refresh. Keep the browser on one origin. Logout revokes the refresh family and clears the cookies, but an access JWT issued before logout can remain valid for at most 15 minutes.
+
+When a TLS reverse proxy forwards HTTP to Porty's loopback listener, set `server.public_url` to its exact external origin, such as `https://porty.example.com`. Porty uses it for Origin checks and Secure cookies. Do not rely on `Forwarded` or `X-Forwarded-*` headers; Porty ignores them. Direct TLS and loopback HTTP use the request origin when `server.public_url` is empty.
+
 ## Repository setup
 
 Repository setup is mandatory after administrator registration. Login resumes the setup screen until the repository is ready; stack, editor, deployment, and repository-operation APIs remain unavailable during that time. Porty always operates on `<data-dir>/repository` (`/var/lib/porty/repository` with the installation above). The browser cannot select another server path.
@@ -59,7 +65,7 @@ sudo -u porty env PORTY_RESET_PASSWORD='a new long password' /usr/local/bin/port
 sudo systemctl start porty
 ```
 
-The reset revokes every existing session.
+The reset changes the password, revokes refresh tokens on every device, and rotates the SQLite signing key in one transaction. Existing access JWTs become invalid immediately. Browser password changes have the same effect and also close active WebSocket connections before the response returns; WebSockets also close when their access JWT expires. Run the offline reset while the service is stopped, as shown above.
 
 ## Backup and restore
 

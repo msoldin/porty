@@ -5,17 +5,15 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 type OperationRepository interface {
-	CreateOperation(context.Context, domain.Operation) error
-	UpdateOperation(context.Context, domain.Operation) error
+	CreateOperation(context.Context, Operation) error
+	UpdateOperation(context.Context, Operation) error
 }
 
 type OperationPublisher interface {
-	PublishOperation(domain.Operation)
+	PublishOperation(Operation)
 }
 
 type OperationRequest struct {
@@ -47,27 +45,27 @@ func NewOperationService(store OperationRepository, publisher OperationPublisher
 	return &OperationService{store: store, publisher: publisher, timeout: timeout, maxOutput: maxOutput, now: time.Now}
 }
 
-func (s *OperationService) Start(requestCtx context.Context, request OperationRequest, run func(context.Context) (string, error)) (domain.Operation, error) {
+func (s *OperationService) Start(requestCtx context.Context, request OperationRequest, run func(context.Context) (string, error)) (Operation, error) {
 	operationID := request.ID
 	if operationID == "" {
 		operationID = NewOperationID()
 	}
-	operation := domain.Operation{
+	operation := Operation{
 		ID: operationID, Kind: request.Kind, ScopeType: request.ScopeType, ScopeID: request.ScopeID,
-		RequestKey: request.RequestKey, InitiatedBy: request.InitiatedBy, Status: domain.OperationQueued,
+		RequestKey: request.RequestKey, InitiatedBy: request.InitiatedBy, Status: OperationQueued,
 	}
 	if err := s.store.CreateOperation(requestCtx, operation); err != nil {
-		return domain.Operation{}, err
+		return Operation{}, err
 	}
 	s.publish(operation)
 	go s.execute(operation, request.Secrets, request.DiscardOutput, run)
 	return operation, nil
 }
 
-func (s *OperationService) execute(operation domain.Operation, secrets []string, discardOutput bool, run func(context.Context) (string, error)) {
+func (s *OperationService) execute(operation Operation, secrets []string, discardOutput bool, run func(context.Context) (string, error)) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
-	operation.Status = domain.OperationRunning
+	operation.Status = OperationRunning
 	operation.StartedAt = s.now().UTC()
 	_ = s.store.UpdateOperation(ctx, operation)
 	s.publish(operation)
@@ -90,12 +88,12 @@ func (s *OperationService) execute(operation domain.Operation, secrets []string,
 	operation.CompletedAt = s.now().UTC()
 	switch {
 	case err == nil:
-		operation.Status = domain.OperationSucceeded
+		operation.Status = OperationSucceeded
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		operation.Status = domain.OperationCancelled
+		operation.Status = OperationCancelled
 		operation.ErrorCode = "operation_cancelled"
 	default:
-		operation.Status = domain.OperationFailed
+		operation.Status = OperationFailed
 		operation.ExitCode = 1
 		operation.ErrorCode = "operation_failed"
 	}
@@ -105,7 +103,7 @@ func (s *OperationService) execute(operation domain.Operation, secrets []string,
 
 func NewOperationID() string { return "op_" + randomID(12) }
 
-func (s *OperationService) publish(operation domain.Operation) {
+func (s *OperationService) publish(operation Operation) {
 	if s.publisher != nil {
 		s.publisher.PublishOperation(operation)
 	}

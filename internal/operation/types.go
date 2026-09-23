@@ -1,4 +1,4 @@
-package domain
+package operation
 
 import "time"
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portycontrol "github.com/msoldin/porty/internal/control"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
@@ -20,7 +20,7 @@ func TestAuditStoreRecordsAndPaginatesEvents(t *testing.T) {
 	defer db.Close()
 	store := portysqlite.NewAuditStore(db)
 	for index, id := range []string{"aud_1", "aud_2"} {
-		if err := store.RecordAudit(ctx, domain.AuditEvent{ID: id, Action: "stack.delete", TargetType: "stack", Outcome: "succeeded", RequestID: "req_1", OccurredAt: time.Now().UTC().Add(time.Duration(index) * time.Second)}); err != nil {
+		if err := store.RecordAudit(ctx, portycontrol.AuditEvent{ID: id, Action: "stack.delete", TargetType: "stack", Outcome: "succeeded", RequestID: "req_1", OccurredAt: time.Now().UTC().Add(time.Duration(index) * time.Second)}); err != nil {
 			t.Fatal(err)
 		}
 	}

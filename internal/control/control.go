@@ -8,25 +8,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	portycompose "github.com/msoldin/porty/internal/compose"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"path/filepath"
 	"strings"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 type RuntimeController interface {
-	Validate(context.Context, portyop.ComposeRequest) error
-	Status(context.Context, portyop.ComposeRequest) (string, error)
-	Digest(context.Context, portyop.ComposeRequest) (string, error)
-	Start(context.Context, portyop.ComposeRequest) error
-	Stop(context.Context, portyop.ComposeRequest) error
-	Restart(context.Context, portyop.ComposeRequest) error
-	Deploy(context.Context, portyop.ComposeRequest, bool) error
-	Pull(context.Context, portyop.ComposeRequest) error
-	Logs(context.Context, portyop.ComposeRequest, int) (string, error)
+	Validate(context.Context, portycompose.Request) error
+	Status(context.Context, portycompose.Request) (string, error)
+	Digest(context.Context, portycompose.Request) (string, error)
+	Start(context.Context, portycompose.Request) error
+	Stop(context.Context, portycompose.Request) error
+	Restart(context.Context, portycompose.Request) error
+	Deploy(context.Context, portycompose.Request, bool) error
+	Pull(context.Context, portycompose.Request) error
+	Logs(context.Context, portycompose.Request, int) (string, error)
 }
 
 type ControlPlane struct {
@@ -43,7 +42,7 @@ type ControlPlane struct {
 }
 
 type DeploymentStateStore interface {
-	LatestDeployment(context.Context, domain.StackID) (domain.Deployment, error)
+	LatestDeployment(context.Context, portystack.StackID) (portyop.Deployment, error)
 }
 
 type LogPublisher interface{ PublishLog(string, string) }
@@ -64,7 +63,7 @@ func (c *ControlPlane) RepositoryHistoryPage(ctx context.Context, limit, offset 
 	return c.repository.HistoryPage(ctx, limit, offset)
 }
 
-func (c *ControlPlane) StackDiff(ctx context.Context, id domain.StackID) (string, error) {
+func (c *ControlPlane) StackDiff(ctx context.Context, id portystack.StackID) (string, error) {
 	stack, err := c.lookup.ByID(ctx, id)
 	if err != nil {
 		return "", err
@@ -72,7 +71,7 @@ func (c *ControlPlane) StackDiff(ctx context.Context, id domain.StackID) (string
 	return c.repository.Diff(ctx, stack.DirectoryName)
 }
 
-func (c *ControlPlane) CommitStack(ctx context.Context, id domain.StackID, message string) (string, error) {
+func (c *ControlPlane) CommitStack(ctx context.Context, id portystack.StackID, message string) (string, error) {
 	release, err := c.coordinator.Try(false, string(id))
 	if err != nil {
 		return "", err
@@ -85,13 +84,13 @@ func (c *ControlPlane) CommitStack(ctx context.Context, id domain.StackID, messa
 	return c.repository.Commit(ctx, stack.DirectoryName, message)
 }
 
-func (c *ControlPlane) StartRepositoryAction(ctx context.Context, action string) (domain.Operation, error) {
+func (c *ControlPlane) StartRepositoryAction(ctx context.Context, action string) (portyop.Operation, error) {
 	if action != "fetch" && action != "pull" && action != "push" {
-		return domain.Operation{}, errors.New("unsupported repository action")
+		return portyop.Operation{}, errors.New("unsupported repository action")
 	}
 	release, err := c.coordinator.Try(true, "")
 	if err != nil {
-		return domain.Operation{}, err
+		return portyop.Operation{}, err
 	}
 	operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{Kind: action, ScopeType: "repository"}, func(jobCtx context.Context) (string, error) {
 		defer release()
@@ -111,39 +110,39 @@ func (c *ControlPlane) StartRepositoryAction(ctx context.Context, action string)
 	return operation, startErr
 }
 
-func (c *ControlPlane) StackState(ctx context.Context, id domain.StackID) (domain.StackState, error) {
+func (c *ControlPlane) StackState(ctx context.Context, id portystack.StackID) (StackState, error) {
 	stack, err := c.lookup.ByID(ctx, id)
 	if err != nil {
-		return domain.StackState{}, err
+		return StackState{}, err
 	}
 	values, err := c.environment.Values(ctx, id)
 	if err != nil {
-		return domain.StackState{}, err
+		return StackState{}, err
 	}
-	request := portyop.ComposeRequest{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
 	status, err := c.runtime.Status(ctx, request)
 	if err != nil {
-		return domain.StackState{}, err
+		return StackState{}, err
 	}
 	containers := parseContainerStates(status)
 	digest, err := c.runtime.Digest(ctx, request)
 	if err != nil {
-		return domain.StackState{}, err
+		return StackState{}, err
 	}
-	var snapshot *domain.DeploymentSnapshot
+	var snapshot *DeploymentSnapshot
 	if c.stateStore != nil {
 		latest, latestErr := c.stateStore.LatestDeployment(ctx, id)
 		if latestErr == nil {
-			snapshot = &domain.DeploymentSnapshot{Status: latest.Status, ComposeDigest: latest.ComposeDigest, GitCommit: latest.GitCommit}
+			snapshot = &DeploymentSnapshot{Status: latest.Status, ComposeDigest: latest.ComposeDigest, GitCommit: latest.GitCommit}
 		}
 		if latestErr != nil && !errors.Is(latestErr, sql.ErrNoRows) {
-			return domain.StackState{}, latestErr
+			return StackState{}, latestErr
 		}
 	}
-	return domain.StackState{Runtime: domain.AggregateRuntime(containers), Freshness: domain.ClassifyDeployment(snapshot, digest, false)}, nil
+	return StackState{Runtime: AggregateRuntime(containers), Freshness: ClassifyDeployment(snapshot, digest, false)}, nil
 }
 
-func parseContainerStates(output string) []domain.ContainerState {
+func parseContainerStates(output string) []ContainerState {
 	var rows []struct {
 		State  string `json:"State"`
 		Health string `json:"Health"`
@@ -159,34 +158,34 @@ func parseContainerStates(output string) []domain.ContainerState {
 			}
 		}
 	}
-	result := make([]domain.ContainerState, 0, len(rows))
+	result := make([]ContainerState, 0, len(rows))
 	for _, row := range rows {
 		if strings.EqualFold(row.Health, "unhealthy") {
-			result = append(result, domain.ContainerUnhealthy)
+			result = append(result, ContainerUnhealthy)
 		} else if strings.EqualFold(row.State, "running") {
-			result = append(result, domain.ContainerRunning)
+			result = append(result, ContainerRunning)
 		} else {
-			result = append(result, domain.ContainerStopped)
+			result = append(result, ContainerStopped)
 		}
 	}
 	return result
 }
 
-func (c *ControlPlane) StartAction(ctx context.Context, id domain.StackID, action string) (domain.Operation, error) {
+func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, action string) (portyop.Operation, error) {
 	stack, err := c.lookup.ByID(ctx, id)
 	if err != nil {
-		return domain.Operation{}, err
+		return portyop.Operation{}, err
 	}
 	values, err := c.environment.Values(ctx, id)
 	if err != nil {
-		return domain.Operation{}, err
+		return portyop.Operation{}, err
 	}
-	request := portyop.ComposeRequest{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
 	switch action {
 	case "deploy", "recreate":
 		release, err := c.coordinator.Try(false, string(id))
 		if err != nil {
-			return domain.Operation{}, err
+			return portyop.Operation{}, err
 		}
 		operationID := portyop.NewOperationID()
 		operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{ID: operationID, Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values)}, func(jobCtx context.Context) (string, error) {
@@ -218,7 +217,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id domain.StackID, actio
 	case "validate", "status", "start", "stop", "restart", "pull", "logs":
 		release, err := c.coordinator.Try(false, string(id))
 		if err != nil {
-			return domain.Operation{}, err
+			return portyop.Operation{}, err
 		}
 		operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), DiscardOutput: action == "logs"}, func(jobCtx context.Context) (string, error) {
 			defer release()
@@ -249,7 +248,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id domain.StackID, actio
 		}
 		return operation, startErr
 	default:
-		return domain.Operation{}, errors.New("unsupported stack action")
+		return portyop.Operation{}, errors.New("unsupported stack action")
 	}
 }
 

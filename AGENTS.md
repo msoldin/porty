@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Porty is a Go modular monolith with an embedded Preact frontend. The server entry point is `cmd/porty/`. Business rules and use cases live in `internal/domain/` and `internal/application/`; adapters for SQLite, Git, Docker Compose, process execution, authentication, and rooted filesystem access live under `internal/infrastructure/`. HTTP and WebSocket contracts are in `internal/httpapi/` and `internal/websocket/`.
+Porty is a Go modular monolith with an embedded Preact frontend. The server entry point is `cmd/porty/`, and `internal/app/` wires the application explicitly. Feature behavior and types live in `internal/auth/`, `internal/stack/`, `internal/repository/`, `internal/operation/`, and `internal/control/`. SQLite, Git, Docker Compose, process execution, and rooted filesystem code live directly in their matching `internal/` packages. HTTP contracts and auth guards live in `internal/http/`; request IDs and safe access logging live in `internal/http/middleware/`. WebSocket streaming lives in `internal/websocket/`.
 
 Frontend source, component tests, and Playwright journeys are in `web/src/` and `web/e2e/`. Production assets are generated into `web/dist/` and embedded by `web/`. Deployment artifacts live in `deploy/`; project documentation belongs in `docs/`.
 
@@ -11,6 +11,7 @@ Frontend source, component tests, and Playwright journeys are in `web/src/` and 
 * `go test ./...` — run all backend and embedding tests.
 * `go vet ./...` — perform Go static analysis.
 * `go build ./cmd/porty` — build the server binary.
+* `sqlc generate` — regenerate SQLite reads with pinned sqlc v1.31.1 from the Goose migration schema; CI checks for generated diffs.
 * `npm --prefix web test` — run Vitest component and unit tests.
 * `npm --prefix web run typecheck` — check TypeScript without emitting files.
 * `npm --prefix web run build` — produce the embedded frontend bundle.
@@ -20,7 +21,7 @@ Frontend source, component tests, and Playwright journeys are in `web/src/` and 
 
 ## Coding Style & Naming Conventions
 
-Format Go with `gofmt`; use standard Go naming (`MixedCaps`, short package names, `_test.go` tests). Keep domain and application packages independent of infrastructure implementations. Format frontend files with Prettier and use PascalCase component names, camelCase functions, and explicit TypeScript types at API boundaries. Do not construct shell commands; pass fixed executables and argument arrays.
+Format Go with `gofmt`; use standard Go naming (`MixedCaps`, short package names, `_test.go` tests). Feature packages own their types and rules; HTTP and SQLite depend on those packages, while `internal/app` constructs concrete implementations. Keep interfaces narrow and near the consumer that needs them. Goose runs embedded migrations at startup; sqlc generates only the selected stable reads. Format frontend files with Prettier and use PascalCase component names, camelCase functions, and explicit TypeScript types at API boundaries. Do not construct shell commands; pass fixed executables and argument arrays.
 
 ## Testing Guidelines
 
@@ -32,7 +33,7 @@ Follow the repository’s Conventional Commit style: `feat:`, `fix:`, and `chore
 
 ## Security & Configuration Tips
 
-Never commit credentials, runtime environment values, databases, or backups. Preserve rooted-path checks, Git configuration hardening, CSRF/origin enforcement, restrictive file modes, secret redaction, and repository/stack lock ordering.
+Never commit credentials, runtime environment values, databases, or backups. `internal/auth` owns 15-minute JWT access tokens, hashed rotating refresh tokens, and signing-key rotation; `internal/http` owns their cookies, origin checks, and CSRF guards. Preserve rooted-path checks, Git configuration hardening, CSRF/origin enforcement, restrictive file modes, secret redaction, and repository/stack lock ordering.
 
 ## Agent usage
 

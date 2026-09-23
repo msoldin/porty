@@ -1,11 +1,6 @@
-package domain
+package control
 
-type DeploymentStatus string
-
-const (
-	DeploymentSucceeded DeploymentStatus = "succeeded"
-	DeploymentFailed    DeploymentStatus = "failed"
-)
+import portyop "github.com/msoldin/porty/internal/operation"
 
 type DeploymentFreshness string
 
@@ -18,7 +13,7 @@ const (
 )
 
 type DeploymentSnapshot struct {
-	Status        DeploymentStatus
+	Status        portyop.DeploymentStatus
 	ComposeDigest string
 	GitCommit     string
 }
@@ -30,7 +25,7 @@ func ClassifyDeployment(last *DeploymentSnapshot, desiredDigest string, active b
 	if last == nil {
 		return DeploymentNever
 	}
-	if last.Status != DeploymentSucceeded || desiredDigest == "" {
+	if last.Status != portyop.DeploymentSucceeded || desiredDigest == "" {
 		return DeploymentUnverifiable
 	}
 	if last.ComposeDigest == desiredDigest {

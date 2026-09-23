@@ -1,9 +1,12 @@
-package domain
+package control
 
-import "testing"
+import (
+	portyop "github.com/msoldin/porty/internal/operation"
+	"testing"
+)
 
 func TestDeploymentFreshnessUsesConfigurationDigestNotCommitIdentity(t *testing.T) {
-	last := &DeploymentSnapshot{Status: DeploymentSucceeded, ComposeDigest: "sha256:current", GitCommit: "old-commit"}
+	last := &DeploymentSnapshot{Status: portyop.DeploymentSucceeded, ComposeDigest: "sha256:current", GitCommit: "old-commit"}
 	if got := ClassifyDeployment(last, "sha256:current", false); got != DeploymentCurrent {
 		t.Fatalf("same configuration freshness = %q, want current", got)
 	}

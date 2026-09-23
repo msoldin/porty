@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portyop "github.com/msoldin/porty/internal/operation"
 )
 
 type Event struct {
@@ -75,7 +75,7 @@ func (h *Hub) CloseConnections() {
 	}
 }
 
-func (h *Hub) PublishOperation(operation domain.Operation) {
+func (h *Hub) PublishOperation(operation portyop.Operation) {
 	h.publish(Event{Type: "operation", Topic: "operations", Timestamp: time.Now().UTC(), Payload: operation})
 }
 

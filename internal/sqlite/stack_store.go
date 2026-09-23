@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
 	"github.com/msoldin/porty/internal/sqlite/generated"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
 type StackStore struct {
@@ -17,42 +17,42 @@ type StackStore struct {
 
 func NewStackStore(db *sql.DB) *StackStore { return &StackStore{db: db, queries: generated.New(db)} }
 
-func (s *StackStore) Create(ctx context.Context, stack domain.Stack) error {
+func (s *StackStore) Create(ctx context.Context, stack portystack.Stack) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO stacks(id, directory_name, compose_project_name, created_at, updated_at) VALUES(?,?,?,?,?)`,
 		stack.ID, stack.DirectoryName, stack.ComposeProjectName, encodeTime(stack.CreatedAt), encodeTime(stack.CreatedAt))
 	return err
 }
 
-func (s *StackStore) ByDirectory(ctx context.Context, directory string) (domain.Stack, error) {
+func (s *StackStore) ByDirectory(ctx context.Context, directory string) (portystack.Stack, error) {
 	row, err := s.queries.GetStackByDirectory(ctx, directory)
 	if err != nil {
-		return domain.Stack{}, err
+		return portystack.Stack{}, err
 	}
 	return stackFromRow(row), nil
 }
 
-func (s *StackStore) ByID(ctx context.Context, id domain.StackID) (domain.Stack, error) {
+func (s *StackStore) ByID(ctx context.Context, id portystack.StackID) (portystack.Stack, error) {
 	row, err := s.queries.GetStackByID(ctx, string(id))
 	if err != nil {
-		return domain.Stack{}, err
+		return portystack.Stack{}, err
 	}
 	return stackFromRow(row), nil
 }
 
-func (s *StackStore) Active(ctx context.Context) ([]domain.Stack, error) {
+func (s *StackStore) Active(ctx context.Context) ([]portystack.Stack, error) {
 	rows, err := s.queries.ListActiveStacks(ctx)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]domain.Stack, 0, len(rows))
+	result := make([]portystack.Stack, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, stackFromRow(row))
 	}
 	return result, nil
 }
 
-func stackFromRow(row generated.Stack) domain.Stack {
-	stack := domain.Stack{ID: domain.StackID(row.ID), DirectoryName: row.DirectoryName, ComposeProjectName: row.ComposeProjectName}
+func stackFromRow(row generated.Stack) portystack.Stack {
+	stack := portystack.Stack{ID: portystack.StackID(row.ID), DirectoryName: row.DirectoryName, ComposeProjectName: row.ComposeProjectName}
 	stack.CreatedAt, _ = time.Parse(time.RFC3339Nano, row.CreatedAt)
 	stack.UpdatedAt, _ = time.Parse(time.RFC3339Nano, row.UpdatedAt)
 	if row.ArchivedAt.Valid {
@@ -62,12 +62,12 @@ func stackFromRow(row generated.Stack) domain.Stack {
 	return stack
 }
 
-func (s *StackStore) Archive(ctx context.Context, id domain.StackID, at time.Time) error {
+func (s *StackStore) Archive(ctx context.Context, id portystack.StackID, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE stacks SET archived_at=?, updated_at=? WHERE id=?`, encodeTime(at), encodeTime(at), id)
 	return err
 }
 
-func (s *StackStore) Purge(ctx context.Context, id domain.StackID) error {
+func (s *StackStore) Purge(ctx context.Context, id portystack.StackID) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -87,22 +87,22 @@ func (s *StackStore) Purge(ctx context.Context, id domain.StackID) error {
 	return tx.Commit()
 }
 
-func (s *StackStore) Rename(ctx context.Context, id domain.StackID, directory string, at time.Time) error {
+func (s *StackStore) Rename(ctx context.Context, id portystack.StackID, directory string, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE stacks SET directory_name=?, updated_at=? WHERE id=? AND archived_at IS NULL`, directory, encodeTime(at), id)
 	return err
 }
 
-func (s *StackStore) SetEnvironment(ctx context.Context, id domain.StackID, key, value string) error {
+func (s *StackStore) SetEnvironment(ctx context.Context, id portystack.StackID, key, value string) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO stack_environment(stack_id,key,value,updated_at) VALUES(?,?,?,?) ON CONFLICT(stack_id,key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`, id, key, []byte(value), encodeTime(time.Now()))
 	return err
 }
 
-func (s *StackStore) DeleteEnvironment(ctx context.Context, id domain.StackID, key string) error {
+func (s *StackStore) DeleteEnvironment(ctx context.Context, id portystack.StackID, key string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM stack_environment WHERE stack_id=? AND key=?`, id, key)
 	return err
 }
 
-func (s *StackStore) Environment(ctx context.Context, id domain.StackID) (map[string]string, error) {
+func (s *StackStore) Environment(ctx context.Context, id portystack.StackID) (map[string]string, error) {
 	var exists int
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM stacks WHERE id=?`, id).Scan(&exists); err != nil {
 		return nil, err

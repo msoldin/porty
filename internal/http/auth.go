@@ -15,7 +15,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portycontrol "github.com/msoldin/porty/internal/control"
+	portyfs "github.com/msoldin/porty/internal/filesystem"
+	portyop "github.com/msoldin/porty/internal/operation"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
 const (
@@ -45,51 +48,51 @@ type RouterOptions struct {
 }
 
 type StackAPI interface {
-	ListStacks(context.Context) ([]domain.Stack, error)
-	CreateStack(context.Context, string) (domain.Stack, error)
-	RenameStack(context.Context, domain.StackID, string) (domain.Stack, error)
-	DeleteStack(context.Context, domain.StackID) error
-	PurgeStack(context.Context, domain.StackID) error
+	ListStacks(context.Context) ([]portystack.Stack, error)
+	CreateStack(context.Context, string) (portystack.Stack, error)
+	RenameStack(context.Context, portystack.StackID, string) (portystack.Stack, error)
+	DeleteStack(context.Context, portystack.StackID) error
+	PurgeStack(context.Context, portystack.StackID) error
 }
 
 type FileAPI interface {
-	Tree(context.Context, domain.StackID) ([]domain.FileEntry, error)
-	ReadFile(context.Context, domain.StackID, string) (domain.FileContent, error)
-	WriteFile(context.Context, domain.StackID, string, []byte, string) (domain.FileContent, error)
+	Tree(context.Context, portystack.StackID) ([]portyfs.FileEntry, error)
+	ReadFile(context.Context, portystack.StackID, string) (portyfs.FileContent, error)
+	WriteFile(context.Context, portystack.StackID, string, []byte, string) (portyfs.FileContent, error)
 }
 
 type FileMutationAPI interface {
-	CreateFile(context.Context, domain.StackID, string, []byte) (domain.FileContent, error)
-	CreateDirectory(context.Context, domain.StackID, string) error
-	MoveFile(context.Context, domain.StackID, string, string) error
-	RemoveFile(context.Context, domain.StackID, string) error
+	CreateFile(context.Context, portystack.StackID, string, []byte) (portyfs.FileContent, error)
+	CreateDirectory(context.Context, portystack.StackID, string) error
+	MoveFile(context.Context, portystack.StackID, string, string) error
+	RemoveFile(context.Context, portystack.StackID, string) error
 }
 
 type EnvironmentAPI interface {
-	EnvironmentKeys(context.Context, domain.StackID) ([]string, error)
-	SetEnvironment(context.Context, domain.StackID, string, string) error
-	DeleteEnvironment(context.Context, domain.StackID, string) error
+	EnvironmentKeys(context.Context, portystack.StackID) ([]string, error)
+	SetEnvironment(context.Context, portystack.StackID, string, string) error
+	DeleteEnvironment(context.Context, portystack.StackID, string) error
 }
 
 type RepositoryAPI interface {
 	RepositoryStatus(context.Context) (portyrepo.GitStatus, error)
 	RepositoryHistory(context.Context, int) ([]portyrepo.GitCommit, error)
-	StackDiff(context.Context, domain.StackID) (string, error)
-	CommitStack(context.Context, domain.StackID, string) (string, error)
+	StackDiff(context.Context, portystack.StackID) (string, error)
+	CommitStack(context.Context, portystack.StackID, string) (string, error)
 }
 
 type ActionAPI interface {
-	StartAction(context.Context, domain.StackID, string) (domain.Operation, error)
-	StartRepositoryAction(context.Context, string) (domain.Operation, error)
+	StartAction(context.Context, portystack.StackID, string) (portyop.Operation, error)
+	StartRepositoryAction(context.Context, string) (portyop.Operation, error)
 }
 
 type OperationQueryAPI interface {
-	Operation(context.Context, string) (domain.Operation, error)
-	Operations(context.Context, int) ([]domain.Operation, error)
+	Operation(context.Context, string) (portyop.Operation, error)
+	Operations(context.Context, int) ([]portyop.Operation, error)
 }
 
 type DeploymentQueryAPI interface {
-	Deployments(context.Context, domain.StackID, int) ([]domain.Deployment, error)
+	Deployments(context.Context, portystack.StackID, int) ([]portyop.Deployment, error)
 }
 
 type RepositorySetupAPI interface {
@@ -102,12 +105,12 @@ type RepositorySetupAPI interface {
 }
 
 type AuditAPI interface {
-	AuditEvents(context.Context, int, int) ([]domain.AuditEvent, error)
-	RecordAudit(context.Context, domain.AuditEvent) error
+	AuditEvents(context.Context, int, int) ([]portycontrol.AuditEvent, error)
+	RecordAudit(context.Context, portycontrol.AuditEvent) error
 }
 
 type StackStateAPI interface {
-	StackState(context.Context, domain.StackID) (domain.StackState, error)
+	StackState(context.Context, portystack.StackID) (portycontrol.StackState, error)
 }
 
 type SetupStatusResponse struct {

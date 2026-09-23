@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portyop "github.com/msoldin/porty/internal/operation"
 	"github.com/msoldin/porty/internal/sqlite/generated"
 )
 
@@ -19,13 +19,13 @@ func NewOperationStore(db *sql.DB) *OperationStore {
 	return &OperationStore{db: db, queries: generated.New(db)}
 }
 
-func (s *OperationStore) CreateOperation(ctx context.Context, operation domain.Operation) error {
+func (s *OperationStore) CreateOperation(ctx context.Context, operation portyop.Operation) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO operations(id,kind,scope_type,scope_id,request_key,status,output_truncated,initiated_by) VALUES(?,?,?,?,?,?,?,?)`,
 		operation.ID, operation.Kind, operation.ScopeType, nullableString(operation.ScopeID), nullableString(operation.RequestKey), operation.Status, operation.OutputTruncated, nullableString(operation.InitiatedBy))
 	return err
 }
 
-func (s *OperationStore) UpdateOperation(ctx context.Context, operation domain.Operation) error {
+func (s *OperationStore) UpdateOperation(ctx context.Context, operation portyop.Operation) error {
 	result, err := s.db.ExecContext(ctx, `UPDATE operations SET status=?,started_at=?,completed_at=?,exit_code=?,error_code=?,output_tail=?,output_truncated=? WHERE id=?`,
 		operation.Status, nullableTime(operation.StartedAt), nullableTime(operation.CompletedAt), nullableInt(operation.ExitCode), nullableString(operation.ErrorCode), []byte(operation.Output), operation.OutputTruncated, operation.ID)
 	if err != nil {
@@ -38,19 +38,19 @@ func (s *OperationStore) UpdateOperation(ctx context.Context, operation domain.O
 	return nil
 }
 
-func (s *OperationStore) Operation(ctx context.Context, id string) (domain.Operation, error) {
+func (s *OperationStore) Operation(ctx context.Context, id string) (portyop.Operation, error) {
 	row, err := s.queries.GetOperation(ctx, id)
 	if err != nil {
-		return domain.Operation{}, err
+		return portyop.Operation{}, err
 	}
 	return operationFromRow(row), nil
 }
 
-func (s *OperationStore) Operations(ctx context.Context, limit int) ([]domain.Operation, error) {
+func (s *OperationStore) Operations(ctx context.Context, limit int) ([]portyop.Operation, error) {
 	return s.OperationsPage(ctx, limit, 0)
 }
 
-func (s *OperationStore) OperationsPage(ctx context.Context, limit, offset int) ([]domain.Operation, error) {
+func (s *OperationStore) OperationsPage(ctx context.Context, limit, offset int) ([]portyop.Operation, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -61,7 +61,7 @@ func (s *OperationStore) OperationsPage(ctx context.Context, limit, offset int) 
 	if err != nil {
 		return nil, err
 	}
-	result := make([]domain.Operation, 0, len(rows))
+	result := make([]portyop.Operation, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, operationFromRow(row))
 	}
@@ -70,14 +70,14 @@ func (s *OperationStore) OperationsPage(ctx context.Context, limit, offset int) 
 
 func (s *OperationStore) FailInterrupted(ctx context.Context, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE operations SET status=?,completed_at=?,error_code=? WHERE status IN (?,?)`,
-		domain.OperationFailed, encodeTime(at), "server_restarted", domain.OperationQueued, domain.OperationRunning)
+		portyop.OperationFailed, encodeTime(at), "server_restarted", portyop.OperationQueued, portyop.OperationRunning)
 	return err
 }
 
-func operationFromRow(row generated.Operation) domain.Operation {
-	operation := domain.Operation{
+func operationFromRow(row generated.Operation) portyop.Operation {
+	operation := portyop.Operation{
 		ID: row.ID, Kind: row.Kind, ScopeType: row.ScopeType, ScopeID: row.ScopeID.String,
-		RequestKey: row.RequestKey.String, Status: domain.OperationStatus(row.Status),
+		RequestKey: row.RequestKey.String, Status: portyop.OperationStatus(row.Status),
 		ExitCode: int(row.ExitCode.Int64), ErrorCode: row.ErrorCode.String, Output: string(row.OutputTail),
 		OutputTruncated: row.OutputTruncated != 0, InitiatedBy: row.InitiatedBy.String,
 	}

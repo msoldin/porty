@@ -4,15 +4,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portyws "github.com/msoldin/porty/internal/websocket"
 )
 
 func TestHubReplaysEventsAndReportsSequenceGap(t *testing.T) {
 	hub := portyws.NewHub(2)
-	hub.PublishOperation(domain.Operation{ID: "op_1", Status: domain.OperationRunning})
-	hub.PublishOperation(domain.Operation{ID: "op_2", Status: domain.OperationRunning})
-	hub.PublishOperation(domain.Operation{ID: "op_3", Status: domain.OperationSucceeded})
+	hub.PublishOperation(portyop.Operation{ID: "op_1", Status: portyop.OperationRunning})
+	hub.PublishOperation(portyop.Operation{ID: "op_2", Status: portyop.OperationRunning})
+	hub.PublishOperation(portyop.Operation{ID: "op_3", Status: portyop.OperationSucceeded})
 
 	subscription := hub.Subscribe("operations", 0, 4)
 	defer subscription.Cancel()
@@ -27,10 +27,10 @@ func TestHubReplaysEventsAndReportsSequenceGap(t *testing.T) {
 func TestHubDropsSlowSubscriptionWithoutBlockingPublisher(t *testing.T) {
 	hub := portyws.NewHub(4)
 	subscription := hub.Subscribe("operations", 0, 1)
-	hub.PublishOperation(domain.Operation{ID: "op_1"})
+	hub.PublishOperation(portyop.Operation{ID: "op_1"})
 	done := make(chan struct{})
 	go func() {
-		hub.PublishOperation(domain.Operation{ID: "op_2"})
+		hub.PublishOperation(portyop.Operation{ID: "op_2"})
 		close(done)
 	}()
 	select {
@@ -45,7 +45,7 @@ func TestHubDropsSlowSubscriptionWithoutBlockingPublisher(t *testing.T) {
 
 func TestHubReportsGapWhenClientCursorIsAheadAfterRestart(t *testing.T) {
 	hub := portyws.NewHub(4)
-	hub.PublishOperation(domain.Operation{ID: "op_after_restart"})
+	hub.PublishOperation(portyop.Operation{ID: "op_after_restart"})
 	subscription := hub.Subscribe("operations", 1000, 1)
 	defer subscription.Cancel()
 	if !subscription.Gap {

@@ -3,21 +3,20 @@ package control_test
 import (
 	"context"
 	"errors"
+	portycompose "github.com/msoldin/porty/internal/compose"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"testing"
 	"time"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestControlPlaneRejectsConflictBeforeAcceptAndRecordsDeploymentProvenance(t *testing.T) {
 	ctx := context.Background()
 	coordinator := portyop.NewCoordinator()
 	operations := &countingOperationStore{}
-	deploymentStore := &capturingDeploymentStore{saved: make(chan domain.Deployment, 1)}
+	deploymentStore := &capturingDeploymentStore{saved: make(chan portyop.Deployment, 1)}
 	runtime := &controlRuntime{}
 	environment := portystack.NewEnvironmentService(controlEnvironmentStore{})
 	service := portyop.NewDeploymentService(runtime, deploymentStore, coordinator)
@@ -51,19 +50,19 @@ func TestControlPlaneRejectsConflictBeforeAcceptAndRecordsDeploymentProvenance(t
 
 type controlLookup struct{}
 
-func (controlLookup) ByID(context.Context, domain.StackID) (domain.Stack, error) {
-	return domain.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway"}, nil
+func (controlLookup) ByID(context.Context, portystack.StackID) (portystack.Stack, error) {
+	return portystack.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway"}, nil
 }
 
 type controlEnvironmentStore struct{}
 
-func (controlEnvironmentStore) SetEnvironment(context.Context, domain.StackID, string, string) error {
+func (controlEnvironmentStore) SetEnvironment(context.Context, portystack.StackID, string, string) error {
 	return nil
 }
-func (controlEnvironmentStore) DeleteEnvironment(context.Context, domain.StackID, string) error {
+func (controlEnvironmentStore) DeleteEnvironment(context.Context, portystack.StackID, string) error {
 	return nil
 }
-func (controlEnvironmentStore) Environment(context.Context, domain.StackID) (map[string]string, error) {
+func (controlEnvironmentStore) Environment(context.Context, portystack.StackID) (map[string]string, error) {
 	return map[string]string{"TOKEN": "secret"}, nil
 }
 
@@ -82,33 +81,33 @@ func (controlGit) Push(context.Context) error                                  {
 
 type controlRuntime struct{}
 
-func (*controlRuntime) Validate(context.Context, portyop.ComposeRequest) error { return nil }
-func (*controlRuntime) Digest(context.Context, portyop.ComposeRequest) (string, error) {
+func (*controlRuntime) Validate(context.Context, portycompose.Request) error { return nil }
+func (*controlRuntime) Digest(context.Context, portycompose.Request) (string, error) {
 	return "sha256:compose", nil
 }
-func (*controlRuntime) Status(context.Context, portyop.ComposeRequest) (string, error) {
+func (*controlRuntime) Status(context.Context, portycompose.Request) (string, error) {
 	return `[]`, nil
 }
-func (*controlRuntime) Start(context.Context, portyop.ComposeRequest) error        { return nil }
-func (*controlRuntime) Stop(context.Context, portyop.ComposeRequest) error         { return nil }
-func (*controlRuntime) Restart(context.Context, portyop.ComposeRequest) error      { return nil }
-func (*controlRuntime) Deploy(context.Context, portyop.ComposeRequest, bool) error { return nil }
-func (*controlRuntime) Pull(context.Context, portyop.ComposeRequest) error         { return nil }
-func (*controlRuntime) Logs(context.Context, portyop.ComposeRequest, int) (string, error) {
+func (*controlRuntime) Start(context.Context, portycompose.Request) error        { return nil }
+func (*controlRuntime) Stop(context.Context, portycompose.Request) error         { return nil }
+func (*controlRuntime) Restart(context.Context, portycompose.Request) error      { return nil }
+func (*controlRuntime) Deploy(context.Context, portycompose.Request, bool) error { return nil }
+func (*controlRuntime) Pull(context.Context, portycompose.Request) error         { return nil }
+func (*controlRuntime) Logs(context.Context, portycompose.Request, int) (string, error) {
 	return "", nil
 }
 
 type countingOperationStore struct{ created int }
 
-func (s *countingOperationStore) CreateOperation(context.Context, domain.Operation) error {
+func (s *countingOperationStore) CreateOperation(context.Context, portyop.Operation) error {
 	s.created++
 	return nil
 }
-func (*countingOperationStore) UpdateOperation(context.Context, domain.Operation) error { return nil }
+func (*countingOperationStore) UpdateOperation(context.Context, portyop.Operation) error { return nil }
 
-type capturingDeploymentStore struct{ saved chan domain.Deployment }
+type capturingDeploymentStore struct{ saved chan portyop.Deployment }
 
-func (s *capturingDeploymentStore) SaveDeployment(_ context.Context, deployment domain.Deployment) error {
+func (s *capturingDeploymentStore) SaveDeployment(_ context.Context, deployment portyop.Deployment) error {
 	s.saved <- deployment
 	return nil
 }

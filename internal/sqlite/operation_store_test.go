@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
@@ -20,11 +20,11 @@ func TestOperationStoreTracksLifecycle(t *testing.T) {
 	}
 	defer db.Close()
 	store := portysqlite.NewOperationStore(db)
-	operation := domain.Operation{ID: "op_1", Kind: "pull", ScopeType: "repository", RequestKey: "request-1", Status: domain.OperationQueued}
+	operation := portyop.Operation{ID: "op_1", Kind: "pull", ScopeType: "repository", RequestKey: "request-1", Status: portyop.OperationQueued}
 	if err := store.CreateOperation(ctx, operation); err != nil {
 		t.Fatal(err)
 	}
-	operation.Status = domain.OperationSucceeded
+	operation.Status = portyop.OperationSucceeded
 	operation.StartedAt = time.Now().UTC()
 	operation.CompletedAt = operation.StartedAt.Add(time.Second)
 	operation.Output = "done"
@@ -35,7 +35,7 @@ func TestOperationStoreTracksLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Status != domain.OperationSucceeded || loaded.Output != "done" || loaded.RequestKey != "request-1" {
+	if loaded.Status != portyop.OperationSucceeded || loaded.Output != "done" || loaded.RequestKey != "request-1" {
 		t.Fatalf("Operation() = %#v", loaded)
 	}
 }
@@ -49,7 +49,7 @@ func TestOperationStorePreservesNullsPaginationAndErrors(t *testing.T) {
 	defer db.Close()
 	store := portysqlite.NewOperationStore(db)
 	for _, id := range []string{"op_1", "op_2"} {
-		if err := store.CreateOperation(ctx, domain.Operation{ID: id, Kind: "pull", ScopeType: "repository", Status: domain.OperationQueued}); err != nil {
+		if err := store.CreateOperation(ctx, portyop.Operation{ID: id, Kind: "pull", ScopeType: "repository", Status: portyop.OperationQueued}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,7 +67,7 @@ func TestOperationStorePreservesNullsPaginationAndErrors(t *testing.T) {
 	if _, err := store.Operation(ctx, "missing"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("missing row: %v", err)
 	}
-	if err := store.UpdateOperation(ctx, domain.Operation{ID: "missing"}); err == nil {
+	if err := store.UpdateOperation(ctx, portyop.Operation{ID: "missing"}); err == nil {
 		t.Fatal("missing update accepted")
 	}
 	cancelled, cancel := context.WithCancel(ctx)
@@ -85,9 +85,9 @@ func TestOperationStoreFailsInterruptedWorkOnStartup(t *testing.T) {
 	}
 	defer db.Close()
 	store := portysqlite.NewOperationStore(db)
-	for _, operation := range []domain.Operation{
-		{ID: "op_queued", Kind: "pull", ScopeType: "repository", Status: domain.OperationQueued},
-		{ID: "op_running", Kind: "deploy", ScopeType: "stack", ScopeID: "stk_1", Status: domain.OperationRunning},
+	for _, operation := range []portyop.Operation{
+		{ID: "op_queued", Kind: "pull", ScopeType: "repository", Status: portyop.OperationQueued},
+		{ID: "op_running", Kind: "deploy", ScopeType: "stack", ScopeID: "stk_1", Status: portyop.OperationRunning},
 	} {
 		if err := store.CreateOperation(ctx, operation); err != nil {
 			t.Fatal(err)
@@ -101,7 +101,7 @@ func TestOperationStoreFailsInterruptedWorkOnStartup(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if operation.Status != domain.OperationFailed || operation.ErrorCode != "server_restarted" || operation.CompletedAt.IsZero() {
+		if operation.Status != portyop.OperationFailed || operation.ErrorCode != "server_restarted" || operation.CompletedAt.IsZero() {
 			t.Fatalf("recovered %s = %#v", id, operation)
 		}
 	}

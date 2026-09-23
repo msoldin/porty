@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/domain"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
+	portystack "github.com/msoldin/porty/internal/stack"
 )
 
 func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
@@ -21,18 +22,18 @@ func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
 	defer db.Close()
 	stacks := portysqlite.NewStackStore(db)
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	stack := domain.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway-123", CreatedAt: now, UpdatedAt: now}
+	stack := portystack.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway-123", CreatedAt: now, UpdatedAt: now}
 	if err := stacks.Create(ctx, stack); err != nil {
 		t.Fatal(err)
 	}
 	store := portysqlite.NewDeploymentStore(db)
 	operations := portysqlite.NewOperationStore(db)
-	if err := operations.CreateOperation(ctx, domain.Operation{ID: "op_1", Kind: "deploy", ScopeType: "stack", ScopeID: string(stack.ID), Status: domain.OperationRunning}); err != nil {
+	if err := operations.CreateOperation(ctx, portyop.Operation{ID: "op_1", Kind: "deploy", ScopeType: "stack", ScopeID: string(stack.ID), Status: portyop.OperationRunning}); err != nil {
 		t.Fatal(err)
 	}
-	deployment := domain.Deployment{
+	deployment := portyop.Deployment{
 		ID: "dep_1", StackID: stack.ID, OperationID: "op_1", GitCommit: "abc123", Dirty: true,
-		ComposeDigest: "sha256:desired", Status: domain.DeploymentSucceeded,
+		ComposeDigest: "sha256:desired", Status: portyop.DeploymentSucceeded,
 		StartedAt: now, CompletedAt: now.Add(time.Second), Duration: time.Second,
 	}
 	if err := store.SaveDeployment(ctx, deployment); err != nil {
@@ -65,15 +66,15 @@ func TestDeploymentStoreKeepsUnfinishedTimestampNull(t *testing.T) {
 	}
 	defer db.Close()
 	now := time.Now().UTC()
-	stackID := domain.StackID("stk_gateway")
-	if err := portysqlite.NewStackStore(db).Create(ctx, domain.Stack{ID: stackID, DirectoryName: "gateway", ComposeProjectName: "porty-gateway", CreatedAt: now}); err != nil {
+	stackID := portystack.StackID("stk_gateway")
+	if err := portysqlite.NewStackStore(db).Create(ctx, portystack.Stack{ID: stackID, DirectoryName: "gateway", ComposeProjectName: "porty-gateway", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if err := portysqlite.NewOperationStore(db).CreateOperation(ctx, domain.Operation{ID: "op_1", Kind: "deploy", ScopeType: "stack", Status: domain.OperationRunning}); err != nil {
+	if err := portysqlite.NewOperationStore(db).CreateOperation(ctx, portyop.Operation{ID: "op_1", Kind: "deploy", ScopeType: "stack", Status: portyop.OperationRunning}); err != nil {
 		t.Fatal(err)
 	}
 	store := portysqlite.NewDeploymentStore(db)
-	if err := store.SaveDeployment(ctx, domain.Deployment{ID: "dep_1", StackID: stackID, OperationID: "op_1", StartedAt: now, Status: domain.DeploymentStatus("running")}); err != nil {
+	if err := store.SaveDeployment(ctx, portyop.Deployment{ID: "dep_1", StackID: stackID, OperationID: "op_1", StartedAt: now, Status: portyop.DeploymentStatus("running")}); err != nil {
 		t.Fatal(err)
 	}
 	var nullCompletion bool
