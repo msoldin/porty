@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE app_state (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     setup_state TEXT NOT NULL DEFAULT 'unregistered',
@@ -104,3 +105,13 @@ CREATE TABLE audit_events (
 INSERT INTO app_state(id, created_at, updated_at)
 VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
+-- +goose Down
+DROP TABLE audit_events;
+DROP TABLE deployments;
+DROP TABLE operations;
+DROP TABLE stack_environment;
+DROP TABLE stacks;
+DROP TABLE sessions;
+DROP TABLE users;
+DROP TABLE repository_auth;
+DROP TABLE app_state;

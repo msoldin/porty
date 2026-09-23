@@ -2,6 +2,8 @@
 
 Porty requires Go 1.27.1+, Node.js 24+, npm, Git, and Linux. Docker is optional for the contract tests and required only for the live Compose and OCI gates.
 
+SQLite migrations run automatically at startup through goose using the embedded SQL files in `internal/sqlite/migrations/`. This development version does not upgrade databases created by the previous custom migration runner. Before starting this version with an existing local installation, stop Porty and remove or recreate the local `porty.db` file and its `-wal`/`-shm` companions in the configured data directory. Porty never deletes the database automatically.
+
 ```sh
 npm --prefix web ci
 npm --prefix web test
