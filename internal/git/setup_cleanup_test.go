@@ -1,4 +1,4 @@
-package gitcli
+package git
 
 import (
 	"errors"

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	portyprocess "github.com/msoldin/porty/internal/infrastructure/process"
+	portyprocess "github.com/msoldin/porty/internal/process"
 )
 
 func TestRunnerBoundsAndRedactsOutput(t *testing.T) {

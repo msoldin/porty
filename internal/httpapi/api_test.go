@@ -13,7 +13,7 @@ import (
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
-	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
+	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
 func TestStackEndpointsRequireSessionAndMutationsRequireCSRF(t *testing.T) {

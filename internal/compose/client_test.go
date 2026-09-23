@@ -1,4 +1,4 @@
-package composecli_test
+package compose_test
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/infrastructure/composecli"
-	portyprocess "github.com/msoldin/porty/internal/infrastructure/process"
+	composecli "github.com/msoldin/porty/internal/compose"
+	portyprocess "github.com/msoldin/porty/internal/process"
 )
 
 func TestCommandsUseExactArgumentsAndEphemeralEnvironmentFile(t *testing.T) {

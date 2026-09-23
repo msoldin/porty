@@ -1,4 +1,4 @@
-package gitcli
+package git
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"unicode"
 
 	"github.com/msoldin/porty/internal/domain"
-	portyprocess "github.com/msoldin/porty/internal/infrastructure/process"
+	portyprocess "github.com/msoldin/porty/internal/process"
 )
 
 var (

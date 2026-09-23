@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/msoldin/porty/internal/application"
-	portyfs "github.com/msoldin/porty/internal/infrastructure/filesystem"
-	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
+	portyfs "github.com/msoldin/porty/internal/filesystem"
+	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
 func TestDiscoveringSameDirectoryPreservesStableStackIdentity(t *testing.T) {

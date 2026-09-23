@@ -17,9 +17,9 @@ import (
 	"github.com/msoldin/porty/internal/config"
 	"github.com/msoldin/porty/internal/domain"
 	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
-	"github.com/msoldin/porty/internal/infrastructure/gitcli"
-	portyprocess "github.com/msoldin/porty/internal/infrastructure/process"
-	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
+	gitcli "github.com/msoldin/porty/internal/git"
+	portyprocess "github.com/msoldin/porty/internal/process"
+	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
 func TestBuildHandlerExposesSetupAPIAndFrontend(t *testing.T) {

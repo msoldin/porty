@@ -1,4 +1,4 @@
-package composecli
+package compose
 
 import (
 	"context"
@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/domain"
-	portyfs "github.com/msoldin/porty/internal/infrastructure/filesystem"
-	portyprocess "github.com/msoldin/porty/internal/infrastructure/process"
+	portyfs "github.com/msoldin/porty/internal/filesystem"
+	portyprocess "github.com/msoldin/porty/internal/process"
 )
 
 type Request = domain.ComposeRequest

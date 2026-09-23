@@ -9,8 +9,8 @@ import (
 
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
-	portyfs "github.com/msoldin/porty/internal/infrastructure/filesystem"
-	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
+	portyfs "github.com/msoldin/porty/internal/filesystem"
+	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
 func TestWorkspaceResolvesOpaqueStackIDForFileAndEnvironmentOperations(t *testing.T) {

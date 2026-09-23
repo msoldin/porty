@@ -14,7 +14,7 @@ import (
 
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
-	portyfs "github.com/msoldin/porty/internal/infrastructure/filesystem"
+	portyfs "github.com/msoldin/porty/internal/filesystem"
 )
 
 func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {

@@ -1,6 +1,6 @@
 //go:build !linux
 
-package gitcli
+package git
 
 import (
 	"errors"

@@ -1,4 +1,4 @@
-package gitcli_test
+package git_test
 
 import (
 	"context"
@@ -13,8 +13,8 @@ import (
 
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
-	"github.com/msoldin/porty/internal/infrastructure/gitcli"
-	portyprocess "github.com/msoldin/porty/internal/infrastructure/process"
+	gitcli "github.com/msoldin/porty/internal/git"
+	portyprocess "github.com/msoldin/porty/internal/process"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/domain"
-	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
+	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
 func TestAuditStoreRecordsAndPaginatesEvents(t *testing.T) {

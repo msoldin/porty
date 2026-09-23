@@ -10,7 +10,7 @@ import (
 	"github.com/msoldin/porty/internal/app"
 	"github.com/msoldin/porty/internal/config"
 	"github.com/msoldin/porty/internal/domain"
-	portysqlite "github.com/msoldin/porty/internal/infrastructure/sqlite"
+	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
 func TestNewServesFreshInstallation(t *testing.T) {
