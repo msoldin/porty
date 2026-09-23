@@ -1,4 +1,4 @@
-package application_test
+package auth_test
 
 import (
 	"context"
@@ -8,19 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
+	portyauth "github.com/msoldin/porty/internal/auth"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
-func newAuthService(t *testing.T, now *time.Time) *application.AuthService {
+func newAuthService(t *testing.T, now *time.Time) *portyauth.AuthService {
 	t.Helper()
 	db, err := portysqlite.Open(context.Background(), filepath.Join(t.TempDir(), "auth.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), func() time.Time { return *now })
+	return portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), func() time.Time { return *now })
 }
 
 func TestInitialRegistrationIsAtomic(t *testing.T) {
@@ -47,7 +46,7 @@ func TestInitialRegistrationIsAtomic(t *testing.T) {
 		switch {
 		case err == nil:
 			successes++
-		case errors.Is(err, application.ErrAlreadyRegistered):
+		case errors.Is(err, portyauth.ErrAlreadyRegistered):
 			alreadyRegistered++
 		default:
 			t.Fatalf("registration error = %v", err)
@@ -72,7 +71,7 @@ func TestExpiredSessionAndPasswordResetRevokeAuthentication(t *testing.T) {
 	if err := service.ResetPassword(context.Background(), "new correct horse battery staple"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Authenticate(context.Background(), credentials.SessionToken); !errors.Is(err, application.ErrAuthenticationFailed) {
+	if _, err := service.Authenticate(context.Background(), credentials.SessionToken); !errors.Is(err, portyauth.ErrAuthenticationFailed) {
 		t.Fatalf("session after reset error = %v, want authentication failed", err)
 	}
 
@@ -81,7 +80,7 @@ func TestExpiredSessionAndPasswordResetRevokeAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(13 * time.Hour)
-	if _, err := service.Authenticate(context.Background(), newCredentials.SessionToken); !errors.Is(err, application.ErrAuthenticationFailed) {
+	if _, err := service.Authenticate(context.Background(), newCredentials.SessionToken); !errors.Is(err, portyauth.ErrAuthenticationFailed) {
 		t.Fatalf("expired session error = %v, want authentication failed", err)
 	}
 }
@@ -94,11 +93,11 @@ func TestLoginRateLimitRejectsSixthFailure(t *testing.T) {
 	}
 	for attempt := 1; attempt <= 5; attempt++ {
 		_, err := service.Login(context.Background(), "admin", "wrong password", "192.0.2.1")
-		if !errors.Is(err, application.ErrAuthenticationFailed) {
+		if !errors.Is(err, portyauth.ErrAuthenticationFailed) {
 			t.Fatalf("attempt %d error = %v, want authentication failed", attempt, err)
 		}
 	}
-	if _, err := service.Login(context.Background(), "admin", "wrong password", "192.0.2.1"); !errors.Is(err, application.ErrRateLimited) {
+	if _, err := service.Login(context.Background(), "admin", "wrong password", "192.0.2.1"); !errors.Is(err, portyauth.ErrRateLimited) {
 		t.Fatalf("sixth attempt error = %v, want rate limited", err)
 	}
 }

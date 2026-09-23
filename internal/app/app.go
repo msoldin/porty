@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/application"
+	portyauth "github.com/msoldin/porty/internal/auth"
 	composecli "github.com/msoldin/porty/internal/compose"
 	"github.com/msoldin/porty/internal/config"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	gitcli "github.com/msoldin/porty/internal/git"
 	"github.com/msoldin/porty/internal/httpapi"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portyprocess "github.com/msoldin/porty/internal/process"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 	portyws "github.com/msoldin/porty/internal/websocket"
@@ -25,7 +25,7 @@ import (
 // New assembles the application and its HTTP routes.
 func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, error) {
 	var repositorySafetyErr error
-	authService := application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
+	authService := portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
 	options := httpapi.RouterOptions{
 		Readiness: func(ctx context.Context) error {
 			if repositorySafetyErr != nil {

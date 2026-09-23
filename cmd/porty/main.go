@@ -13,9 +13,8 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/app"
-	"github.com/msoldin/porty/internal/application"
+	portyauth "github.com/msoldin/porty/internal/auth"
 	"github.com/msoldin/porty/internal/config"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
@@ -96,7 +95,7 @@ func resetPassword(args []string, lookupEnv func(string) (string, bool)) error {
 		return err
 	}
 	defer db.Close()
-	authService := application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
+	authService := portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
 	return authService.ResetPassword(context.Background(), password)
 }
 

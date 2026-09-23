@@ -14,10 +14,9 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/app"
-	"github.com/msoldin/porty/internal/application"
+	portyauth "github.com/msoldin/porty/internal/auth"
 	"github.com/msoldin/porty/internal/config"
 	gitcli "github.com/msoldin/porty/internal/git"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portyprocess "github.com/msoldin/porty/internal/process"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
@@ -216,7 +215,7 @@ func TestResetPasswordCommandChangesPasswordAndRevokesSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	auth := application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
+	auth := portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
 	credentials, err := auth.Register(ctx, "admin", "old correct horse battery")
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +230,7 @@ func TestResetPasswordCommandChangesPasswordAndRevokesSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	auth = application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
+	auth = portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
 	if _, err := auth.Authenticate(ctx, credentials.SessionToken); err == nil {
 		t.Fatal("password reset did not revoke existing session")
 	}

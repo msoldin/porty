@@ -1,4 +1,4 @@
-package application
+package auth
 
 import (
 	"context"
@@ -21,7 +21,7 @@ var (
 	ErrInvalidUsername      = errors.New("username must be between 1 and 64 characters")
 )
 
-type PasswordHasher interface {
+type Hasher interface {
 	Hash(password string) (string, error)
 	Verify(encoded, password string) bool
 }
@@ -74,14 +74,14 @@ type loginWindow struct {
 
 type AuthService struct {
 	store     AuthStore
-	hasher    PasswordHasher
+	hasher    Hasher
 	now       func() time.Time
 	dummyHash string
 	mu        sync.Mutex
 	attempts  map[string]loginWindow
 }
 
-func NewAuthService(store AuthStore, hasher PasswordHasher, now func() time.Time) *AuthService {
+func NewAuthService(store AuthStore, hasher Hasher, now func() time.Time) *AuthService {
 	dummy, _ := hasher.Hash("not a real Porty password")
 	return &AuthService{store: store, hasher: hasher, now: now, dummyHash: dummy, attempts: make(map[string]loginWindow)}
 }

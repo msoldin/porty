@@ -11,8 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
+	portyauth "github.com/msoldin/porty/internal/auth"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
@@ -53,7 +52,7 @@ func newAuthRouter(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { db.Close() })
 	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
-	service := application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), func() time.Time { return now })
+	service := portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), func() time.Time { return now })
 	return NewRouter(RouterOptions{
 		Readiness:  func(context.Context) error { return nil },
 		Auth:       service,

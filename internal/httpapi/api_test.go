@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
+	portyauth "github.com/msoldin/porty/internal/auth"
 	"github.com/msoldin/porty/internal/domain"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
@@ -137,7 +136,7 @@ func authenticatedAPIRouter(t *testing.T, extra RouterOptions) (http.Handler, *h
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	auth := application.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
+	auth := portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
 	extra.Readiness = func(context.Context) error { return nil }
 	extra.Auth = auth
 	extra.PublicURL = "http://porty.local"

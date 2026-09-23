@@ -7,13 +7,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	portyauth "github.com/msoldin/porty/internal/auth"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	"io"
 	"net"
 	"net/http"
 	"strings"
 
-	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 )
 
@@ -25,7 +25,7 @@ const (
 
 type RouterOptions struct {
 	Readiness       func(context.Context) error
-	Auth            *application.AuthService
+	Auth            *portyauth.AuthService
 	PublicURL       string
 	SecureHTTP      bool
 	Stacks          StackAPI
@@ -218,45 +218,45 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 	})
 }
 
-func authenticate(w http.ResponseWriter, r *http.Request, service *application.AuthService) (string, application.AuthenticatedSession, bool) {
+func authenticate(w http.ResponseWriter, r *http.Request, service *portyauth.AuthService) (string, portyauth.AuthenticatedSession, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication required", nil)
-		return "", application.AuthenticatedSession{}, false
+		return "", portyauth.AuthenticatedSession{}, false
 	}
 	session, err := service.Authenticate(r.Context(), cookie.Value)
 	if err != nil {
 		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication required", nil)
-		return "", application.AuthenticatedSession{}, false
+		return "", portyauth.AuthenticatedSession{}, false
 	}
 	return cookie.Value, session, true
 }
 
-func requireMutationAuth(w http.ResponseWriter, r *http.Request, options RouterOptions) (string, application.AuthenticatedSession, bool) {
+func requireMutationAuth(w http.ResponseWriter, r *http.Request, options RouterOptions) (string, portyauth.AuthenticatedSession, bool) {
 	if !validOrigin(r, options.PublicURL) {
 		WriteError(w, r, http.StatusForbidden, "PermissionDenied", "Request origin is invalid", nil)
-		return "", application.AuthenticatedSession{}, false
+		return "", portyauth.AuthenticatedSession{}, false
 	}
 	raw, session, ok := authenticate(w, r, options.Auth)
 	if !ok {
-		return "", application.AuthenticatedSession{}, false
+		return "", portyauth.AuthenticatedSession{}, false
 	}
 	if !options.Auth.CheckCSRF(session, r.Header.Get("X-CSRF-Token")) {
 		WriteError(w, r, http.StatusForbidden, "PermissionDenied", "CSRF token is invalid", nil)
-		return "", application.AuthenticatedSession{}, false
+		return "", portyauth.AuthenticatedSession{}, false
 	}
 	return raw, session, true
 }
 
 func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, application.ErrAlreadyRegistered):
+	case errors.Is(err, portyauth.ErrAlreadyRegistered):
 		WriteError(w, r, http.StatusConflict, "AlreadyRegistered", "Registration is closed", nil)
-	case errors.Is(err, application.ErrRateLimited):
+	case errors.Is(err, portyauth.ErrRateLimited):
 		WriteError(w, r, http.StatusTooManyRequests, "RateLimited", "Too many authentication attempts", nil)
-	case errors.Is(err, application.ErrInvalidPassword), errors.Is(err, application.ErrInvalidUsername):
+	case errors.Is(err, portyauth.ErrInvalidPassword), errors.Is(err, portyauth.ErrInvalidUsername):
 		WriteError(w, r, http.StatusBadRequest, "InvalidCredentials", err.Error(), nil)
-	case errors.Is(err, application.ErrAuthenticationFailed):
+	case errors.Is(err, portyauth.ErrAuthenticationFailed):
 		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication failed", nil)
 	default:
 		WriteError(w, r, http.StatusInternalServerError, "InternalError", "Authentication could not be completed", nil)
