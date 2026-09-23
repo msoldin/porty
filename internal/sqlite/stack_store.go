@@ -7,11 +7,15 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/domain"
+	"github.com/msoldin/porty/internal/sqlite/generated"
 )
 
-type StackStore struct{ db *sql.DB }
+type StackStore struct {
+	db      *sql.DB
+	queries *generated.Queries
+}
 
-func NewStackStore(db *sql.DB) *StackStore { return &StackStore{db: db} }
+func NewStackStore(db *sql.DB) *StackStore { return &StackStore{db: db, queries: generated.New(db)} }
 
 func (s *StackStore) Create(ctx context.Context, stack domain.Stack) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO stacks(id, directory_name, compose_project_name, created_at, updated_at) VALUES(?,?,?,?,?)`,
@@ -20,44 +24,42 @@ func (s *StackStore) Create(ctx context.Context, stack domain.Stack) error {
 }
 
 func (s *StackStore) ByDirectory(ctx context.Context, directory string) (domain.Stack, error) {
-	return scanStack(s.db.QueryRowContext(ctx, `SELECT id, directory_name, compose_project_name, archived_at, created_at, updated_at FROM stacks WHERE directory_name=?`, directory))
+	row, err := s.queries.GetStackByDirectory(ctx, directory)
+	if err != nil {
+		return domain.Stack{}, err
+	}
+	return stackFromRow(row), nil
 }
 
 func (s *StackStore) ByID(ctx context.Context, id domain.StackID) (domain.Stack, error) {
-	return scanStack(s.db.QueryRowContext(ctx, `SELECT id, directory_name, compose_project_name, archived_at, created_at, updated_at FROM stacks WHERE id=?`, id))
+	row, err := s.queries.GetStackByID(ctx, string(id))
+	if err != nil {
+		return domain.Stack{}, err
+	}
+	return stackFromRow(row), nil
 }
 
 func (s *StackStore) Active(ctx context.Context) ([]domain.Stack, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, directory_name, compose_project_name, archived_at, created_at, updated_at FROM stacks WHERE archived_at IS NULL ORDER BY directory_name`)
+	rows, err := s.queries.ListActiveStacks(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []domain.Stack
-	for rows.Next() {
-		stack, err := scanStack(rows)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, stack)
+	result := make([]domain.Stack, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, stackFromRow(row))
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
-func scanStack(row rowScanner) (domain.Stack, error) {
-	var stack domain.Stack
-	var archived sql.NullString
-	var created, updated string
-	if err := row.Scan(&stack.ID, &stack.DirectoryName, &stack.ComposeProjectName, &archived, &created, &updated); err != nil {
-		return domain.Stack{}, err
-	}
-	stack.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
-	stack.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-	if archived.Valid {
-		value, _ := time.Parse(time.RFC3339Nano, archived.String)
+func stackFromRow(row generated.Stack) domain.Stack {
+	stack := domain.Stack{ID: domain.StackID(row.ID), DirectoryName: row.DirectoryName, ComposeProjectName: row.ComposeProjectName}
+	stack.CreatedAt, _ = time.Parse(time.RFC3339Nano, row.CreatedAt)
+	stack.UpdatedAt, _ = time.Parse(time.RFC3339Nano, row.UpdatedAt)
+	if row.ArchivedAt.Valid {
+		value, _ := time.Parse(time.RFC3339Nano, row.ArchivedAt.String)
 		stack.ArchivedAt = &value
 	}
-	return stack, nil
+	return stack
 }
 
 func (s *StackStore) Archive(ctx context.Context, id domain.StackID, at time.Time) error {
