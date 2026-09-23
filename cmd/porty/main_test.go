@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/msoldin/porty/internal/app"
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/config"
 	"github.com/msoldin/porty/internal/domain"
@@ -28,7 +30,7 @@ func TestBuildHandlerExposesSetupAPIAndFrontend(t *testing.T) {
 	defer db.Close()
 	cfg := config.Default()
 	cfg.DataDir = t.TempDir()
-	handler := buildHandler(db, cfg)
+	handler := newTestHandler(t, db, cfg)
 
 	for _, path := range []string{"/api/v1/setup/status", "/"} {
 		response := httptest.NewRecorder()
@@ -45,12 +47,42 @@ func TestBuildHandlerExposesSetupAPIAndFrontend(t *testing.T) {
 	}
 }
 
+func TestServeShutsDownAfterContextCancellation(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })}
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, server, func() error { return server.Serve(listener) }) }()
+	response, err := http.Get("http://" + listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", response.StatusCode)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve after cancellation: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not shut down after cancellation")
+	}
+}
+
 func TestBuildHandlerLeavesRegisteredEmptyInstallInSetupState(t *testing.T) {
 	dataDir, db := startupDatabase(t)
 	if _, err := db.Exec(`UPDATE app_state SET setup_state='registered' WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
-	assertReadyStatus(t, buildHandler(db, startupConfig(dataDir)), http.StatusOK)
+	assertReadyStatus(t, newTestHandler(t, db, startupConfig(dataDir)), http.StatusOK)
 	configuration, _, err := portysqlite.NewRepositoryStore(db).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +98,7 @@ func TestBuildHandlerReconcilesRegisteredExistingRepository(t *testing.T) {
 	if _, err := db.Exec(`UPDATE app_state SET setup_state='registered' WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
-	assertReadyStatus(t, buildHandler(db, startupConfig(dataDir)), http.StatusOK)
+	assertReadyStatus(t, newTestHandler(t, db, startupConfig(dataDir)), http.StatusOK)
 	configuration, _, _ := portysqlite.NewRepositoryStore(db).Load(context.Background())
 	if configuration.State != domain.RepositorySetupReady || configuration.Branch != "main" {
 		t.Fatalf("configuration = %#v", configuration)
@@ -107,7 +139,7 @@ func TestBuildHandlerRestoresReadySSHRemoteClient(t *testing.T) {
 	if _, err := provisioner.Open(context.Background(), configuration, authentication); err != nil {
 		t.Fatalf("Open() = %v", err)
 	}
-	assertReadyStatus(t, buildHandler(db, startupConfig(dataDir)), http.StatusOK)
+	assertReadyStatus(t, newTestHandler(t, db, startupConfig(dataDir)), http.StatusOK)
 }
 
 func TestBuildHandlerFailsReadinessForTamperedReadyRepository(t *testing.T) {
@@ -115,7 +147,7 @@ func TestBuildHandlerFailsReadinessForTamperedReadyRepository(t *testing.T) {
 	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), readyStartupConfiguration(dataDir, "", domain.RepositoryAuthNone), domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}); err != nil {
 		t.Fatal(err)
 	}
-	assertReadyStatus(t, buildHandler(db, startupConfig(dataDir)), http.StatusServiceUnavailable)
+	assertReadyStatus(t, newTestHandler(t, db, startupConfig(dataDir)), http.StatusServiceUnavailable)
 }
 
 func testBuildHandlerOpensReadyRepository(t *testing.T, authentication domain.RepositoryAuthentication, remoteURL string) {
@@ -125,7 +157,7 @@ func testBuildHandlerOpensReadyRepository(t *testing.T, authentication domain.Re
 	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), readyStartupConfiguration(dataDir, remoteURL, authentication.Type), authentication); err != nil {
 		t.Fatal(err)
 	}
-	assertReadyStatus(t, buildHandler(db, startupConfig(dataDir)), http.StatusOK)
+	assertReadyStatus(t, newTestHandler(t, db, startupConfig(dataDir)), http.StatusOK)
 }
 
 func startupDatabase(t *testing.T) (string, *sql.DB) {
@@ -206,4 +238,13 @@ func TestResetPasswordCommandChangesPasswordAndRevokesSessions(t *testing.T) {
 	if _, err := auth.Login(ctx, "admin", "new correct horse battery", "127.0.0.1"); err != nil {
 		t.Fatalf("login with reset password: %v", err)
 	}
+}
+
+func newTestHandler(t *testing.T, db *sql.DB, cfg config.Config) http.Handler {
+	t.Helper()
+	handler, err := app.New(context.Background(), db, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
 }
