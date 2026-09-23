@@ -3,18 +3,19 @@ package app
 import (
 	"context"
 	"database/sql"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/msoldin/porty/internal/application"
-	"github.com/msoldin/porty/internal/config"
-	"github.com/msoldin/porty/internal/httpapi"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	composecli "github.com/msoldin/porty/internal/compose"
+	"github.com/msoldin/porty/internal/config"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	gitcli "github.com/msoldin/porty/internal/git"
+	"github.com/msoldin/porty/internal/httpapi"
+	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portyprocess "github.com/msoldin/porty/internal/process"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 	portyws "github.com/msoldin/porty/internal/websocket"
@@ -68,7 +69,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 		}
 		if err == nil {
 			environment := application.NewEnvironmentService(stackStore)
-			repositoryService := application.NewRepositoryService(git)
+			repositoryService := portyrepo.NewRepositoryService(git)
 			repositoryService.Replace(git, configuration.Remote != nil && configuration.Remote.Managed)
 			helper, helperErr := os.Executable()
 			if helperErr != nil {
@@ -78,9 +79,9 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			if err == nil {
 				provisioner, err = gitcli.NewProvisioner(cfg.DataDir, runner, helper)
 			}
-			var setupService *application.RepositorySetupService
+			var setupService *portyrepo.RepositorySetupService
 			if err == nil {
-				setupService = application.NewRepositorySetupService(repositoryStore, provisioner, repositoryService, coordinator, application.RepositorySetupOptions{SSHKeyPath: filepath.Join(cfg.DataDir, "ssh", "id"), KnownHostsPath: filepath.Join(cfg.DataDir, "ssh", "known_hosts")})
+				setupService = portyrepo.NewRepositorySetupService(repositoryStore, provisioner, repositoryService, coordinator, portyrepo.RepositorySetupOptions{SSHKeyPath: filepath.Join(cfg.DataDir, "ssh", "id"), KnownHostsPath: filepath.Join(cfg.DataDir, "ssh", "known_hosts")})
 				if reconcileErr := setupService.Reconcile(ctx); reconcileErr != nil && configuration.State == "ready" {
 					err = reconcileErr
 				}

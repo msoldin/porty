@@ -4,9 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"time"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 type RepositoryCredentials struct{ Username, Secret string }
@@ -15,48 +14,48 @@ type RepositoryStore struct{ db *sql.DB }
 
 func NewRepositoryStore(db *sql.DB) *RepositoryStore { return &RepositoryStore{db: db} }
 
-func (s *RepositoryStore) Load(ctx context.Context) (domain.RepositoryConfiguration, domain.RepositoryAuthentication, error) {
-	var configuration domain.RepositoryConfiguration
+func (s *RepositoryStore) Load(ctx context.Context) (portyrepo.RepositoryConfiguration, portyrepo.RepositoryAuthentication, error) {
+	var configuration portyrepo.RepositoryConfiguration
 	var setupState string
 	var root, remoteName, remoteURL, branch, authorName, authorEmail sql.NullString
 	if err := s.db.QueryRowContext(ctx, `SELECT setup_state,repository_root,remote_name,remote_url_redacted,tracking_branch,git_author_name,git_author_email FROM app_state WHERE id=1`).
 		Scan(&setupState, &root, &remoteName, &remoteURL, &branch, &authorName, &authorEmail); err != nil {
-		return domain.RepositoryConfiguration{}, domain.RepositoryAuthentication{}, err
+		return portyrepo.RepositoryConfiguration{}, portyrepo.RepositoryAuthentication{}, err
 	}
-	configuration.State = domain.RepositorySetupState(setupState)
+	configuration.State = portyrepo.RepositorySetupState(setupState)
 	configuration.Root = root.String
 	configuration.Branch = branch.String
-	configuration.Author = domain.GitIdentity{Name: authorName.String, Email: authorEmail.String}
+	configuration.Author = portyrepo.GitIdentity{Name: authorName.String, Email: authorEmail.String}
 	if remoteName.Valid || remoteURL.Valid {
-		configuration.Remote = &domain.RepositoryRemoteSummary{
+		configuration.Remote = &portyrepo.RepositoryRemoteSummary{
 			Name:    remoteName.String,
 			URL:     remoteURL.String,
 			Managed: true,
 		}
 	}
 
-	var authentication domain.RepositoryAuthentication
+	var authentication portyrepo.RepositoryAuthentication
 	var authType string
 	var username, sshKeyPath, knownHostsPath sql.NullString
 	var secret []byte
 	err := s.db.QueryRowContext(ctx, `SELECT auth_type,https_username,https_secret,ssh_key_path,known_hosts_path FROM repository_auth WHERE id=1`).
 		Scan(&authType, &username, &secret, &sshKeyPath, &knownHostsPath)
 	if err == sql.ErrNoRows {
-		authentication.Type = domain.RepositoryAuthNone
+		authentication.Type = portyrepo.RepositoryAuthNone
 	} else if err != nil {
-		return domain.RepositoryConfiguration{}, domain.RepositoryAuthentication{}, err
+		return portyrepo.RepositoryConfiguration{}, portyrepo.RepositoryAuthentication{}, err
 	} else {
-		authentication.Type = domain.RepositoryAuthType(authType)
+		authentication.Type = portyrepo.RepositoryAuthType(authType)
 		switch authentication.Type {
-		case domain.RepositoryAuthNone:
-		case domain.RepositoryAuthHTTPS:
+		case portyrepo.RepositoryAuthNone:
+		case portyrepo.RepositoryAuthHTTPS:
 			authentication.Username = username.String
 			authentication.Secret = string(secret)
-		case domain.RepositoryAuthSSH:
+		case portyrepo.RepositoryAuthSSH:
 			authentication.SSHKeyPath = sshKeyPath.String
 			authentication.KnownHostsPath = knownHostsPath.String
 		default:
-			return domain.RepositoryConfiguration{}, domain.RepositoryAuthentication{}, fmt.Errorf("unknown repository authentication type %q", authType)
+			return portyrepo.RepositoryConfiguration{}, portyrepo.RepositoryAuthentication{}, fmt.Errorf("unknown repository authentication type %q", authType)
 		}
 	}
 	if configuration.Remote != nil {
@@ -65,7 +64,7 @@ func (s *RepositoryStore) Load(ctx context.Context) (domain.RepositoryConfigurat
 	return configuration, authentication, nil
 }
 
-func (s *RepositoryStore) Save(ctx context.Context, configuration domain.RepositoryConfiguration, authentication domain.RepositoryAuthentication) error {
+func (s *RepositoryStore) Save(ctx context.Context, configuration portyrepo.RepositoryConfiguration, authentication portyrepo.RepositoryAuthentication) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -85,20 +84,20 @@ func (s *RepositoryStore) Save(ctx context.Context, configuration domain.Reposit
 
 	var username, secret, sshKeyPath, knownHostsPath any
 	switch authentication.Type {
-	case domain.RepositoryAuthNone:
+	case portyrepo.RepositoryAuthNone:
 		if _, err := tx.ExecContext(ctx, `DELETE FROM repository_auth WHERE id=1`); err != nil {
 			return err
 		}
-	case domain.RepositoryAuthHTTPS:
+	case portyrepo.RepositoryAuthHTTPS:
 		username = nullableString(authentication.Username)
 		secret = []byte(authentication.Secret)
-	case domain.RepositoryAuthSSH:
+	case portyrepo.RepositoryAuthSSH:
 		sshKeyPath = nullableString(authentication.SSHKeyPath)
 		knownHostsPath = nullableString(authentication.KnownHostsPath)
 	default:
 		return fmt.Errorf("unknown repository authentication type %q", authentication.Type)
 	}
-	if authentication.Type != domain.RepositoryAuthNone {
+	if authentication.Type != portyrepo.RepositoryAuthNone {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO repository_auth(id,auth_type,https_username,https_secret,ssh_key_path,known_hosts_path,updated_at) VALUES(1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET auth_type=excluded.auth_type,https_username=excluded.https_username,https_secret=excluded.https_secret,ssh_key_path=excluded.ssh_key_path,known_hosts_path=excluded.known_hosts_path,updated_at=excluded.updated_at`,
 			string(authentication.Type), username, secret, sshKeyPath, knownHostsPath, now); err != nil {
 			return err

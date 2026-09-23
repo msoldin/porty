@@ -3,12 +3,12 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 )
 
@@ -28,7 +28,7 @@ func TestRepositorySetupStatusRequiresAuthenticationButNotReadyState(t *testing.
 
 func TestRepositoryRemoteInspectionRequiresCSRFButNotReadyState(t *testing.T) {
 	setup := notReadyRepositorySetup()
-	setup.inspection = domain.RemoteInspection{RemoteURL: "https://example.com/repo.git", Branches: []string{"trunk"}, Suggested: "trunk"}
+	setup.inspection = portyrepo.RemoteInspection{RemoteURL: "https://example.com/repo.git", Branches: []string{"trunk"}, Suggested: "trunk"}
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
 	body := `{"remote":{"url":"https://user@example.com/repo.git","authentication":{"type":"none"}}}`
 	denied := doAuthenticatedRequest(handler, session, "", http.MethodPost, "/api/v1/repository/setup/inspect-remote", body)
@@ -46,7 +46,7 @@ func TestRepositorySetupAcceptsLocalOnlyRequest(t *testing.T) {
 	setup.status = readySetupStatus(nil)
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
 	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup", `{"mode":"init","branch":"main","author":{"name":"Porty","email":"porty@localhost"}}`)
-	if response.Code != http.StatusCreated || setup.request.Mode != domain.RepositorySetupInit || setup.request.Remote != nil {
+	if response.Code != http.StatusCreated || setup.request.Mode != portyrepo.RepositorySetupInit || setup.request.Remote != nil {
 		t.Fatalf("setup = %d %s request=%#v", response.Code, response.Body.String(), setup.request)
 	}
 }
@@ -62,7 +62,7 @@ func TestRepositorySetupRejectsOversizedBody(t *testing.T) {
 
 func TestRepositorySetupNeverReturnsSubmittedSecret(t *testing.T) {
 	setup := notReadyRepositorySetup()
-	setup.status = readySetupStatus(&domain.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: domain.RepositoryAuthHTTPS, Managed: true})
+	setup.status = readySetupStatus(&portyrepo.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: portyrepo.RepositoryAuthHTTPS, Managed: true})
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
 	secret := "never-return-this-secret"
 	body := `{"mode":"remote","branch":"main","author":{"name":"Porty","email":"porty@localhost"},"remote":{"url":"https://example.com/repo.git","authentication":{"type":"https","username":"git","secret":"` + secret + `"}}}`
@@ -86,11 +86,11 @@ func TestRepositorySetupErrorsUseStableCodes(t *testing.T) {
 		status int
 		code   string
 	}{
-		{application.ErrInvalidRequest, 400, "InvalidRequest"}, {application.ErrRepositoryPathNotEmpty, 409, "RepositoryPathNotEmpty"},
-		{application.ErrInvalidWorktree, 409, "InvalidWorktree"}, {application.ErrDetachedHead, 409, "DetachedHead"},
-		{application.ErrRemoteAuthenticationFailed, 401, "RemoteAuthenticationFailed"}, {application.ErrRemoteUnavailable, 502, "RemoteUnavailable"},
-		{application.ErrSSHMaterialUnavailable, 409, "SSHMaterialUnavailable"}, {application.ErrUnrelatedHistory, 409, "UnrelatedHistory"},
-		{application.ErrRepositoryRemoteConflict, 409, "RepositoryRemoteConflict"}, {application.ErrRepositoryRemoteUnavailable, 409, "RepositoryRemoteUnavailable"},
+		{portyrepo.ErrInvalidRequest, 400, "InvalidRequest"}, {portyrepo.ErrRepositoryPathNotEmpty, 409, "RepositoryPathNotEmpty"},
+		{portyrepo.ErrInvalidWorktree, 409, "InvalidWorktree"}, {portyrepo.ErrDetachedHead, 409, "DetachedHead"},
+		{portyrepo.ErrRemoteAuthenticationFailed, 401, "RemoteAuthenticationFailed"}, {portyrepo.ErrRemoteUnavailable, 502, "RemoteUnavailable"},
+		{portyrepo.ErrSSHMaterialUnavailable, 409, "SSHMaterialUnavailable"}, {portyrepo.ErrUnrelatedHistory, 409, "UnrelatedHistory"},
+		{portyrepo.ErrRepositoryRemoteConflict, 409, "RepositoryRemoteConflict"}, {portyrepo.ErrRepositoryRemoteUnavailable, 409, "RepositoryRemoteUnavailable"},
 	}
 	for _, test := range tests {
 		t.Run(test.code, func(t *testing.T) {
@@ -125,7 +125,7 @@ func TestNormalMutationRouteRequiresRepositorySetup(t *testing.T) {
 
 func TestRepositorySetupAuditContainsNoSecretOrRawRemoteURL(t *testing.T) {
 	setup := notReadyRepositorySetup()
-	setup.status = readySetupStatus(&domain.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: domain.RepositoryAuthHTTPS, Managed: true})
+	setup.status = readySetupStatus(&portyrepo.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: portyrepo.RepositoryAuthHTTPS, Managed: true})
 	audit := &fakeAuditAPI{}
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup, Audit: audit})
 	audit.recorded = nil
@@ -142,7 +142,7 @@ func TestRepositorySetupAuditContainsNoSecretOrRawRemoteURL(t *testing.T) {
 	if audit.recorded[0].Action != "repository.setup.remote" || audit.recorded[0].TargetID != "branch=main;remote=https://example.com/repo.git" {
 		t.Fatalf("audit = %#v", audit.recorded[0])
 	}
-	setup.err = application.ErrRemoteUnavailable
+	setup.err = portyrepo.ErrRemoteUnavailable
 	audit.recorded = nil
 	failed := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup", body)
 	if failed.Code != http.StatusBadGateway || len(audit.recorded) != 1 || !strings.Contains(audit.recorded[0].TargetID, "code=RemoteUnavailable") {
@@ -151,10 +151,10 @@ func TestRepositorySetupAuditContainsNoSecretOrRawRemoteURL(t *testing.T) {
 }
 
 func notReadyRepositorySetup() *fakeRepositorySetup {
-	return &fakeRepositorySetup{readySet: true, status: domain.RepositorySetupStatus{State: domain.RepositorySetupRegistered, Required: true}}
+	return &fakeRepositorySetup{readySet: true, status: portyrepo.RepositorySetupStatus{State: portyrepo.RepositorySetupRegistered, Required: true}}
 }
-func readySetupStatus(remote *domain.RepositoryRemoteSummary) domain.RepositorySetupStatus {
-	return domain.RepositorySetupStatus{State: domain.RepositorySetupReady, Required: false, ManagedRemote: remote}
+func readySetupStatus(remote *portyrepo.RepositoryRemoteSummary) portyrepo.RepositorySetupStatus {
+	return portyrepo.RepositorySetupStatus{State: portyrepo.RepositorySetupReady, Required: false, ManagedRemote: remote}
 }
 func doAuthenticatedRequest(handler http.Handler, session *http.Cookie, csrf, method, path, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, "http://porty.local"+path, strings.NewReader(body))

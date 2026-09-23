@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/msoldin/porty/internal/domain"
 	portyprocess "github.com/msoldin/porty/internal/process"
 )
 
@@ -29,9 +29,9 @@ type Runner interface {
 	Run(context.Context, portyprocess.Request) (portyprocess.Result, error)
 }
 
-type Status = domain.GitStatus
+type Status = portyrepo.GitStatus
 
-type Commit = domain.GitCommit
+type Commit = portyrepo.GitCommit
 
 type Client struct {
 	runner         Runner

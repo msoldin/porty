@@ -3,11 +3,10 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"path/filepath"
 	"reflect"
 	"testing"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestRepositoryStoreLoadsRegisteredDefaultsWithoutAuthRow(t *testing.T) {
@@ -20,11 +19,11 @@ func TestRepositoryStoreLoadsRegisteredDefaultsWithoutAuthRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantConfiguration := domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}
+	wantConfiguration := portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}
 	if !reflect.DeepEqual(configuration, wantConfiguration) {
 		t.Fatalf("Load() configuration = %#v, want %#v", configuration, wantConfiguration)
 	}
-	wantAuthentication := domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}
+	wantAuthentication := portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}
 	if !reflect.DeepEqual(authentication, wantAuthentication) {
 		t.Fatalf("Load() authentication = %#v, want %#v", authentication, wantAuthentication)
 	}
@@ -33,7 +32,7 @@ func TestRepositoryStoreLoadsRegisteredDefaultsWithoutAuthRow(t *testing.T) {
 func TestRepositoryStoreSavesLocalOnlyReadyConfiguration(t *testing.T) {
 	ctx, db, store := newRepositoryStoreTest(t)
 	wantConfiguration := localRepositoryConfiguration()
-	wantAuthentication := domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}
+	wantAuthentication := portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}
 
 	if err := store.Save(ctx, wantConfiguration, wantAuthentication); err != nil {
 		t.Fatal(err)
@@ -60,9 +59,9 @@ func TestRepositoryStoreSavesLocalOnlyReadyConfiguration(t *testing.T) {
 
 func TestRepositoryStoreRoundTripsHTTPSAuthentication(t *testing.T) {
 	ctx, _, store := newRepositoryStoreTest(t)
-	wantConfiguration := remoteRepositoryConfiguration(domain.RepositoryAuthHTTPS)
-	wantAuthentication := domain.RepositoryAuthentication{
-		Type:     domain.RepositoryAuthHTTPS,
+	wantConfiguration := remoteRepositoryConfiguration(portyrepo.RepositoryAuthHTTPS)
+	wantAuthentication := portyrepo.RepositoryAuthentication{
+		Type:     portyrepo.RepositoryAuthHTTPS,
 		Username: "deploy",
 		Secret:   "top-secret",
 	}
@@ -84,9 +83,9 @@ func TestRepositoryStoreRoundTripsHTTPSAuthentication(t *testing.T) {
 
 func TestRepositoryStoreRoundTripsSSHAuthentication(t *testing.T) {
 	ctx, _, store := newRepositoryStoreTest(t)
-	wantConfiguration := remoteRepositoryConfiguration(domain.RepositoryAuthSSH)
-	wantAuthentication := domain.RepositoryAuthentication{
-		Type:           domain.RepositoryAuthSSH,
+	wantConfiguration := remoteRepositoryConfiguration(portyrepo.RepositoryAuthSSH)
+	wantAuthentication := portyrepo.RepositoryAuthentication{
+		Type:           portyrepo.RepositoryAuthSSH,
 		SSHKeyPath:     "/var/lib/porty/ssh/id",
 		KnownHostsPath: "/var/lib/porty/ssh/known_hosts",
 	}
@@ -108,17 +107,17 @@ func TestRepositoryStoreRoundTripsSSHAuthentication(t *testing.T) {
 
 func TestRepositoryStoreReplacingAuthClearsOldSecretColumns(t *testing.T) {
 	ctx, db, store := newRepositoryStoreTest(t)
-	if err := store.Save(ctx, remoteRepositoryConfiguration(domain.RepositoryAuthHTTPS), domain.RepositoryAuthentication{
-		Type: domain.RepositoryAuthHTTPS, Username: "deploy", Secret: "top-secret",
+	if err := store.Save(ctx, remoteRepositoryConfiguration(portyrepo.RepositoryAuthHTTPS), portyrepo.RepositoryAuthentication{
+		Type: portyrepo.RepositoryAuthHTTPS, Username: "deploy", Secret: "top-secret",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	wantAuthentication := domain.RepositoryAuthentication{
-		Type:           domain.RepositoryAuthSSH,
+	wantAuthentication := portyrepo.RepositoryAuthentication{
+		Type:           portyrepo.RepositoryAuthSSH,
 		SSHKeyPath:     "/var/lib/porty/ssh/id",
 		KnownHostsPath: "/var/lib/porty/ssh/known_hosts",
 	}
-	if err := store.Save(ctx, remoteRepositoryConfiguration(domain.RepositoryAuthSSH), wantAuthentication); err != nil {
+	if err := store.Save(ctx, remoteRepositoryConfiguration(portyrepo.RepositoryAuthSSH), wantAuthentication); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,7 +128,7 @@ func TestRepositoryStoreReplacingAuthClearsOldSecretColumns(t *testing.T) {
 		Scan(&authType, &username, &secret, &sshKeyPath, &knownHostsPath); err != nil {
 		t.Fatal(err)
 	}
-	if authType != string(domain.RepositoryAuthSSH) || username.Valid || secret != nil {
+	if authType != string(portyrepo.RepositoryAuthSSH) || username.Valid || secret != nil {
 		t.Fatalf("replaced auth columns = (%q, %#v, %q), want SSH with HTTPS columns NULL", authType, username, secret)
 	}
 	if sshKeyPath.String != wantAuthentication.SSHKeyPath || knownHostsPath.String != wantAuthentication.KnownHostsPath {
@@ -139,13 +138,13 @@ func TestRepositoryStoreReplacingAuthClearsOldSecretColumns(t *testing.T) {
 
 func TestRepositoryStoreRemovingRemoteKeepsReadyState(t *testing.T) {
 	ctx, db, store := newRepositoryStoreTest(t)
-	if err := store.Save(ctx, remoteRepositoryConfiguration(domain.RepositoryAuthHTTPS), domain.RepositoryAuthentication{
-		Type: domain.RepositoryAuthHTTPS, Username: "deploy", Secret: "top-secret",
+	if err := store.Save(ctx, remoteRepositoryConfiguration(portyrepo.RepositoryAuthHTTPS), portyrepo.RepositoryAuthentication{
+		Type: portyrepo.RepositoryAuthHTTPS, Username: "deploy", Secret: "top-secret",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	wantConfiguration := localRepositoryConfiguration()
-	if err := store.Save(ctx, wantConfiguration, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}); err != nil {
+	if err := store.Save(ctx, wantConfiguration, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -156,8 +155,8 @@ func TestRepositoryStoreRemovingRemoteKeepsReadyState(t *testing.T) {
 	if !reflect.DeepEqual(configuration, wantConfiguration) {
 		t.Fatalf("Load() configuration = %#v, want %#v", configuration, wantConfiguration)
 	}
-	if authentication.Type != domain.RepositoryAuthNone {
-		t.Fatalf("Load() authentication type = %q, want %q", authentication.Type, domain.RepositoryAuthNone)
+	if authentication.Type != portyrepo.RepositoryAuthNone {
+		t.Fatalf("Load() authentication type = %q, want %q", authentication.Type, portyrepo.RepositoryAuthNone)
 	}
 	var remoteName, remoteURL sql.NullString
 	if err := db.QueryRowContext(ctx, `SELECT remote_name, remote_url_redacted FROM app_state WHERE id = 1`).Scan(&remoteName, &remoteURL); err != nil {
@@ -178,15 +177,15 @@ func TestRepositoryStoreRemovingRemoteKeepsReadyState(t *testing.T) {
 func TestRepositoryStoreSaveRollsBackConfigurationWhenAuthWriteFails(t *testing.T) {
 	ctx, db, store := newRepositoryStoreTest(t)
 	wantConfiguration := localRepositoryConfiguration()
-	if err := store.Save(ctx, wantConfiguration, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}); err != nil {
+	if err := store.Save(ctx, wantConfiguration, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TRIGGER reject_repository_auth BEFORE INSERT ON repository_auth BEGIN SELECT RAISE(ABORT, 'rejected auth write'); END`); err != nil {
 		t.Fatal(err)
 	}
 
-	err := store.Save(ctx, remoteRepositoryConfiguration(domain.RepositoryAuthHTTPS), domain.RepositoryAuthentication{
-		Type: domain.RepositoryAuthHTTPS, Username: "deploy", Secret: "top-secret",
+	err := store.Save(ctx, remoteRepositoryConfiguration(portyrepo.RepositoryAuthHTTPS), portyrepo.RepositoryAuthentication{
+		Type: portyrepo.RepositoryAuthHTTPS, Username: "deploy", Secret: "top-secret",
 	})
 	if err == nil {
 		t.Fatal("Save() error = nil, want authentication write failure")
@@ -198,7 +197,7 @@ func TestRepositoryStoreSaveRollsBackConfigurationWhenAuthWriteFails(t *testing.
 	if !reflect.DeepEqual(configuration, wantConfiguration) {
 		t.Fatalf("Load() configuration after rollback = %#v, want %#v", configuration, wantConfiguration)
 	}
-	if authentication.Type != domain.RepositoryAuthNone {
+	if authentication.Type != portyrepo.RepositoryAuthNone {
 		t.Fatalf("Load() authentication after rollback = %#v, want none", authentication)
 	}
 }
@@ -225,18 +224,18 @@ func newRepositoryStoreTest(t *testing.T) (context.Context, *sql.DB, *Repository
 	return ctx, db, NewRepositoryStore(db)
 }
 
-func localRepositoryConfiguration() domain.RepositoryConfiguration {
-	return domain.RepositoryConfiguration{
-		State:  domain.RepositorySetupReady,
+func localRepositoryConfiguration() portyrepo.RepositoryConfiguration {
+	return portyrepo.RepositoryConfiguration{
+		State:  portyrepo.RepositorySetupReady,
 		Root:   "/var/lib/porty/repository",
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Porty", Email: "porty@localhost"},
+		Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"},
 	}
 }
 
-func remoteRepositoryConfiguration(authType domain.RepositoryAuthType) domain.RepositoryConfiguration {
+func remoteRepositoryConfiguration(authType portyrepo.RepositoryAuthType) portyrepo.RepositoryConfiguration {
 	configuration := localRepositoryConfiguration()
-	configuration.Remote = &domain.RepositoryRemoteSummary{
+	configuration.Remote = &portyrepo.RepositoryRemoteSummary{
 		Name: "origin", URL: "https://example.com/team/repository.git", AuthType: authType, Managed: true,
 	}
 	return configuration

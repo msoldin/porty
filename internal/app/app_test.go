@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/msoldin/porty/internal/app"
 	"github.com/msoldin/porty/internal/config"
-	"github.com/msoldin/porty/internal/domain"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
 
@@ -42,13 +42,13 @@ func TestNewKeepsTamperedReadyRepositoryUnready(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	configuration := domain.RepositoryConfiguration{
-		State:  domain.RepositorySetupReady,
+	configuration := portyrepo.RepositoryConfiguration{
+		State:  portyrepo.RepositorySetupReady,
 		Root:   filepath.Join(dataDir, "repository"),
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Porty", Email: "porty@localhost"},
+		Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"},
 	}
-	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), configuration, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}); err != nil {
+	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), configuration, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.Default()

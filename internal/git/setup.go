@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"io/fs"
 	"net/url"
 	"os"
@@ -15,8 +16,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/msoldin/porty/internal/application"
-	"github.com/msoldin/porty/internal/domain"
 	portyprocess "github.com/msoldin/porty/internal/process"
 )
 
@@ -69,16 +68,16 @@ func NewProvisioner(dataDirectory string, runner Runner, executable string) (*Pr
 	}, nil
 }
 
-func (p *Provisioner) InspectPath(ctx context.Context) (domain.RepositoryPathInspection, error) {
+func (p *Provisioner) InspectPath(ctx context.Context) (portyrepo.RepositoryPathInspection, error) {
 	if !p.fixedRootIsSafe() {
 		return invalidPath("repository root escapes the data directory"), nil
 	}
 	dataInfo, err := os.Lstat(p.dataRoot)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return domain.RepositoryPathInspection{State: domain.RepositoryPathEmpty}, nil
+			return portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathEmpty}, nil
 		}
-		return domain.RepositoryPathInspection{}, err
+		return portyrepo.RepositoryPathInspection{}, err
 	}
 	if !dataInfo.IsDir() || dataInfo.Mode()&os.ModeSymlink != 0 {
 		return invalidPath("data directory is not a safe directory"), nil
@@ -87,9 +86,9 @@ func (p *Provisioner) InspectPath(ctx context.Context) (domain.RepositoryPathIns
 	rootInfo, err := os.Lstat(p.repositoryRoot)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return domain.RepositoryPathInspection{State: domain.RepositoryPathEmpty}, nil
+			return portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathEmpty}, nil
 		}
-		return domain.RepositoryPathInspection{}, err
+		return portyrepo.RepositoryPathInspection{}, err
 	}
 	if !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
 		return invalidPath("repository root is not a safe directory"), nil
@@ -99,16 +98,16 @@ func (p *Provisioner) InspectPath(ctx context.Context) (domain.RepositoryPathIns
 	gitInfo, err := os.Lstat(gitPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			return domain.RepositoryPathInspection{}, err
+			return portyrepo.RepositoryPathInspection{}, err
 		}
 		entries, readErr := os.ReadDir(p.repositoryRoot)
 		if readErr != nil {
-			return domain.RepositoryPathInspection{}, readErr
+			return portyrepo.RepositoryPathInspection{}, readErr
 		}
 		if len(entries) == 0 {
-			return domain.RepositoryPathInspection{State: domain.RepositoryPathEmpty}, nil
+			return portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathEmpty}, nil
 		}
-		return domain.RepositoryPathInspection{State: domain.RepositoryPathOccupied}, nil
+		return portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathOccupied}, nil
 	}
 	if !gitInfo.IsDir() || gitInfo.Mode()&os.ModeSymlink != 0 {
 		return invalidPath("Git metadata is not a safe directory"), nil
@@ -118,16 +117,16 @@ func (p *Provisioner) InspectPath(ctx context.Context) (domain.RepositoryPathIns
 		if errors.Is(err, ErrUnsafeRepository) {
 			return invalidPath("repository has unsafe Git configuration"), nil
 		}
-		return domain.RepositoryPathInspection{}, err
+		return portyrepo.RepositoryPathInspection{}, err
 	}
 
-	inspection := domain.RepositoryPathInspection{State: domain.RepositoryPathWorktree}
+	inspection := portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathWorktree}
 	branchResult, branchErr := p.git(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if branchErr != nil {
 		if branchResult.ExitCode == 1 {
 			inspection.Detached = true
 		} else {
-			return domain.RepositoryPathInspection{}, branchErr
+			return portyrepo.RepositoryPathInspection{}, branchErr
 		}
 	} else {
 		inspection.Branch = strings.TrimSpace(branchResult.Output)
@@ -138,17 +137,17 @@ func (p *Provisioner) InspectPath(ctx context.Context) (domain.RepositoryPathIns
 
 	name, err := p.localConfig(ctx, "user.name")
 	if err != nil {
-		return domain.RepositoryPathInspection{}, err
+		return portyrepo.RepositoryPathInspection{}, err
 	}
 	email, err := p.localConfig(ctx, "user.email")
 	if err != nil {
-		return domain.RepositoryPathInspection{}, err
+		return portyrepo.RepositoryPathInspection{}, err
 	}
-	inspection.Author = domain.GitIdentity{Name: name, Email: email}
+	inspection.Author = portyrepo.GitIdentity{Name: name, Email: email}
 
 	remotes, err := p.localConfigValues(ctx, "remote.origin.url")
 	if err != nil {
-		return domain.RepositoryPathInspection{}, err
+		return portyrepo.RepositoryPathInspection{}, err
 	}
 	if len(remotes) > 1 {
 		return invalidPath("repository has multiple origin URLs"), nil
@@ -158,39 +157,39 @@ func (p *Provisioner) InspectPath(ctx context.Context) (domain.RepositoryPathIns
 		if err := ValidateRemoteURL(remote); err != nil {
 			return invalidPath("repository origin is unsafe"), nil
 		}
-		inspection.ExistingRemote = &domain.RepositoryRemoteSummary{
+		inspection.ExistingRemote = &portyrepo.RepositoryRemoteSummary{
 			Name:     "origin",
 			URL:      safeRemoteURL(remote),
-			AuthType: domain.RepositoryAuthNone,
+			AuthType: portyrepo.RepositoryAuthNone,
 			Managed:  false,
 		}
 	}
 	return inspection, nil
 }
 
-func (p *Provisioner) InspectSSHMaterial() domain.SSHMaterialStatus {
+func (p *Provisioner) InspectSSHMaterial() portyrepo.SSHMaterialStatus {
 	if !safeSSHDirectory(p.sshKeyPath, p.knownHostsPath) {
-		return domain.SSHMaterialStatus{}
+		return portyrepo.SSHMaterialStatus{}
 	}
 	keyPresent, keyUsable := sshMaterialFileStatus(p.sshKeyPath, 0o077)
 	hostsPresent, hostsUsable := sshMaterialFileStatus(p.knownHostsPath, 0o022)
-	return domain.SSHMaterialStatus{
+	return portyrepo.SSHMaterialStatus{
 		IdentityAvailable:   keyPresent,
 		KnownHostsAvailable: hostsPresent,
 		Usable:              keyUsable && hostsUsable,
 	}
 }
 
-func (p *Provisioner) InspectRemote(ctx context.Context, remoteURL string, authentication domain.RepositoryAuthentication) (domain.RemoteInspection, error) {
+func (p *Provisioner) InspectRemote(ctx context.Context, remoteURL string, authentication portyrepo.RepositoryAuthentication) (portyrepo.RemoteInspection, error) {
 	if err := ValidateRemoteURL(remoteURL); err != nil {
-		return domain.RemoteInspection{}, application.ErrInvalidRequest
+		return portyrepo.RemoteInspection{}, portyrepo.ErrInvalidRequest
 	}
 	client, err := p.authenticatedClient("main", remoteURL, authentication)
 	if err != nil {
-		return domain.RemoteInspection{}, err
+		return portyrepo.RemoteInspection{}, err
 	}
 	if err := client.validateAuthentication(); err != nil {
-		return domain.RemoteInspection{}, application.ErrSSHMaterialUnavailable
+		return portyrepo.RemoteInspection{}, portyrepo.ErrSSHMaterialUnavailable
 	}
 	remoteURL = safeRemoteURL(remoteURL)
 	inspectCtx, cancel := context.WithTimeout(ctx, remoteInspectTimeout)
@@ -204,66 +203,66 @@ func (p *Provisioner) InspectRemote(ctx context.Context, remoteURL string, authe
 		"ls-remote", "--symref", remoteURL, "HEAD", "refs/heads/*",
 	)
 	if runErr != nil {
-		return domain.RemoteInspection{}, classifyRemoteFailure(result.Output)
+		return portyrepo.RemoteInspection{}, classifyRemoteFailure(result.Output)
 	}
 	if result.Truncated || len(result.Output) > remoteInspectMaxOutput {
-		return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+		return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 	}
 	inspection, err := parseRemoteInspection(result.Output)
 	if err != nil {
-		return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+		return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 	}
 	inspection.RemoteURL = safeRemoteURL(remoteURL)
 	return inspection, nil
 }
 
-func (p *Provisioner) Provision(ctx context.Context, request application.RepositoryProvisionRequest) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (p *Provisioner) Provision(ctx context.Context, request portyrepo.RepositoryProvisionRequest) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	if err := ValidateBranch(request.Branch); err != nil || !validIdentity(request.Author) {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidRequest
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidRequest
 	}
 	switch request.Mode {
-	case domain.RepositorySetupInit:
+	case portyrepo.RepositorySetupInit:
 		return p.provisionInit(ctx, request)
-	case domain.RepositorySetupRemote:
+	case portyrepo.RepositorySetupRemote:
 		return p.provisionRemote(ctx, request)
-	case domain.RepositorySetupAdopt:
+	case portyrepo.RepositorySetupAdopt:
 		return p.provisionAdopt(ctx, request)
 	default:
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidRequest
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidRequest
 	}
 }
 
-func (p *Provisioner) provisionRemote(ctx context.Context, request application.RepositoryProvisionRequest) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (p *Provisioner) provisionRemote(ctx context.Context, request portyrepo.RepositoryProvisionRequest) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	remoteInspection, err := p.InspectRemote(ctx, request.RemoteURL, request.Authentication)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	if !remoteInspection.Empty && !containsBranch(remoteInspection.Branches, request.Branch) {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidRequest
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidRequest
 	}
 
 	pathInspection, err := p.InspectPath(ctx)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	switch pathInspection.State {
-	case domain.RepositoryPathWorktree:
+	case portyrepo.RepositoryPathWorktree:
 		if pathInspection.Detached || pathInspection.Branch != request.Branch || pathInspection.Author != request.Author || pathInspection.ExistingRemote == nil || pathInspection.ExistingRemote.URL != remoteInspection.RemoteURL {
-			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 		}
 		return p.activeRemoteClient(ctx, request, remoteInspection.Empty)
-	case domain.RepositoryPathOccupied:
-		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
-	case domain.RepositoryPathInvalid:
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
-	case domain.RepositoryPathEmpty:
+	case portyrepo.RepositoryPathOccupied:
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
+	case portyrepo.RepositoryPathInvalid:
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
+	case portyrepo.RepositoryPathEmpty:
 	default:
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 
 	attempt, err := p.newRepositoryAttempt()
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	cleanupNeeded := true
 	defer func() {
@@ -275,21 +274,21 @@ func (p *Provisioner) provisionRemote(ctx context.Context, request application.R
 
 	_, initErr := runAt(ctx, p.runner, p.dataRoot, nil, nil, "init", "-b", request.Branch, p.repositoryRoot)
 	if err := attempt.captureInitializedRepository(); err != nil && initErr == nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	if initErr != nil {
-		return nil, domain.RepositoryConfiguration{}, initErr
+		return nil, portyrepo.RepositoryConfiguration{}, initErr
 	}
 	if _, err := p.git(ctx, "remote", "add", "origin", remoteInspection.RemoteURL); err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	if !remoteInspection.Empty {
 		client, err := p.authenticatedClient(request.Branch, remoteInspection.RemoteURL, request.Authentication)
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		if err := client.validateAuthentication(); err != nil {
-			return nil, domain.RepositoryConfiguration{}, application.ErrSSHMaterialUnavailable
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrSSHMaterialUnavailable
 		}
 		fetchCtx, cancel := context.WithTimeout(ctx, remoteFetchTimeout)
 		result, err := runAtRepository(
@@ -302,14 +301,14 @@ func (p *Provisioner) provisionRemote(ctx context.Context, request application.R
 		)
 		cancel()
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, classifyRemoteFailure(result.Output)
+			return nil, portyrepo.RepositoryConfiguration{}, classifyRemoteFailure(result.Output)
 		}
 		_, err = p.remoteWorktreePaths(ctx, request.Branch)
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		if err := attempt.repositoryRoot.Mkdir(checkoutStagingDirectory, 0o700); err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		checkoutCtx, cancel := context.WithTimeout(ctx, remoteCheckoutTimeout)
 		_, checkoutErr := runAtRepository(checkoutCtx,
@@ -318,104 +317,104 @@ func (p *Provisioner) provisionRemote(ctx context.Context, request application.R
 			"checkout", "-B", request.Branch, "--track", "origin/"+request.Branch)
 		cancel()
 		if checkoutErr != nil {
-			return nil, domain.RepositoryConfiguration{}, checkoutErr
+			return nil, portyrepo.RepositoryConfiguration{}, checkoutErr
 		}
 		if err := attempt.publishWorktree(); err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 	}
 	if err := p.writeIdentity(ctx, request.Author); err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	client, configuration, err := p.activeRemoteClient(ctx, request, remoteInspection.Empty)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	cleanupNeeded = false
 	return client, configuration, nil
 }
 
-func (p *Provisioner) provisionInit(ctx context.Context, request application.RepositoryProvisionRequest) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (p *Provisioner) provisionInit(ctx context.Context, request portyrepo.RepositoryProvisionRequest) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	inspection, err := p.InspectPath(ctx)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	switch inspection.State {
-	case domain.RepositoryPathWorktree:
+	case portyrepo.RepositoryPathWorktree:
 		if inspection.Detached || inspection.Branch != request.Branch || inspection.Author != request.Author || inspection.ExistingRemote != nil {
-			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 		}
 		return p.activeClient(ctx, request.Branch, request.Author, false, true)
-	case domain.RepositoryPathOccupied:
-		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
-	case domain.RepositoryPathInvalid:
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
-	case domain.RepositoryPathEmpty:
+	case portyrepo.RepositoryPathOccupied:
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
+	case portyrepo.RepositoryPathInvalid:
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
+	case portyrepo.RepositoryPathEmpty:
 	default:
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 
 	if _, err := runAt(ctx, p.runner, p.dataRoot, nil, nil, "init", "-b", request.Branch, p.repositoryRoot); err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	if err := p.writeIdentity(ctx, request.Author); err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	return p.activeClient(ctx, request.Branch, request.Author, false, true)
 }
 
-func (p *Provisioner) provisionAdopt(ctx context.Context, request application.RepositoryProvisionRequest) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (p *Provisioner) provisionAdopt(ctx context.Context, request portyrepo.RepositoryProvisionRequest) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	inspection, err := p.InspectPath(ctx)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
-	if inspection.State != domain.RepositoryPathWorktree {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	if inspection.State != portyrepo.RepositoryPathWorktree {
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	if inspection.Detached {
-		return nil, domain.RepositoryConfiguration{}, application.ErrDetachedHead
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrDetachedHead
 	}
 	if inspection.Branch != request.Branch {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	if err := p.writeIdentity(ctx, request.Author); err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	return p.activeClient(ctx, request.Branch, request.Author, request.ManageExistingRemote, false)
 }
 
-func (p *Provisioner) activeClient(ctx context.Context, branch string, author domain.GitIdentity, manageExistingRemote, requireUnborn bool) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (p *Provisioner) activeClient(ctx context.Context, branch string, author portyrepo.GitIdentity, manageExistingRemote, requireUnborn bool) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	inspection, err := p.InspectPath(ctx)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
-	if inspection.State != domain.RepositoryPathWorktree || inspection.Detached || inspection.Branch != branch || inspection.Author != author {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	if inspection.State != portyrepo.RepositoryPathWorktree || inspection.Detached || inspection.Branch != branch || inspection.Author != author {
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	if requireUnborn {
 		if inspection.ExistingRemote != nil {
-			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 		}
 		hasCommit, err := p.hasCommit(ctx)
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		if hasCommit {
-			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 		}
 	}
 	client, err := Adopt(ctx, p.runner, p.repositoryRoot, branch)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
-	var remote *domain.RepositoryRemoteSummary
+	var remote *portyrepo.RepositoryRemoteSummary
 	if manageExistingRemote && inspection.ExistingRemote != nil {
 		copy := *inspection.ExistingRemote
 		copy.Managed = true
 		remote = &copy
 	}
-	configuration := domain.RepositoryConfiguration{
-		State:  domain.RepositorySetupReady,
+	configuration := portyrepo.RepositoryConfiguration{
+		State:  portyrepo.RepositorySetupReady,
 		Root:   p.repositoryRoot,
 		Branch: branch,
 		Author: author,
@@ -424,60 +423,60 @@ func (p *Provisioner) activeClient(ctx context.Context, branch string, author do
 	return client, configuration, nil
 }
 
-func (p *Provisioner) activeRemoteClient(ctx context.Context, request application.RepositoryProvisionRequest, empty bool) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (p *Provisioner) activeRemoteClient(ctx context.Context, request portyrepo.RepositoryProvisionRequest, empty bool) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	inspection, err := p.InspectPath(ctx)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	canonicalURL := safeRemoteURL(request.RemoteURL)
-	if inspection.State != domain.RepositoryPathWorktree || inspection.Detached || inspection.Branch != request.Branch || inspection.Author != request.Author || inspection.ExistingRemote == nil || inspection.ExistingRemote.URL != canonicalURL {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	if inspection.State != portyrepo.RepositoryPathWorktree || inspection.Detached || inspection.Branch != request.Branch || inspection.Author != request.Author || inspection.ExistingRemote == nil || inspection.ExistingRemote.URL != canonicalURL {
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	hasCommit, err := p.hasCommit(ctx)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	if hasCommit == empty {
-		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 	}
 	if !empty {
 		trackingRemote, err := p.localConfig(ctx, "branch."+request.Branch+".remote")
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		trackingMerge, err := p.localConfig(ctx, "branch."+request.Branch+".merge")
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		if trackingRemote != "origin" || trackingMerge != "refs/heads/"+request.Branch {
-			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 		}
 		headCommit, err := p.commitAtRef(ctx, "HEAD")
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		remoteCommit, err := p.commitAtRef(ctx, "refs/remotes/origin/"+request.Branch)
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		if headCommit != remoteCommit {
-			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 		}
 	}
 	client, err := Adopt(ctx, p.runner, p.repositoryRoot, request.Branch)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	client, err = p.applyAuthentication(client, canonicalURL, request.Authentication)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
-	configuration := domain.RepositoryConfiguration{
-		State:  domain.RepositorySetupReady,
+	configuration := portyrepo.RepositoryConfiguration{
+		State:  portyrepo.RepositorySetupReady,
 		Root:   p.repositoryRoot,
 		Branch: request.Branch,
 		Author: request.Author,
-		Remote: &domain.RepositoryRemoteSummary{
+		Remote: &portyrepo.RepositoryRemoteSummary{
 			Name:     "origin",
 			URL:      canonicalURL,
 			AuthType: request.Authentication.Type,
@@ -487,78 +486,78 @@ func (p *Provisioner) activeRemoteClient(ctx context.Context, request applicatio
 	return client, configuration, nil
 }
 
-func (p *Provisioner) authenticatedClient(branch, remoteURL string, authentication domain.RepositoryAuthentication) (*Client, error) {
+func (p *Provisioner) authenticatedClient(branch, remoteURL string, authentication portyrepo.RepositoryAuthentication) (*Client, error) {
 	client, err := New(p.runner, p.repositoryRoot, branch)
 	if err != nil {
-		return nil, application.ErrInvalidRequest
+		return nil, portyrepo.ErrInvalidRequest
 	}
 	return p.applyAuthentication(client, remoteURL, authentication)
 }
 
-func (p *Provisioner) applyAuthentication(client *Client, remoteURL string, authentication domain.RepositoryAuthentication) (*Client, error) {
+func (p *Provisioner) applyAuthentication(client *Client, remoteURL string, authentication portyrepo.RepositoryAuthentication) (*Client, error) {
 	parsed, err := url.Parse(remoteURL)
 	if err != nil {
-		return nil, application.ErrInvalidRequest
+		return nil, portyrepo.ErrInvalidRequest
 	}
 	switch authentication.Type {
-	case domain.RepositoryAuthNone:
+	case portyrepo.RepositoryAuthNone:
 		if authentication.Username != "" || authentication.Secret != "" || authentication.SSHKeyPath != "" || authentication.KnownHostsPath != "" {
-			return nil, application.ErrInvalidRequest
+			return nil, portyrepo.ErrInvalidRequest
 		}
 		return client, nil
-	case domain.RepositoryAuthHTTPS:
+	case portyrepo.RepositoryAuthHTTPS:
 		if parsed.Scheme != "https" || authentication.SSHKeyPath != "" || authentication.KnownHostsPath != "" {
-			return nil, application.ErrInvalidRequest
+			return nil, portyrepo.ErrInvalidRequest
 		}
 		authenticated, err := client.WithHTTPSCredentials(p.executable, authentication.Username, authentication.Secret)
 		if err != nil {
-			return nil, application.ErrInvalidRequest
+			return nil, portyrepo.ErrInvalidRequest
 		}
 		return authenticated, nil
-	case domain.RepositoryAuthSSH:
+	case portyrepo.RepositoryAuthSSH:
 		if parsed.Scheme != "ssh" || authentication.Username != "" || authentication.Secret != "" {
-			return nil, application.ErrInvalidRequest
+			return nil, portyrepo.ErrInvalidRequest
 		}
 		if filepath.Clean(authentication.SSHKeyPath) != p.sshKeyPath || filepath.Clean(authentication.KnownHostsPath) != p.knownHostsPath {
-			return nil, application.ErrSSHMaterialUnavailable
+			return nil, portyrepo.ErrSSHMaterialUnavailable
 		}
 		authenticated, err := client.WithSSHCredentials(p.executable, p.sshKeyPath, p.knownHostsPath)
 		if err != nil {
-			return nil, application.ErrSSHMaterialUnavailable
+			return nil, portyrepo.ErrSSHMaterialUnavailable
 		}
 		return authenticated, nil
 	default:
-		return nil, application.ErrInvalidRequest
+		return nil, portyrepo.ErrInvalidRequest
 	}
 }
 
-func (p *Provisioner) ConfigureRemote(ctx context.Context, request application.RepositoryRemoteProvisionRequest, configuration domain.RepositoryConfiguration) (application.GitRepository, domain.RepositoryConfiguration, error) {
-	if configuration.State != domain.RepositorySetupReady || configuration.Root != p.repositoryRoot || configuration.Branch != request.Branch || ValidateRemoteURL(request.RemoteURL) != nil || ValidateBranch(request.Branch) != nil {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidRequest
+func (p *Provisioner) ConfigureRemote(ctx context.Context, request portyrepo.RepositoryRemoteProvisionRequest, configuration portyrepo.RepositoryConfiguration) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
+	if configuration.State != portyrepo.RepositorySetupReady || configuration.Root != p.repositoryRoot || configuration.Branch != request.Branch || ValidateRemoteURL(request.RemoteURL) != nil || ValidateBranch(request.Branch) != nil {
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidRequest
 	}
 	inspection, err := p.InspectPath(ctx)
-	if err != nil || inspection.State != domain.RepositoryPathWorktree || inspection.Detached || inspection.Branch != request.Branch {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	if err != nil || inspection.State != portyrepo.RepositoryPathWorktree || inspection.Detached || inspection.Branch != request.Branch {
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	if inspection.ExistingRemote != nil && !request.ReplaceExisting &&
 		(configuration.Remote == nil || !configuration.Remote.Managed || configuration.Remote.Name != "origin" || configuration.Remote.URL != inspection.ExistingRemote.URL) {
-		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteConflict
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryRemoteConflict
 	}
 	remotes, err := p.git(ctx, "remote")
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	for _, remote := range strings.Fields(remotes.Output) {
 		if remote == "porty-candidate" {
-			return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteConflict
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryRemoteConflict
 		}
 	}
 	remoteInspection, err := p.InspectRemote(ctx, request.RemoteURL, request.Authentication)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	if _, err := p.git(ctx, "remote", "add", "porty-candidate", remoteInspection.RemoteURL); err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	candidatePresent := true
 	defer func() {
@@ -575,51 +574,51 @@ func (p *Provisioner) ConfigureRemote(ctx context.Context, request application.R
 	if selectedAdvertised {
 		client, err := p.authenticatedClient(request.Branch, remoteInspection.RemoteURL, request.Authentication)
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		if err := client.validateAuthentication(); err != nil {
-			return nil, domain.RepositoryConfiguration{}, application.ErrSSHMaterialUnavailable
+			return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrSSHMaterialUnavailable
 		}
 		fetchCtx, cancel := context.WithTimeout(ctx, remoteFetchTimeout)
 		result, fetchErr := runAtRepository(fetchCtx, boundedRunner{runner: p.runner, maxOutput: remoteFetchMaxOutput}, p.repositoryRoot, client.redact, client.env, "fetch", "--no-tags", "porty-candidate", "refs/heads/"+request.Branch+":refs/remotes/porty-candidate/"+request.Branch)
 		cancel()
 		if fetchErr != nil {
-			return nil, domain.RepositoryConfiguration{}, classifyRemoteFailure(result.Output)
+			return nil, portyrepo.RepositoryConfiguration{}, classifyRemoteFailure(result.Output)
 		}
 		hasCommit, err := p.hasCommit(ctx)
 		if err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 		candidateRef := "refs/remotes/porty-candidate/" + request.Branch
 		if hasCommit {
 			result, err := p.git(ctx, "merge-base", "HEAD", candidateRef)
 			if err != nil {
 				if result.ExitCode != 1 {
-					return nil, domain.RepositoryConfiguration{}, err
+					return nil, portyrepo.RepositoryConfiguration{}, err
 				}
-				return nil, domain.RepositoryConfiguration{}, application.ErrUnrelatedHistory
+				return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrUnrelatedHistory
 			}
 			if strings.TrimSpace(result.Output) == "" {
-				return nil, domain.RepositoryConfiguration{}, application.ErrUnrelatedHistory
+				return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrUnrelatedHistory
 			}
 		} else {
 			status, err := p.git(ctx, "status", "--porcelain=v1", "-z")
 			if err != nil {
-				return nil, domain.RepositoryConfiguration{}, err
+				return nil, portyrepo.RepositoryConfiguration{}, err
 			}
 			if status.Output != "" {
-				return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryPathNotEmpty
+				return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryPathNotEmpty
 			}
 			checkoutCtx, cancel := context.WithTimeout(ctx, remoteCheckoutTimeout)
 			_, err = runAtRepository(checkoutCtx, boundedRunner{runner: p.runner, maxOutput: remoteCheckoutMaxOutput}, p.repositoryRoot, nil, nil, "checkout", "-B", request.Branch, "--track", "porty-candidate/"+request.Branch)
 			cancel()
 			if err != nil {
-				return nil, domain.RepositoryConfiguration{}, err
+				return nil, portyrepo.RepositoryConfiguration{}, err
 			}
 		}
 	}
 	if _, err = p.git(ctx, "remote", "remove", "porty-candidate"); err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	candidatePresent = false
 	if inspection.ExistingRemote == nil {
@@ -628,7 +627,7 @@ func (p *Provisioner) ConfigureRemote(ctx context.Context, request application.R
 		_, err = p.git(ctx, "remote", "set-url", "origin", remoteInspection.RemoteURL)
 	}
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	if selectedAdvertised {
 		_, err = p.git(ctx, "config", "--local", "branch."+request.Branch+".remote", "origin")
@@ -637,62 +636,62 @@ func (p *Provisioner) ConfigureRemote(ctx context.Context, request application.R
 		}
 	}
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	client, err := p.authenticatedClient(request.Branch, remoteInspection.RemoteURL, request.Authentication)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, err
+		return nil, portyrepo.RepositoryConfiguration{}, err
 	}
 	updated := configuration
-	updated.Remote = &domain.RepositoryRemoteSummary{Name: "origin", URL: remoteInspection.RemoteURL, AuthType: request.Authentication.Type, Managed: true}
+	updated.Remote = &portyrepo.RepositoryRemoteSummary{Name: "origin", URL: remoteInspection.RemoteURL, AuthType: request.Authentication.Type, Managed: true}
 	return client, updated, nil
 }
 
-func (p *Provisioner) RemoveRemote(ctx context.Context, configuration domain.RepositoryConfiguration) (application.GitRepository, domain.RepositoryConfiguration, error) {
-	if configuration.State != domain.RepositorySetupReady || configuration.Root != p.repositoryRoot || configuration.Remote == nil || !configuration.Remote.Managed || configuration.Remote.Name != "origin" {
-		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteUnavailable
+func (p *Provisioner) RemoveRemote(ctx context.Context, configuration portyrepo.RepositoryConfiguration) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
+	if configuration.State != portyrepo.RepositorySetupReady || configuration.Root != p.repositoryRoot || configuration.Remote == nil || !configuration.Remote.Managed || configuration.Remote.Name != "origin" {
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryRemoteUnavailable
 	}
 	inspection, err := p.InspectPath(ctx)
-	if err != nil || inspection.State != domain.RepositoryPathWorktree {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+	if err != nil || inspection.State != portyrepo.RepositoryPathWorktree {
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	if inspection.ExistingRemote != nil && inspection.ExistingRemote.URL != configuration.Remote.URL {
-		return nil, domain.RepositoryConfiguration{}, application.ErrRepositoryRemoteConflict
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrRepositoryRemoteConflict
 	}
 	if inspection.ExistingRemote != nil {
 		if _, err := p.git(ctx, "remote", "remove", "origin"); err != nil {
-			return nil, domain.RepositoryConfiguration{}, err
+			return nil, portyrepo.RepositoryConfiguration{}, err
 		}
 	}
 	client, err := Adopt(ctx, p.runner, p.repositoryRoot, configuration.Branch)
 	if err != nil {
-		return nil, domain.RepositoryConfiguration{}, application.ErrInvalidWorktree
+		return nil, portyrepo.RepositoryConfiguration{}, portyrepo.ErrInvalidWorktree
 	}
 	updated := configuration
 	updated.Remote = nil
 	return client, updated, nil
 }
 
-func (p *Provisioner) Open(ctx context.Context, configuration domain.RepositoryConfiguration, authentication domain.RepositoryAuthentication) (application.GitRepository, error) {
-	if configuration.State != domain.RepositorySetupReady || configuration.Root != p.repositoryRoot || ValidateBranch(configuration.Branch) != nil {
-		return nil, application.ErrInvalidWorktree
+func (p *Provisioner) Open(ctx context.Context, configuration portyrepo.RepositoryConfiguration, authentication portyrepo.RepositoryAuthentication) (portyrepo.GitRepository, error) {
+	if configuration.State != portyrepo.RepositorySetupReady || configuration.Root != p.repositoryRoot || ValidateBranch(configuration.Branch) != nil {
+		return nil, portyrepo.ErrInvalidWorktree
 	}
 	inspection, err := p.InspectPath(ctx)
-	if err != nil || inspection.State != domain.RepositoryPathWorktree || inspection.Detached || inspection.Branch != configuration.Branch || inspection.Author != configuration.Author {
-		return nil, application.ErrInvalidWorktree
+	if err != nil || inspection.State != portyrepo.RepositoryPathWorktree || inspection.Detached || inspection.Branch != configuration.Branch || inspection.Author != configuration.Author {
+		return nil, portyrepo.ErrInvalidWorktree
 	}
 	remoteURL := ""
 	if configuration.Remote != nil {
 		if !configuration.Remote.Managed || configuration.Remote.Name != "origin" || inspection.ExistingRemote == nil || inspection.ExistingRemote.URL != configuration.Remote.URL || configuration.Remote.AuthType != authentication.Type {
-			return nil, application.ErrInvalidWorktree
+			return nil, portyrepo.ErrInvalidWorktree
 		}
 		remoteURL = configuration.Remote.URL
 	} else {
-		authentication = domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}
+		authentication = portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}
 	}
 	client, err := Adopt(ctx, p.runner, p.repositoryRoot, configuration.Branch)
 	if err != nil {
-		return nil, application.ErrInvalidWorktree
+		return nil, portyrepo.ErrInvalidWorktree
 	}
 	client, err = p.applyAuthentication(client, remoteURL, authentication)
 	if err != nil {
@@ -741,7 +740,7 @@ func (p *Provisioner) newRepositoryAttempt() (*repositoryAttempt, error) {
 		return nil, err
 	}
 	if !repositoryInfo.IsDir() || repositoryInfo.Mode()&os.ModeSymlink != 0 {
-		return nil, application.ErrInvalidWorktree
+		return nil, portyrepo.ErrInvalidWorktree
 	}
 	repositoryRoot, err := dataRoot.OpenRoot(repositoryDirectoryName)
 	if err != nil {
@@ -812,7 +811,7 @@ func reserveGitDirectory(root gitDirectoryRoot) (*os.Root, os.FileInfo, error) {
 		return nil, nil, err
 	}
 	if !os.SameFile(info, publishedInfo) {
-		return nil, nil, application.ErrInvalidWorktree
+		return nil, nil, portyrepo.ErrInvalidWorktree
 	}
 	prepared = true
 	return gitRoot, info, nil
@@ -824,10 +823,10 @@ func (a *repositoryAttempt) captureInitializedRepository() error {
 		return err
 	}
 	if !repositoryInfo.IsDir() || repositoryInfo.Mode()&os.ModeSymlink != 0 {
-		return application.ErrInvalidWorktree
+		return portyrepo.ErrInvalidWorktree
 	}
 	if a.repositoryInfo != nil && !os.SameFile(a.repositoryInfo, repositoryInfo) {
-		return application.ErrInvalidWorktree
+		return portyrepo.ErrInvalidWorktree
 	}
 	if a.repositoryRoot == nil {
 		a.repositoryRoot, err = a.dataRoot.OpenRoot(repositoryDirectoryName)
@@ -841,7 +840,7 @@ func (a *repositoryAttempt) captureInitializedRepository() error {
 		return err
 	}
 	if !gitInfo.IsDir() || gitInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(a.gitInfo, gitInfo) {
-		return application.ErrInvalidWorktree
+		return portyrepo.ErrInvalidWorktree
 	}
 	return nil
 }
@@ -962,8 +961,8 @@ func (r boundedRunner) Run(ctx context.Context, request portyprocess.Request) (p
 	return r.runner.Run(ctx, request)
 }
 
-func parseRemoteInspection(output string) (domain.RemoteInspection, error) {
-	inspection := domain.RemoteInspection{Branches: []string{}}
+func parseRemoteInspection(output string) (portyrepo.RemoteInspection, error) {
+	inspection := portyrepo.RemoteInspection{Branches: []string{}}
 	if output == "" {
 		inspection.Empty = true
 		inspection.Suggested = "main"
@@ -975,34 +974,34 @@ func parseRemoteInspection(output string) (domain.RemoteInspection, error) {
 	symbolicHeadSeen := false
 	for _, line := range lines {
 		if line == "" || strings.Count(line, "\t") != 1 {
-			return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+			return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 		}
 		value, reference, _ := strings.Cut(line, "\t")
 		if strings.HasPrefix(value, "ref: ") {
 			if symbolicHeadSeen || reference != "HEAD" {
-				return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+				return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 			}
 			branch, ok := branchFromRef(strings.TrimPrefix(value, "ref: "))
 			if !ok {
-				return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+				return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 			}
 			symbolicHeadSeen = true
 			symbolicHead = branch
 			continue
 		}
 		if !validObjectID(value) {
-			return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+			return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 		}
 		if reference == "HEAD" {
 			continue
 		}
 		branch, ok := branchFromRef(reference)
 		if !ok {
-			return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+			return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 		}
 		branches[branch] = struct{}{}
 		if len(branches) > remoteInspectMaxBranches {
-			return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+			return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 		}
 	}
 	for branch := range branches {
@@ -1010,7 +1009,7 @@ func parseRemoteInspection(output string) (domain.RemoteInspection, error) {
 	}
 	sort.Strings(inspection.Branches)
 	if len(inspection.Branches) == 0 {
-		return domain.RemoteInspection{}, application.ErrRemoteUnavailable
+		return portyrepo.RemoteInspection{}, portyrepo.ErrRemoteUnavailable
 	}
 	if _, advertised := branches[symbolicHead]; advertised {
 		inspection.DefaultBranch = symbolicHead
@@ -1056,10 +1055,10 @@ func classifyRemoteFailure(output string) error {
 		"http 403",
 	} {
 		if strings.Contains(lower, marker) {
-			return application.ErrRemoteAuthenticationFailed
+			return portyrepo.ErrRemoteAuthenticationFailed
 		}
 	}
-	return application.ErrRemoteUnavailable
+	return portyrepo.ErrRemoteUnavailable
 }
 
 func (p *Provisioner) fixedRootIsSafe() bool {
@@ -1084,7 +1083,7 @@ func (p *Provisioner) validateSafety(ctx context.Context) error {
 	return nil
 }
 
-func (p *Provisioner) writeIdentity(ctx context.Context, author domain.GitIdentity) error {
+func (p *Provisioner) writeIdentity(ctx context.Context, author portyrepo.GitIdentity) error {
 	if _, err := p.git(ctx, "config", "--local", "user.name", author.Name); err != nil {
 		return err
 	}
@@ -1132,7 +1131,7 @@ func (p *Provisioner) commitAtRef(ctx context.Context, reference string) (string
 	}
 	commit := strings.TrimSpace(result.Output)
 	if !validObjectID(commit) {
-		return "", application.ErrInvalidWorktree
+		return "", portyrepo.ErrInvalidWorktree
 	}
 	return commit, nil
 }
@@ -1152,7 +1151,7 @@ func (p *Provisioner) remoteWorktreePaths(ctx context.Context, branch string) ([
 		return nil, err
 	}
 	if result.Truncated {
-		return nil, application.ErrInvalidWorktree
+		return nil, portyrepo.ErrInvalidWorktree
 	}
 	return parseRemoteWorktreePaths(result.Output)
 }
@@ -1162,17 +1161,17 @@ func parseRemoteWorktreePaths(output string) ([]string, error) {
 		return []string{}, nil
 	}
 	if !strings.HasSuffix(output, "\x00") {
-		return nil, application.ErrInvalidWorktree
+		return nil, portyrepo.ErrInvalidWorktree
 	}
 	records := strings.Split(strings.TrimSuffix(output, "\x00"), "\x00")
 	paths := make([]string, 0, len(records))
 	seen := make(map[string]struct{}, len(records))
 	for _, name := range records {
 		if !fs.ValidPath(name) || strings.Contains(name, "\\") || containsGitMetadataComponent(name) {
-			return nil, application.ErrInvalidWorktree
+			return nil, portyrepo.ErrInvalidWorktree
 		}
 		if _, duplicate := seen[name]; duplicate {
-			return nil, application.ErrInvalidWorktree
+			return nil, portyrepo.ErrInvalidWorktree
 		}
 		seen[name] = struct{}{}
 		paths = append(paths, name)
@@ -1193,11 +1192,11 @@ func (p *Provisioner) git(ctx context.Context, arguments ...string) (portyproces
 	return runAtRepository(ctx, p.runner, p.repositoryRoot, nil, nil, arguments...)
 }
 
-func invalidPath(reason string) domain.RepositoryPathInspection {
-	return domain.RepositoryPathInspection{State: domain.RepositoryPathInvalid, Reason: reason}
+func invalidPath(reason string) portyrepo.RepositoryPathInspection {
+	return portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathInvalid, Reason: reason}
 }
 
-func validIdentity(identity domain.GitIdentity) bool {
+func validIdentity(identity portyrepo.GitIdentity) bool {
 	if strings.TrimSpace(identity.Name) == "" || strings.TrimSpace(identity.Email) == "" {
 		return false
 	}

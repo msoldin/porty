@@ -1,36 +1,36 @@
-package application_test
+package repository_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"sync"
 	"testing"
 
 	"github.com/msoldin/porty/internal/application"
-	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestRepositorySetupStatusOffersModesForEmptyPath(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
-	provisioner := &fakeRepositoryProvisioner{path: domain.RepositoryPathInspection{State: domain.RepositoryPathEmpty}}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
+	provisioner := &fakeRepositoryProvisioner{path: portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathEmpty}}
 	service, _ := newRepositorySetupService(store, provisioner)
 
 	status, err := service.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertModeAvailability(t, status.Modes, domain.RepositorySetupInit, true)
-	assertModeAvailability(t, status.Modes, domain.RepositorySetupRemote, true)
-	assertModeAvailability(t, status.Modes, domain.RepositorySetupAdopt, false)
+	assertModeAvailability(t, status.Modes, portyrepo.RepositorySetupInit, true)
+	assertModeAvailability(t, status.Modes, portyrepo.RepositorySetupRemote, true)
+	assertModeAvailability(t, status.Modes, portyrepo.RepositorySetupAdopt, false)
 }
 
 func TestRepositorySetupStatusOffersOnlyAdoptForSafeWorktree(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
-	provisioner := &fakeRepositoryProvisioner{path: domain.RepositoryPathInspection{
-		State:  domain.RepositoryPathWorktree,
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
+	provisioner := &fakeRepositoryProvisioner{path: portyrepo.RepositoryPathInspection{
+		State:  portyrepo.RepositoryPathWorktree,
 		Branch: "release/v1",
-		Author: domain.GitIdentity{Name: "Ada", Email: "ada@example.com"},
+		Author: portyrepo.GitIdentity{Name: "Ada", Email: "ada@example.com"},
 	}}
 	service, _ := newRepositorySetupService(store, provisioner)
 
@@ -38,26 +38,26 @@ func TestRepositorySetupStatusOffersOnlyAdoptForSafeWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertModeAvailability(t, status.Modes, domain.RepositorySetupInit, false)
-	assertModeAvailability(t, status.Modes, domain.RepositorySetupRemote, false)
-	assertModeAvailability(t, status.Modes, domain.RepositorySetupAdopt, true)
+	assertModeAvailability(t, status.Modes, portyrepo.RepositorySetupInit, false)
+	assertModeAvailability(t, status.Modes, portyrepo.RepositorySetupRemote, false)
+	assertModeAvailability(t, status.Modes, portyrepo.RepositorySetupAdopt, true)
 	if status.Branch != "release/v1" || status.Author.Name != "Ada" {
 		t.Fatalf("detected status = %#v", status)
 	}
 }
 
 func TestRepositorySetupRejectsInvalidIdentityBeforeProvisioning(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
 	provisioner := &fakeRepositoryProvisioner{}
 	service, _ := newRepositorySetupService(store, provisioner)
 
-	_, err := service.Setup(context.Background(), domain.RepositorySetupRequest{
-		Mode:   domain.RepositorySetupInit,
+	_, err := service.Setup(context.Background(), portyrepo.RepositorySetupRequest{
+		Mode:   portyrepo.RepositorySetupInit,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Ada\nInjected", Email: "ada@example.com"},
+		Author: portyrepo.GitIdentity{Name: "Ada\nInjected", Email: "ada@example.com"},
 	})
-	if !errors.Is(err, application.ErrInvalidRequest) {
-		t.Fatalf("Setup() error = %v, want ErrInvalidRequest", err)
+	if !errors.Is(err, portyrepo.ErrInvalidRequest) {
+		t.Fatalf("Setup() error = %v, want portyrepo.ErrInvalidRequest", err)
 	}
 	if provisioner.provisionCalls != 0 {
 		t.Fatalf("Provision() calls = %d, want 0", provisioner.provisionCalls)
@@ -65,56 +65,56 @@ func TestRepositorySetupRejectsInvalidIdentityBeforeProvisioning(t *testing.T) {
 }
 
 func TestRepositorySetupInitializesLocalRepositoryWithoutRemote(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
 	provisioner := &fakeRepositoryProvisioner{provisionConfiguration: readyConfiguration("main", nil)}
 	service, activated := newRepositorySetupService(store, provisioner)
 
-	status, err := service.Setup(context.Background(), domain.RepositorySetupRequest{
-		Mode:   domain.RepositorySetupInit,
+	status, err := service.Setup(context.Background(), portyrepo.RepositorySetupRequest{
+		Mode:   portyrepo.RepositorySetupInit,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: " Porty ", Email: " porty@localhost "},
+		Author: portyrepo.GitIdentity{Name: " Porty ", Email: " porty@localhost "},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	request := provisioner.lastProvision
-	if request.Mode != domain.RepositorySetupInit || request.RemoteURL != "" || request.Authentication.Type != domain.RepositoryAuthNone {
+	if request.Mode != portyrepo.RepositorySetupInit || request.RemoteURL != "" || request.Authentication.Type != portyrepo.RepositoryAuthNone {
 		t.Fatalf("Provision() request = %#v", request)
 	}
-	if request.Author != (domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}) {
+	if request.Author != (portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}) {
 		t.Fatalf("Provision() author = %#v", request.Author)
 	}
-	if store.savedConfiguration.State != domain.RepositorySetupReady || store.savedConfiguration.Remote != nil {
+	if store.savedConfiguration.State != portyrepo.RepositorySetupReady || store.savedConfiguration.Remote != nil {
 		t.Fatalf("saved configuration = %#v", store.savedConfiguration)
 	}
 	if got, _ := activated.Head(context.Background()); got != "configured" {
 		t.Fatalf("active repository head = %q, want configured", got)
 	}
-	if status.ManagedRemote != nil || status.State != domain.RepositorySetupReady {
+	if status.ManagedRemote != nil || status.State != portyrepo.RepositorySetupReady {
 		t.Fatalf("status = %#v", status)
 	}
 }
 
 func TestRepositorySetupImportsInspectedRemoteBranch(t *testing.T) {
-	remote := &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/team/repo.git", AuthType: domain.RepositoryAuthHTTPS, Managed: true}
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	remote := &portyrepo.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/team/repo.git", AuthType: portyrepo.RepositoryAuthHTTPS, Managed: true}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
 	provisioner := &fakeRepositoryProvisioner{
-		inspection:             domain.RemoteInspection{RemoteURL: remote.URL, DefaultBranch: "trunk", Branches: []string{"trunk"}, Suggested: "trunk"},
+		inspection:             portyrepo.RemoteInspection{RemoteURL: remote.URL, DefaultBranch: "trunk", Branches: []string{"trunk"}, Suggested: "trunk"},
 		provisionConfiguration: readyConfiguration("trunk", remote),
 	}
 	service, _ := newRepositorySetupService(store, provisioner)
-	input := domain.RepositoryRemoteInput{URL: remote.URL, Authentication: domain.RemoteAuthenticationInput{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: "token-value"}}
+	input := portyrepo.RepositoryRemoteInput{URL: remote.URL, Authentication: portyrepo.RemoteAuthenticationInput{Type: portyrepo.RepositoryAuthHTTPS, Username: "git", Secret: "token-value"}}
 
-	inspection, err := service.InspectRemote(context.Background(), domain.RemoteInspectionRequest{Remote: input})
+	inspection, err := service.InspectRemote(context.Background(), portyrepo.RemoteInspectionRequest{Remote: input})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if inspection.Suggested != "trunk" {
 		t.Fatalf("InspectRemote() suggested = %q", inspection.Suggested)
 	}
-	status, err := service.Setup(context.Background(), domain.RepositorySetupRequest{
-		Mode: domain.RepositorySetupRemote, Branch: inspection.Suggested,
-		Author: domain.GitIdentity{Name: "Ada", Email: "ada@example.com"}, Remote: &input,
+	status, err := service.Setup(context.Background(), portyrepo.RepositorySetupRequest{
+		Mode: portyrepo.RepositorySetupRemote, Branch: inspection.Suggested,
+		Author: portyrepo.GitIdentity{Name: "Ada", Email: "ada@example.com"}, Remote: &input,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +129,7 @@ func TestRepositorySetupImportsInspectedRemoteBranch(t *testing.T) {
 
 func TestRepositorySetupDoesNotReplaceLiveClientWhenPersistenceFails(t *testing.T) {
 	saveErr := errors.New("database unavailable")
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}, saveErr: saveErr}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}, saveErr: saveErr}
 	provisioner := &fakeRepositoryProvisioner{provisionConfiguration: readyConfiguration("main", nil)}
 	service, activated := newRepositorySetupService(store, provisioner)
 
@@ -143,7 +143,7 @@ func TestRepositorySetupDoesNotReplaceLiveClientWhenPersistenceFails(t *testing.
 }
 
 func TestRepositorySetupRetryRecoversAfterProvisioningSucceeded(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}, failSaves: 1}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}, failSaves: 1}
 	provisioner := &fakeRepositoryProvisioner{provisionConfiguration: readyConfiguration("main", nil), requireMatchingRetry: true}
 	service, _ := newRepositorySetupService(store, provisioner)
 
@@ -159,7 +159,7 @@ func TestRepositorySetupRetryRecoversAfterProvisioningSucceeded(t *testing.T) {
 }
 
 func TestRepositorySetupSerializesConcurrentMutations(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	provisioner := &fakeRepositoryProvisioner{provisionConfiguration: readyConfiguration("main", nil), entered: entered, release: release}
@@ -185,9 +185,9 @@ func TestRepositorySetupSerializesConcurrentMutations(t *testing.T) {
 }
 
 func TestRepositorySetupReconcilesRegisteredExistingRepository(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
 	provisioner := &fakeRepositoryProvisioner{
-		path:                   domain.RepositoryPathInspection{State: domain.RepositoryPathWorktree, Branch: "main"},
+		path:                   portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathWorktree, Branch: "main"},
 		provisionConfiguration: readyConfiguration("main", nil),
 	}
 	service, activated := newRepositorySetupService(store, provisioner)
@@ -195,13 +195,13 @@ func TestRepositorySetupReconcilesRegisteredExistingRepository(t *testing.T) {
 	if err := service.Reconcile(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if provisioner.lastProvision.Mode != domain.RepositorySetupAdopt {
+	if provisioner.lastProvision.Mode != portyrepo.RepositorySetupAdopt {
 		t.Fatalf("Provision() mode = %q, want adopt", provisioner.lastProvision.Mode)
 	}
-	if provisioner.lastProvision.Author != (domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}) {
+	if provisioner.lastProvision.Author != (portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}) {
 		t.Fatalf("Provision() author = %#v, want defaults", provisioner.lastProvision.Author)
 	}
-	if store.savedConfiguration.State != domain.RepositorySetupReady {
+	if store.savedConfiguration.State != portyrepo.RepositorySetupReady {
 		t.Fatalf("saved state = %q, want ready", store.savedConfiguration.State)
 	}
 	if got, _ := activated.Head(context.Background()); got != "configured" {
@@ -211,11 +211,11 @@ func TestRepositorySetupReconcilesRegisteredExistingRepository(t *testing.T) {
 
 func TestRepositorySetupReadyRejectsTamperedRepository(t *testing.T) {
 	store := &fakeRepositorySetupStore{configuration: readyConfiguration("main", nil)}
-	provisioner := &fakeRepositoryProvisioner{openErr: application.ErrInvalidWorktree}
+	provisioner := &fakeRepositoryProvisioner{openErr: portyrepo.ErrInvalidWorktree}
 	service, activated := newRepositorySetupService(store, provisioner)
 
-	if err := service.Reconcile(context.Background()); !errors.Is(err, application.ErrInvalidWorktree) {
-		t.Fatalf("Reconcile() error = %v, want ErrInvalidWorktree", err)
+	if err := service.Reconcile(context.Background()); !errors.Is(err, portyrepo.ErrInvalidWorktree) {
+		t.Fatalf("Reconcile() error = %v, want portyrepo.ErrInvalidWorktree", err)
 	}
 	if got, _ := activated.Head(context.Background()); got != "original" {
 		t.Fatalf("active repository head = %q, want original", got)
@@ -223,8 +223,8 @@ func TestRepositorySetupReadyRejectsTamperedRepository(t *testing.T) {
 }
 
 func TestRepositorySetupRemoveRemoteKeepsRepositoryReady(t *testing.T) {
-	remote := &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: domain.RepositoryAuthHTTPS, Managed: true}
-	store := &fakeRepositorySetupStore{configuration: readyConfiguration("main", remote), authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: "secret"}}
+	remote := &portyrepo.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: portyrepo.RepositoryAuthHTTPS, Managed: true}
+	store := &fakeRepositorySetupStore{configuration: readyConfiguration("main", remote), authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthHTTPS, Username: "git", Secret: "secret"}}
 	provisioner := &fakeRepositoryProvisioner{provisionConfiguration: readyConfiguration("main", nil)}
 	service, repository := newRepositorySetupService(store, provisioner)
 
@@ -232,31 +232,31 @@ func TestRepositorySetupRemoveRemoteKeepsRepositoryReady(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != domain.RepositorySetupReady || status.Required || status.ManagedRemote != nil {
+	if status.State != portyrepo.RepositorySetupReady || status.Required || status.ManagedRemote != nil {
 		t.Fatalf("status = %#v", status)
 	}
-	if store.savedConfiguration.State != domain.RepositorySetupReady || store.savedConfiguration.Remote != nil {
+	if store.savedConfiguration.State != portyrepo.RepositorySetupReady || store.savedConfiguration.Remote != nil {
 		t.Fatalf("saved configuration = %#v", store.savedConfiguration)
 	}
-	if store.savedAuthentication.Type != domain.RepositoryAuthNone || store.savedAuthentication.Secret != "" {
+	if store.savedAuthentication.Type != portyrepo.RepositoryAuthNone || store.savedAuthentication.Secret != "" {
 		t.Fatalf("saved authentication = %#v", store.savedAuthentication)
 	}
-	if err := repository.Fetch(context.Background()); !errors.Is(err, application.ErrRepositoryRemoteUnavailable) {
+	if err := repository.Fetch(context.Background()); !errors.Is(err, portyrepo.ErrRepositoryRemoteUnavailable) {
 		t.Fatalf("Fetch() error = %v", err)
 	}
 }
 
 func TestRepositorySetupResponseNeverContainsSecret(t *testing.T) {
-	remote := &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: domain.RepositoryAuthHTTPS, Managed: true}
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	remote := &portyrepo.RepositoryRemoteSummary{Name: "origin", URL: "https://example.com/repo.git", AuthType: portyrepo.RepositoryAuthHTTPS, Managed: true}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
 	provisioner := &fakeRepositoryProvisioner{provisionConfiguration: readyConfiguration("main", remote)}
 	service, _ := newRepositorySetupService(store, provisioner)
 	secret := "never-return-this-token"
 
-	status, err := service.Setup(context.Background(), domain.RepositorySetupRequest{
-		Mode: domain.RepositorySetupRemote, Branch: "main",
-		Author: domain.GitIdentity{Name: "Ada", Email: "ada@example.com"},
-		Remote: &domain.RepositoryRemoteInput{URL: remote.URL, Authentication: domain.RemoteAuthenticationInput{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: secret}},
+	status, err := service.Setup(context.Background(), portyrepo.RepositorySetupRequest{
+		Mode: portyrepo.RepositorySetupRemote, Branch: "main",
+		Author: portyrepo.GitIdentity{Name: "Ada", Email: "ada@example.com"},
+		Remote: &portyrepo.RepositoryRemoteInput{URL: remote.URL, Authentication: portyrepo.RemoteAuthenticationInput{Type: portyrepo.RepositoryAuthHTTPS, Username: "git", Secret: secret}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -271,14 +271,14 @@ func TestRepositorySetupResponseNeverContainsSecret(t *testing.T) {
 }
 
 func TestRepositoryAuthenticationJSONExcludesCredentials(t *testing.T) {
-	tests := map[string]domain.RepositoryAuthentication{
+	tests := map[string]portyrepo.RepositoryAuthentication{
 		"https": {
-			Type:     domain.RepositoryAuthHTTPS,
+			Type:     portyrepo.RepositoryAuthHTTPS,
 			Username: "private-user",
 			Secret:   "private-token",
 		},
 		"ssh": {
-			Type:           domain.RepositoryAuthSSH,
+			Type:           portyrepo.RepositoryAuthSSH,
 			SSHKeyPath:     "/srv/porty/ssh/private-key",
 			KnownHostsPath: "/srv/porty/ssh/private-known-hosts",
 		},
@@ -298,10 +298,10 @@ func TestRepositoryAuthenticationJSONExcludesCredentials(t *testing.T) {
 }
 
 func TestRepositorySetupStatusReportsMountedSSHMaterial(t *testing.T) {
-	store := &fakeRepositorySetupStore{configuration: domain.RepositoryConfiguration{State: domain.RepositorySetupRegistered}}
+	store := &fakeRepositorySetupStore{configuration: portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupRegistered}}
 	provisioner := &fakeRepositoryProvisioner{
-		path:      domain.RepositoryPathInspection{State: domain.RepositoryPathEmpty},
-		sshStatus: domain.SSHMaterialStatus{IdentityAvailable: true, KnownHostsAvailable: false, Usable: false},
+		path:      portyrepo.RepositoryPathInspection{State: portyrepo.RepositoryPathEmpty},
+		sshStatus: portyrepo.SSHMaterialStatus{IdentityAvailable: true, KnownHostsAvailable: false, Usable: false},
 	}
 	service, _ := newRepositorySetupService(store, provisioner)
 	status, err := service.Status(context.Background())
@@ -313,22 +313,22 @@ func TestRepositorySetupStatusReportsMountedSSHMaterial(t *testing.T) {
 	}
 }
 
-func newRepositorySetupService(store *fakeRepositorySetupStore, provisioner *fakeRepositoryProvisioner) (*application.RepositorySetupService, *application.RepositoryService) {
-	repository := application.NewRepositoryService(&setupGitRepository{head: "original"})
-	return application.NewRepositorySetupService(store, provisioner, repository, application.NewCoordinator(), application.RepositorySetupOptions{
+func newRepositorySetupService(store *fakeRepositorySetupStore, provisioner *fakeRepositoryProvisioner) (*portyrepo.RepositorySetupService, *portyrepo.RepositoryService) {
+	repository := portyrepo.NewRepositoryService(&setupGitRepository{head: "original"})
+	return portyrepo.NewRepositorySetupService(store, provisioner, repository, application.NewCoordinator(), portyrepo.RepositorySetupOptions{
 		SSHKeyPath: "/srv/porty/ssh/id", KnownHostsPath: "/srv/porty/ssh/known_hosts",
 	}), repository
 }
 
-func validLocalSetupRequest() domain.RepositorySetupRequest {
-	return domain.RepositorySetupRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}}
+func validLocalSetupRequest() portyrepo.RepositorySetupRequest {
+	return portyrepo.RepositorySetupRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}}
 }
 
-func readyConfiguration(branch string, remote *domain.RepositoryRemoteSummary) domain.RepositoryConfiguration {
-	return domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: "/srv/porty/repository", Branch: branch, Author: domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}, Remote: remote}
+func readyConfiguration(branch string, remote *portyrepo.RepositoryRemoteSummary) portyrepo.RepositoryConfiguration {
+	return portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupReady, Root: "/srv/porty/repository", Branch: branch, Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}, Remote: remote}
 }
 
-func assertModeAvailability(t *testing.T, modes []domain.RepositoryModeAvailability, mode domain.RepositorySetupMode, available bool) {
+func assertModeAvailability(t *testing.T, modes []portyrepo.RepositoryModeAvailability, mode portyrepo.RepositorySetupMode, available bool) {
 	t.Helper()
 	for _, candidate := range modes {
 		if candidate.Mode == mode {
@@ -352,22 +352,22 @@ func contains(value, substring string) bool {
 
 type fakeRepositorySetupStore struct {
 	mu                  sync.Mutex
-	configuration       domain.RepositoryConfiguration
-	authentication      domain.RepositoryAuthentication
+	configuration       portyrepo.RepositoryConfiguration
+	authentication      portyrepo.RepositoryAuthentication
 	loadErr             error
 	saveErr             error
 	failSaves           int
-	savedConfiguration  domain.RepositoryConfiguration
-	savedAuthentication domain.RepositoryAuthentication
+	savedConfiguration  portyrepo.RepositoryConfiguration
+	savedAuthentication portyrepo.RepositoryAuthentication
 }
 
-func (s *fakeRepositorySetupStore) Load(context.Context) (domain.RepositoryConfiguration, domain.RepositoryAuthentication, error) {
+func (s *fakeRepositorySetupStore) Load(context.Context) (portyrepo.RepositoryConfiguration, portyrepo.RepositoryAuthentication, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.configuration, s.authentication, s.loadErr
 }
 
-func (s *fakeRepositorySetupStore) Save(_ context.Context, configuration domain.RepositoryConfiguration, authentication domain.RepositoryAuthentication) error {
+func (s *fakeRepositorySetupStore) Save(_ context.Context, configuration portyrepo.RepositoryConfiguration, authentication portyrepo.RepositoryAuthentication) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.failSaves > 0 {
@@ -386,15 +386,15 @@ func (s *fakeRepositorySetupStore) Save(_ context.Context, configuration domain.
 
 type fakeRepositoryProvisioner struct {
 	mu                     sync.Mutex
-	path                   domain.RepositoryPathInspection
-	sshStatus              domain.SSHMaterialStatus
-	inspection             domain.RemoteInspection
-	provisionConfiguration domain.RepositoryConfiguration
+	path                   portyrepo.RepositoryPathInspection
+	sshStatus              portyrepo.SSHMaterialStatus
+	inspection             portyrepo.RemoteInspection
+	provisionConfiguration portyrepo.RepositoryConfiguration
 	provisionErr           error
 	openErr                error
 	provisionCalls         int
-	lastProvision          application.RepositoryProvisionRequest
-	firstProvision         application.RepositoryProvisionRequest
+	lastProvision          portyrepo.RepositoryProvisionRequest
+	firstProvision         portyrepo.RepositoryProvisionRequest
 	requireMatchingRetry   bool
 	active                 int
 	maxConcurrent          int
@@ -402,26 +402,26 @@ type fakeRepositoryProvisioner struct {
 	release                chan struct{}
 }
 
-func (f *fakeRepositoryProvisioner) InspectSSHMaterial() domain.SSHMaterialStatus {
+func (f *fakeRepositoryProvisioner) InspectSSHMaterial() portyrepo.SSHMaterialStatus {
 	return f.sshStatus
 }
 
-func (f *fakeRepositoryProvisioner) InspectPath(context.Context) (domain.RepositoryPathInspection, error) {
+func (f *fakeRepositoryProvisioner) InspectPath(context.Context) (portyrepo.RepositoryPathInspection, error) {
 	return f.path, nil
 }
 
-func (f *fakeRepositoryProvisioner) InspectRemote(_ context.Context, _ string, _ domain.RepositoryAuthentication) (domain.RemoteInspection, error) {
+func (f *fakeRepositoryProvisioner) InspectRemote(_ context.Context, _ string, _ portyrepo.RepositoryAuthentication) (portyrepo.RemoteInspection, error) {
 	return f.inspection, nil
 }
 
-func (f *fakeRepositoryProvisioner) Provision(_ context.Context, request application.RepositoryProvisionRequest) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (f *fakeRepositoryProvisioner) Provision(_ context.Context, request portyrepo.RepositoryProvisionRequest) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	f.mu.Lock()
 	f.provisionCalls++
 	if f.provisionCalls == 1 {
 		f.firstProvision = request
 	} else if f.requireMatchingRetry && request != f.firstProvision {
 		f.mu.Unlock()
-		return nil, domain.RepositoryConfiguration{}, errors.New("retry request did not match")
+		return nil, portyrepo.RepositoryConfiguration{}, errors.New("retry request did not match")
 	}
 	f.lastProvision = request
 	f.active++
@@ -443,15 +443,15 @@ func (f *fakeRepositoryProvisioner) Provision(_ context.Context, request applica
 	return &setupGitRepository{head: "configured"}, f.provisionConfiguration, f.provisionErr
 }
 
-func (f *fakeRepositoryProvisioner) ConfigureRemote(context.Context, application.RepositoryRemoteProvisionRequest, domain.RepositoryConfiguration) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (f *fakeRepositoryProvisioner) ConfigureRemote(context.Context, portyrepo.RepositoryRemoteProvisionRequest, portyrepo.RepositoryConfiguration) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	return &setupGitRepository{head: "configured"}, f.provisionConfiguration, nil
 }
 
-func (f *fakeRepositoryProvisioner) RemoveRemote(context.Context, domain.RepositoryConfiguration) (application.GitRepository, domain.RepositoryConfiguration, error) {
+func (f *fakeRepositoryProvisioner) RemoveRemote(context.Context, portyrepo.RepositoryConfiguration) (portyrepo.GitRepository, portyrepo.RepositoryConfiguration, error) {
 	return &setupGitRepository{head: "configured"}, f.provisionConfiguration, nil
 }
 
-func (f *fakeRepositoryProvisioner) Open(context.Context, domain.RepositoryConfiguration, domain.RepositoryAuthentication) (application.GitRepository, error) {
+func (f *fakeRepositoryProvisioner) Open(context.Context, portyrepo.RepositoryConfiguration, portyrepo.RepositoryAuthentication) (portyrepo.GitRepository, error) {
 	if f.openErr != nil {
 		return nil, f.openErr
 	}
@@ -460,15 +460,17 @@ func (f *fakeRepositoryProvisioner) Open(context.Context, domain.RepositoryConfi
 
 type setupGitRepository struct{ head string }
 
-func (*setupGitRepository) Status(context.Context) (domain.GitStatus, error) {
-	return domain.GitStatus{}, nil
+func (*setupGitRepository) Status(context.Context) (portyrepo.GitStatus, error) {
+	return portyrepo.GitStatus{}, nil
 }
 func (g *setupGitRepository) Head(context.Context) (string, error)       { return g.head, nil }
 func (*setupGitRepository) Diff(context.Context, string) (string, error) { return "", nil }
 func (*setupGitRepository) Commit(context.Context, string, string) (string, error) {
 	return "", nil
 }
-func (*setupGitRepository) History(context.Context, int) ([]domain.GitCommit, error) { return nil, nil }
-func (*setupGitRepository) Fetch(context.Context) error                              { return nil }
-func (*setupGitRepository) PullFastForward(context.Context) error                    { return nil }
-func (*setupGitRepository) Push(context.Context) error                               { return nil }
+func (*setupGitRepository) History(context.Context, int) ([]portyrepo.GitCommit, error) {
+	return nil, nil
+}
+func (*setupGitRepository) Fetch(context.Context) error           { return nil }
+func (*setupGitRepository) PullFastForward(context.Context) error { return nil }
+func (*setupGitRepository) Push(context.Context) error            { return nil }

@@ -1,18 +1,16 @@
-package application
+package repository
 
 import (
 	"context"
 	"sync"
-
-	"github.com/msoldin/porty/internal/domain"
 )
 
 type GitRepository interface {
-	Status(context.Context) (domain.GitStatus, error)
+	Status(context.Context) (GitStatus, error)
 	Head(context.Context) (string, error)
 	Diff(context.Context, string) (string, error)
 	Commit(context.Context, string, string) (string, error)
-	History(context.Context, int) ([]domain.GitCommit, error)
+	History(context.Context, int) ([]GitCommit, error)
 	Fetch(context.Context) error
 	PullFastForward(context.Context) error
 	Push(context.Context) error
@@ -28,7 +26,7 @@ func NewRepositoryService(git GitRepository) *RepositoryService {
 	return &RepositoryService{git: git, remoteEnabled: true}
 }
 
-func (s *RepositoryService) Status(ctx context.Context) (domain.GitStatus, error) {
+func (s *RepositoryService) Status(ctx context.Context) (GitStatus, error) {
 	git := s.current()
 	return git.Status(ctx)
 }
@@ -43,14 +41,14 @@ func (s *RepositoryService) Commit(ctx context.Context, stack, message string) (
 	return s.current().Commit(ctx, stack, message)
 }
 
-func (s *RepositoryService) History(ctx context.Context, limit int) ([]domain.GitCommit, error) {
+func (s *RepositoryService) History(ctx context.Context, limit int) ([]GitCommit, error) {
 	return s.current().History(ctx, limit)
 }
 
-func (s *RepositoryService) HistoryPage(ctx context.Context, limit, offset int) ([]domain.GitCommit, error) {
+func (s *RepositoryService) HistoryPage(ctx context.Context, limit, offset int) ([]GitCommit, error) {
 	git := s.current()
 	if paged, ok := git.(interface {
-		HistoryPage(context.Context, int, int) ([]domain.GitCommit, error)
+		HistoryPage(context.Context, int, int) ([]GitCommit, error)
 	}); ok {
 		return paged.HistoryPage(ctx, limit, offset)
 	}

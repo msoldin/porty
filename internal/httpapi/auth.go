@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"io"
 	"net"
 	"net/http"
@@ -68,8 +69,8 @@ type EnvironmentAPI interface {
 }
 
 type RepositoryAPI interface {
-	RepositoryStatus(context.Context) (domain.GitStatus, error)
-	RepositoryHistory(context.Context, int) ([]domain.GitCommit, error)
+	RepositoryStatus(context.Context) (portyrepo.GitStatus, error)
+	RepositoryHistory(context.Context, int) ([]portyrepo.GitCommit, error)
 	StackDiff(context.Context, domain.StackID) (string, error)
 	CommitStack(context.Context, domain.StackID, string) (string, error)
 }
@@ -89,11 +90,11 @@ type DeploymentQueryAPI interface {
 }
 
 type RepositorySetupAPI interface {
-	Status(context.Context) (domain.RepositorySetupStatus, error)
-	InspectRemote(context.Context, domain.RemoteInspectionRequest) (domain.RemoteInspection, error)
-	Setup(context.Context, domain.RepositorySetupRequest) (domain.RepositorySetupStatus, error)
-	ConfigureRemote(context.Context, domain.RepositoryRemoteRequest) (domain.RepositorySetupStatus, error)
-	RemoveRemote(context.Context) (domain.RepositorySetupStatus, error)
+	Status(context.Context) (portyrepo.RepositorySetupStatus, error)
+	InspectRemote(context.Context, portyrepo.RemoteInspectionRequest) (portyrepo.RemoteInspection, error)
+	Setup(context.Context, portyrepo.RepositorySetupRequest) (portyrepo.RepositorySetupStatus, error)
+	ConfigureRemote(context.Context, portyrepo.RepositoryRemoteRequest) (portyrepo.RepositorySetupStatus, error)
+	RemoveRemote(context.Context) (portyrepo.RepositorySetupStatus, error)
 	Ready(context.Context) (bool, error)
 }
 

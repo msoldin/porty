@@ -1,18 +1,16 @@
-package application_test
+package repository_test
 
 import (
 	"context"
 	"errors"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"reflect"
 	"testing"
-
-	"github.com/msoldin/porty/internal/application"
-	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestRepositoryServiceKeepsCommitStackScopedAndPullFastForwardOnly(t *testing.T) {
 	git := &fakeGitRepository{}
-	service := application.NewRepositoryService(git)
+	service := portyrepo.NewRepositoryService(git)
 	ctx := context.Background()
 	if _, err := service.Commit(ctx, "gateway", "update gateway"); err != nil {
 		t.Fatal(err)
@@ -27,21 +25,21 @@ func TestRepositoryServiceKeepsCommitStackScopedAndPullFastForwardOnly(t *testin
 }
 
 func TestRepositoryServiceRejectsFetchWithoutManagedRemote(t *testing.T) {
-	testRepositoryServiceRejectsRemote(t, func(s *application.RepositoryService) error { return s.Fetch(context.Background()) })
+	testRepositoryServiceRejectsRemote(t, func(s *portyrepo.RepositoryService) error { return s.Fetch(context.Background()) })
 }
 func TestRepositoryServiceRejectsPullWithoutManagedRemote(t *testing.T) {
-	testRepositoryServiceRejectsRemote(t, func(s *application.RepositoryService) error { return s.Pull(context.Background()) })
+	testRepositoryServiceRejectsRemote(t, func(s *portyrepo.RepositoryService) error { return s.Pull(context.Background()) })
 }
 func TestRepositoryServiceRejectsPushWithoutManagedRemote(t *testing.T) {
-	testRepositoryServiceRejectsRemote(t, func(s *application.RepositoryService) error { return s.Push(context.Background()) })
+	testRepositoryServiceRejectsRemote(t, func(s *portyrepo.RepositoryService) error { return s.Push(context.Background()) })
 }
 
-func testRepositoryServiceRejectsRemote(t *testing.T, action func(*application.RepositoryService) error) {
+func testRepositoryServiceRejectsRemote(t *testing.T, action func(*portyrepo.RepositoryService) error) {
 	t.Helper()
 	git := &fakeGitRepository{}
-	service := application.NewRepositoryService(git)
+	service := portyrepo.NewRepositoryService(git)
 	service.Replace(git, false)
-	if err := action(service); !errors.Is(err, application.ErrRepositoryRemoteUnavailable) {
+	if err := action(service); !errors.Is(err, portyrepo.ErrRepositoryRemoteUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
 	if len(git.calls) != 0 {
@@ -51,7 +49,7 @@ func testRepositoryServiceRejectsRemote(t *testing.T, action func(*application.R
 
 func TestRepositoryServiceEnablesRemoteActionsAfterClientReplacement(t *testing.T) {
 	first, second := &fakeGitRepository{}, &fakeGitRepository{}
-	service := application.NewRepositoryService(first)
+	service := portyrepo.NewRepositoryService(first)
 	service.Replace(first, false)
 	service.Replace(second, true)
 	if err := service.Fetch(context.Background()); err != nil {
@@ -64,8 +62,8 @@ func TestRepositoryServiceEnablesRemoteActionsAfterClientReplacement(t *testing.
 
 type fakeGitRepository struct{ calls []string }
 
-func (f *fakeGitRepository) Status(context.Context) (domain.GitStatus, error) {
-	return domain.GitStatus{}, nil
+func (f *fakeGitRepository) Status(context.Context) (portyrepo.GitStatus, error) {
+	return portyrepo.GitStatus{}, nil
 }
 func (f *fakeGitRepository) Head(context.Context) (string, error)         { return "abc123", nil }
 func (f *fakeGitRepository) Diff(context.Context, string) (string, error) { return "", nil }
@@ -73,7 +71,7 @@ func (f *fakeGitRepository) Commit(_ context.Context, stack, message string) (st
 	f.calls = append(f.calls, "commit:"+stack+":"+message)
 	return "abc123", nil
 }
-func (f *fakeGitRepository) History(context.Context, int) ([]domain.GitCommit, error) {
+func (f *fakeGitRepository) History(context.Context, int) ([]portyrepo.GitCommit, error) {
 	return nil, nil
 }
 func (f *fakeGitRepository) Fetch(context.Context) error {

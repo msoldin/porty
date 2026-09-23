@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"net"
 	"net/http"
 	"strconv"
@@ -144,7 +145,7 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 			writeResult(w, r, status, err, http.StatusOK)
 		}))
 		mux.HandleFunc("POST /api/v1/repository/setup/inspect-remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, _ application.AuthenticatedSession) {
-			var input domain.RemoteInspectionRequest
+			var input portyrepo.RemoteInspectionRequest
 			if decodeBody(w, r, &input) != nil {
 				return
 			}
@@ -152,7 +153,7 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 			writeResult(w, r, inspection, err, http.StatusOK)
 		}))
 		mux.HandleFunc("POST /api/v1/repository/setup", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session application.AuthenticatedSession) {
-			var input domain.RepositorySetupRequest
+			var input portyrepo.RepositorySetupRequest
 			if decodeBody(w, r, &input) != nil {
 				return
 			}
@@ -164,7 +165,7 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 			if !requireRepositoryReady(w, r, options) {
 				return
 			}
-			var input domain.RepositoryRemoteRequest
+			var input portyrepo.RepositoryRemoteRequest
 			if decodeBody(w, r, &input) != nil {
 				return
 			}
@@ -242,10 +243,10 @@ func registerRepositoryRoutes(mux *http.ServeMux, options RouterOptions) {
 			writeResult(w, r, value, err, http.StatusOK)
 		}))
 		mux.HandleFunc("GET /api/v1/repository/history", readRoute(options, func(w http.ResponseWriter, r *http.Request) {
-			var value []domain.GitCommit
+			var value []portyrepo.GitCommit
 			var err error
 			if paged, ok := options.Repository.(interface {
-				RepositoryHistoryPage(context.Context, int, int) ([]domain.GitCommit, error)
+				RepositoryHistoryPage(context.Context, int, int) ([]portyrepo.GitCommit, error)
 			}); ok {
 				value, err = paged.RepositoryHistoryPage(r.Context(), queryLimit(r), queryOffset(r))
 			} else {
@@ -375,7 +376,7 @@ func requireRepositoryReady(w http.ResponseWriter, r *http.Request, options Rout
 	return true
 }
 
-func recordRepositoryAudit(options RouterOptions, r *http.Request, actor, action, branch string, status domain.RepositorySetupStatus, err error) {
+func recordRepositoryAudit(options RouterOptions, r *http.Request, actor, action, branch string, status portyrepo.RepositorySetupStatus, err error) {
 	outcome := "succeeded"
 	targetID := "branch=" + branch
 	if err != nil {
@@ -389,27 +390,27 @@ func recordRepositoryAudit(options RouterOptions, r *http.Request, actor, action
 
 func repositoryErrorCode(err error) string {
 	switch {
-	case errors.Is(err, application.ErrInvalidRequest):
+	case errors.Is(err, portyrepo.ErrInvalidRequest):
 		return "InvalidRequest"
-	case errors.Is(err, application.ErrRepositorySetupRequired):
+	case errors.Is(err, portyrepo.ErrRepositorySetupRequired):
 		return "RepositorySetupRequired"
-	case errors.Is(err, application.ErrRepositoryPathNotEmpty):
+	case errors.Is(err, portyrepo.ErrRepositoryPathNotEmpty):
 		return "RepositoryPathNotEmpty"
-	case errors.Is(err, application.ErrInvalidWorktree):
+	case errors.Is(err, portyrepo.ErrInvalidWorktree):
 		return "InvalidWorktree"
-	case errors.Is(err, application.ErrDetachedHead):
+	case errors.Is(err, portyrepo.ErrDetachedHead):
 		return "DetachedHead"
-	case errors.Is(err, application.ErrRemoteAuthenticationFailed):
+	case errors.Is(err, portyrepo.ErrRemoteAuthenticationFailed):
 		return "RemoteAuthenticationFailed"
-	case errors.Is(err, application.ErrRemoteUnavailable):
+	case errors.Is(err, portyrepo.ErrRemoteUnavailable):
 		return "RemoteUnavailable"
-	case errors.Is(err, application.ErrSSHMaterialUnavailable):
+	case errors.Is(err, portyrepo.ErrSSHMaterialUnavailable):
 		return "SSHMaterialUnavailable"
-	case errors.Is(err, application.ErrUnrelatedHistory):
+	case errors.Is(err, portyrepo.ErrUnrelatedHistory):
 		return "UnrelatedHistory"
-	case errors.Is(err, application.ErrRepositoryRemoteConflict):
+	case errors.Is(err, portyrepo.ErrRepositoryRemoteConflict):
 		return "RepositoryRemoteConflict"
-	case errors.Is(err, application.ErrRepositoryRemoteUnavailable):
+	case errors.Is(err, portyrepo.ErrRepositoryRemoteUnavailable):
 		return "RepositoryRemoteUnavailable"
 	default:
 		return "InternalError"
@@ -473,27 +474,27 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, r, http.StatusRequestEntityTooLarge, "LimitExceeded", "The requested content exceeds a limit", nil)
 	case errors.Is(err, application.ErrOperationConflict):
 		WriteError(w, r, http.StatusConflict, "OperationConflict", "A conflicting operation is in progress", nil)
-	case errors.Is(err, application.ErrInvalidRequest):
+	case errors.Is(err, portyrepo.ErrInvalidRequest):
 		WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "The request is invalid", nil)
-	case errors.Is(err, application.ErrRepositorySetupRequired):
+	case errors.Is(err, portyrepo.ErrRepositorySetupRequired):
 		WriteError(w, r, http.StatusConflict, "RepositorySetupRequired", "Configure the stack repository before using Porty.", nil)
-	case errors.Is(err, application.ErrRepositoryPathNotEmpty):
+	case errors.Is(err, portyrepo.ErrRepositoryPathNotEmpty):
 		WriteError(w, r, http.StatusConflict, "RepositoryPathNotEmpty", "The repository path is not empty", nil)
-	case errors.Is(err, application.ErrInvalidWorktree):
+	case errors.Is(err, portyrepo.ErrInvalidWorktree):
 		WriteError(w, r, http.StatusConflict, "InvalidWorktree", "The repository worktree is invalid", nil)
-	case errors.Is(err, application.ErrDetachedHead):
+	case errors.Is(err, portyrepo.ErrDetachedHead):
 		WriteError(w, r, http.StatusConflict, "DetachedHead", "Check out a branch before adopting the repository", nil)
-	case errors.Is(err, application.ErrRemoteAuthenticationFailed):
+	case errors.Is(err, portyrepo.ErrRemoteAuthenticationFailed):
 		WriteError(w, r, http.StatusUnauthorized, "RemoteAuthenticationFailed", "Remote authentication failed", nil)
-	case errors.Is(err, application.ErrRemoteUnavailable):
+	case errors.Is(err, portyrepo.ErrRemoteUnavailable):
 		WriteError(w, r, http.StatusBadGateway, "RemoteUnavailable", "The remote repository is unavailable", nil)
-	case errors.Is(err, application.ErrSSHMaterialUnavailable):
+	case errors.Is(err, portyrepo.ErrSSHMaterialUnavailable):
 		WriteError(w, r, http.StatusConflict, "SSHMaterialUnavailable", "SSH identity files are unavailable or unsafe", nil)
-	case errors.Is(err, application.ErrUnrelatedHistory):
+	case errors.Is(err, portyrepo.ErrUnrelatedHistory):
 		WriteError(w, r, http.StatusConflict, "UnrelatedHistory", "Local and remote repository histories are unrelated", nil)
-	case errors.Is(err, application.ErrRepositoryRemoteConflict):
+	case errors.Is(err, portyrepo.ErrRepositoryRemoteConflict):
 		WriteError(w, r, http.StatusConflict, "RepositoryRemoteConflict", "The existing origin requires explicit replacement", nil)
-	case errors.Is(err, application.ErrRepositoryRemoteUnavailable):
+	case errors.Is(err, portyrepo.ErrRepositoryRemoteUnavailable):
 		WriteError(w, r, http.StatusConflict, "RepositoryRemoteUnavailable", "No managed remote is configured", nil)
 	default:
 		WriteError(w, r, http.StatusInternalServerError, "InternalError", "The request could not be completed", nil)

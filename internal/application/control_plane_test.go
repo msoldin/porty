@@ -3,6 +3,7 @@ package application_test
 import (
 	"context"
 	"errors"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func TestControlPlaneRejectsConflictBeforeAcceptAndRecordsDeploymentProvenance(t
 	runtime := &controlRuntime{}
 	environment := application.NewEnvironmentService(controlEnvironmentStore{})
 	service := application.NewDeploymentService(runtime, deploymentStore, coordinator)
-	control := application.NewControlPlane("/srv/repository", controlLookup{}, environment, application.NewRepositoryService(controlGit{}), runtime, application.NewOperationService(operations, nil, time.Second, 1024), service, coordinator)
+	control := application.NewControlPlane("/srv/repository", controlLookup{}, environment, portyrepo.NewRepositoryService(controlGit{}), runtime, application.NewOperationService(operations, nil, time.Second, 1024), service, coordinator)
 
 	release, err := coordinator.Try(false, "stk_gateway")
 	if err != nil {
@@ -66,16 +67,16 @@ func (controlEnvironmentStore) Environment(context.Context, domain.StackID) (map
 
 type controlGit struct{}
 
-func (controlGit) Status(context.Context) (domain.GitStatus, error) {
-	return domain.GitStatus{Branch: "main", Dirty: true}, nil
+func (controlGit) Status(context.Context) (portyrepo.GitStatus, error) {
+	return portyrepo.GitStatus{Branch: "main", Dirty: true}, nil
 }
-func (controlGit) Head(context.Context) (string, error)                     { return "abc123", nil }
-func (controlGit) Diff(context.Context, string) (string, error)             { return "diff", nil }
-func (controlGit) Commit(context.Context, string, string) (string, error)   { return "abc123", nil }
-func (controlGit) History(context.Context, int) ([]domain.GitCommit, error) { return nil, nil }
-func (controlGit) Fetch(context.Context) error                              { return nil }
-func (controlGit) PullFastForward(context.Context) error                    { return nil }
-func (controlGit) Push(context.Context) error                               { return nil }
+func (controlGit) Head(context.Context) (string, error)                        { return "abc123", nil }
+func (controlGit) Diff(context.Context, string) (string, error)                { return "diff", nil }
+func (controlGit) Commit(context.Context, string, string) (string, error)      { return "abc123", nil }
+func (controlGit) History(context.Context, int) ([]portyrepo.GitCommit, error) { return nil, nil }
+func (controlGit) Fetch(context.Context) error                                 { return nil }
+func (controlGit) PullFastForward(context.Context) error                       { return nil }
+func (controlGit) Push(context.Context) error                                  { return nil }
 
 type controlRuntime struct{}
 

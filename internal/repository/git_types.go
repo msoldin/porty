@@ -1,4 +1,4 @@
-package domain
+package repository
 
 type GitStatus struct {
 	Configured bool     `json:"configured"`

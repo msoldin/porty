@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
-	"github.com/msoldin/porty/internal/domain"
 	gitcli "github.com/msoldin/porty/internal/git"
 	portyprocess "github.com/msoldin/porty/internal/process"
 )
@@ -91,7 +90,7 @@ func TestProvisionerInspectRemoteUsesSymbolicHEAD(t *testing.T) {
 	runner := &remoteInspectionRunner{result: portyprocess.Result{Output: "ref: refs/heads/trunk\tHEAD\n" + testObjectID + "\tHEAD\n" + testObjectID + "\trefs/heads/trunk\n"}}
 	provisioner, _ := newTestProvisioner(t, runner)
 
-	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +118,7 @@ func TestProvisionerInspectRemoteUsesSymbolicHEAD(t *testing.T) {
 func TestProvisionerInspectRemoteUsesSoleBranchWithoutHEAD(t *testing.T) {
 	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: testObjectID + "\trefs/heads/release\n"}})
 
-	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +131,7 @@ func TestProvisionerInspectRemoteRequiresChoiceForMultipleBranchesWithoutHEAD(t 
 	output := testObjectID + "\trefs/heads/main\n" + testObjectID + "\trefs/heads/release\n"
 	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output}})
 
-	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +143,7 @@ func TestProvisionerInspectRemoteRequiresChoiceForMultipleBranchesWithoutHEAD(t 
 func TestProvisionerInspectRemoteSuggestsMainForEmptyRemote(t *testing.T) {
 	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{})
 
-	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,16 +154,16 @@ func TestProvisionerInspectRemoteSuggestsMainForEmptyRemote(t *testing.T) {
 
 func TestProvisionerInspectRemoteRejectsObjectHEADWithoutBranches(t *testing.T) {
 	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: testObjectID + "\tHEAD\n"}})
-	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
-	if !errors.Is(err, application.ErrRemoteUnavailable) {
+	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
+	if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 		t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
 	}
 }
 
 func TestProvisionerInspectRemoteRejectsSymbolicHEADWithoutBranches(t *testing.T) {
 	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: "ref: refs/heads/main\tHEAD\n"}})
-	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
-	if !errors.Is(err, application.ErrRemoteUnavailable) {
+	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
+	if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 		t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
 	}
 }
@@ -173,7 +172,7 @@ func TestProvisionerInspectRemoteSortsAndDeduplicatesBranches(t *testing.T) {
 	output := testObjectID + "\trefs/heads/zeta\n" + testObjectID + "\trefs/heads/alpha\n" + testObjectID + "\trefs/heads/zeta\n"
 	provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output}})
 
-	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
+	inspection, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +192,8 @@ func TestProvisionerInspectRemoteRejectsInvalidBranchRef(t *testing.T) {
 	for name, output := range tests {
 		t.Run(name, func(t *testing.T) {
 			provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output}})
-			_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
-			if !errors.Is(err, application.ErrRemoteUnavailable) {
+			_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
+			if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 				t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
 			}
 		})
@@ -204,8 +203,8 @@ func TestProvisionerInspectRemoteRejectsInvalidBranchRef(t *testing.T) {
 func TestProvisionerInspectRemoteRejectsOversizedOutput(t *testing.T) {
 	t.Run("truncated output", func(t *testing.T) {
 		provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Truncated: true}})
-		_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
-		if !errors.Is(err, application.ErrRemoteUnavailable) {
+		_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
+		if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 			t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
 		}
 	})
@@ -215,8 +214,8 @@ func TestProvisionerInspectRemoteRejectsOversizedOutput(t *testing.T) {
 			fmt.Fprintf(&output, "%s\trefs/heads/branch-%04d\n", testObjectID, index)
 		}
 		provisioner, _ := newTestProvisioner(t, &remoteInspectionRunner{result: portyprocess.Result{Output: output.String()}})
-		_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
-		if !errors.Is(err, application.ErrRemoteUnavailable) {
+		_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
+		if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 			t.Fatalf("InspectRemote() error = %v, want ErrRemoteUnavailable", err)
 		}
 	})
@@ -229,10 +228,10 @@ func TestProvisionerInspectRemoteMapsAuthenticationFailure(t *testing.T) {
 		err:    errors.New("git failed with " + secret),
 	}
 	provisioner, _ := newTestProvisioner(t, runner)
-	authentication := domain.RepositoryAuthentication{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: secret}
+	authentication := portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthHTTPS, Username: "git", Secret: secret}
 
 	_, err := provisioner.InspectRemote(context.Background(), "https://example.com/team/repo.git", authentication)
-	if !errors.Is(err, application.ErrRemoteAuthenticationFailed) {
+	if !errors.Is(err, portyrepo.ErrRemoteAuthenticationFailed) {
 		t.Fatalf("InspectRemote() error = %v, want ErrRemoteAuthenticationFailed", err)
 	}
 	if strings.Contains(err.Error(), secret) {
@@ -252,8 +251,8 @@ func TestProvisionerInspectRemoteMapsGitHTTPAuthenticationFailures(t *testing.T)
 			}
 			provisioner, _ := newTestProvisioner(t, runner)
 
-			_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
-			if !errors.Is(err, application.ErrRemoteAuthenticationFailed) || err.Error() != application.ErrRemoteAuthenticationFailed.Error() {
+			_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
+			if !errors.Is(err, portyrepo.ErrRemoteAuthenticationFailed) || err.Error() != portyrepo.ErrRemoteAuthenticationFailed.Error() {
 				t.Fatalf("InspectRemote() error = %v, want stable ErrRemoteAuthenticationFailed", err)
 			}
 			if strings.Contains(err.Error(), status) {
@@ -270,16 +269,16 @@ func TestProvisionerInspectRemoteMapsOtherFailureToUnavailable(t *testing.T) {
 	}
 	provisioner, _ := newTestProvisioner(t, runner)
 
-	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone})
-	if !errors.Is(err, application.ErrRemoteUnavailable) || err.Error() != application.ErrRemoteUnavailable.Error() {
+	_, err := provisioner.InspectRemote(context.Background(), testRemoteURL, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone})
+	if !errors.Is(err, portyrepo.ErrRemoteUnavailable) || err.Error() != portyrepo.ErrRemoteUnavailable.Error() {
 		t.Fatalf("InspectRemote() error = %v, want stable ErrRemoteUnavailable", err)
 	}
 }
 
 func TestProvisionerRejectsMissingSSHMaterial(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, &remoteInspectionRunner{})
-	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", domain.RepositoryAuthentication{Type: domain.RepositoryAuthSSH, SSHKeyPath: filepath.Join(filepath.Dir(repository), "ssh", "id"), KnownHostsPath: filepath.Join(filepath.Dir(repository), "ssh", "known_hosts")})
-	if !errors.Is(err, application.ErrSSHMaterialUnavailable) {
+	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthSSH, SSHKeyPath: filepath.Join(filepath.Dir(repository), "ssh", "id"), KnownHostsPath: filepath.Join(filepath.Dir(repository), "ssh", "known_hosts")})
+	if !errors.Is(err, portyrepo.ErrSSHMaterialUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -300,8 +299,8 @@ func TestProvisionerRejectsSymlinkedSSHMaterial(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sshDirectory, "known_hosts"), []byte("host key"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", domain.RepositoryAuthentication{Type: domain.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDirectory, "id"), KnownHostsPath: filepath.Join(sshDirectory, "known_hosts")})
-	if !errors.Is(err, application.ErrSSHMaterialUnavailable) {
+	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDirectory, "id"), KnownHostsPath: filepath.Join(sshDirectory, "known_hosts")})
+	if !errors.Is(err, portyrepo.ErrSSHMaterialUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -321,8 +320,8 @@ func TestProvisionerRejectsPermissivePrivateKey(t *testing.T) {
 	if err := os.Chmod(filepath.Join(sshDirectory, "id"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", domain.RepositoryAuthentication{Type: domain.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDirectory, "id"), KnownHostsPath: filepath.Join(sshDirectory, "known_hosts")})
-	if !errors.Is(err, application.ErrSSHMaterialUnavailable) {
+	_, err := provisioner.InspectRemote(context.Background(), "ssh://git@example.com/repo.git", portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDirectory, "id"), KnownHostsPath: filepath.Join(sshDirectory, "known_hosts")})
+	if !errors.Is(err, portyrepo.ErrSSHMaterialUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -330,12 +329,12 @@ func TestProvisionerRejectsPermissivePrivateKey(t *testing.T) {
 func TestProvisionerConfigureRemoteAcceptsEmptyRemote(t *testing.T) {
 	remote := createLocalRemote(t, "main", false)
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, updated, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	_, updated, err := provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,16 +349,16 @@ func TestProvisionerConfigureRemoteAcceptsEmptyRemote(t *testing.T) {
 func TestProvisionerConfigureRemoteRejectsUnrelatedHistory(t *testing.T) {
 	remote := createLocalRemote(t, "main", true)
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
 	if err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(repository, "local.txt"), "local\n")
 	runGit(t, repository, "add", ".")
 	runGit(t, repository, "commit", "-m", "local")
-	_, _, err = provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
-	if !errors.Is(err, application.ErrUnrelatedHistory) {
+	_, _, err = provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
+	if !errors.Is(err, portyrepo.ErrUnrelatedHistory) {
 		t.Fatalf("error = %v", err)
 	}
 	if got := strings.TrimSpace(runGit(t, repository, "remote")); got != "" {
@@ -387,8 +386,8 @@ func TestProvisionerConfigureRemoteAcceptsRelatedHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
-	_, updated, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	configuration := portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupReady, Root: repository, Branch: "main", Author: portyrepo.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
+	_, updated, err := provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
 	if err != nil || updated.Remote == nil {
 		t.Fatalf("ConfigureRemote() = %#v, %v", updated, err)
 	}
@@ -397,12 +396,12 @@ func TestProvisionerConfigureRemoteAcceptsRelatedHistory(t *testing.T) {
 func TestProvisionerConfigureRemoteAcceptsMissingBranch(t *testing.T) {
 	remote := createLocalRemote(t, "release", true)
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, updated, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	_, updated, err := provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,12 +413,12 @@ func TestProvisionerConfigureRemoteAcceptsMissingBranch(t *testing.T) {
 func TestProvisionerConfigureRemoteAdoptsPopulatedRemoteFromCleanUnbornRepository(t *testing.T) {
 	remote := createLocalRemote(t, "main", true)
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	_, _, err = provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,11 +433,11 @@ func TestProvisionerConfigureRemoteAdoptsPopulatedRemoteFromCleanUnbornRepositor
 func TestProvisionerConfigureRemoteRejectsDirtyUnbornRepository(t *testing.T) {
 	remote := createLocalRemote(t, "main", true)
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
 	write(t, filepath.Join(repository, "local.txt"), "dirty\n")
-	_, _, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
-	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+	_, _, err := provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
+	if !errors.Is(err, portyrepo.ErrRepositoryPathNotEmpty) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -448,9 +447,9 @@ func TestProvisionerConfigureRemoteRequiresConfirmationForUnmanagedOrigin(t *tes
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
 	initializeRepositoryAt(t, repository)
 	runGit(t, repository, "remote", "add", "origin", "https://old.example/repo.git")
-	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
-	request := application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}
-	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); !errors.Is(err, application.ErrRepositoryRemoteConflict) {
+	configuration := portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupReady, Root: repository, Branch: "main", Author: portyrepo.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
+	request := portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}
+	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); !errors.Is(err, portyrepo.ErrRepositoryRemoteConflict) {
 		t.Fatalf("error = %v", err)
 	}
 	request.ReplaceExisting = true
@@ -468,13 +467,13 @@ func TestProvisionerConfigureRemoteRequiresConfirmationForChangedManagedOrigin(t
 	initializeRepositoryAt(t, repository)
 	changedURL := "https://changed.example/repo.git"
 	runGit(t, repository, "remote", "add", "origin", changedURL)
-	configuration := domain.RepositoryConfiguration{
-		State: domain.RepositorySetupReady, Root: repository, Branch: "main",
-		Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"},
-		Remote: &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://expected.example/repo.git", Managed: true},
+	configuration := portyrepo.RepositoryConfiguration{
+		State: portyrepo.RepositorySetupReady, Root: repository, Branch: "main",
+		Author: portyrepo.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"},
+		Remote: &portyrepo.RepositoryRemoteSummary{Name: "origin", URL: "https://expected.example/repo.git", Managed: true},
 	}
-	request := application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}
-	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); !errors.Is(err, application.ErrRepositoryRemoteConflict) {
+	request := portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}
+	if _, _, err := provisioner.ConfigureRemote(context.Background(), request, configuration); !errors.Is(err, portyrepo.ErrRepositoryRemoteConflict) {
 		t.Fatalf("error = %v, want remote conflict", err)
 	}
 	if got := strings.TrimSpace(runGit(t, repository, "remote", "get-url", "origin")); got != changedURL {
@@ -491,12 +490,12 @@ func TestProvisionerConfigureRemoteCleansTemporaryRemoteAfterFailure(t *testing.
 	localRunner := newLocalRemoteRunner(remote)
 	runner := &failingCommandRunner{delegate: localRunner, command: "merge-base"}
 	provisioner, repository := newTestProvisioner(t, runner)
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
 	write(t, filepath.Join(repository, "local.txt"), "local\n")
 	runGit(t, repository, "add", ".")
 	runGit(t, repository, "commit", "-m", "local")
-	_, _, _ = provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	_, _, _ = provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
 	if got := strings.TrimSpace(runGit(t, repository, "remote")); got != "" {
 		t.Fatalf("remotes = %q", got)
 	}
@@ -506,13 +505,13 @@ func TestProvisionerConfigureRemoteDoesNotMapOperationalMergeBaseFailureToUnrela
 	remote := createLocalRemote(t, "main", true)
 	runner := &failingCommandRunner{delegate: newLocalRemoteRunner(remote), command: "merge-base"}
 	provisioner, repository := newTestProvisioner(t, runner)
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
 	write(t, filepath.Join(repository, "local.txt"), "local\n")
 	runGit(t, repository, "add", ".")
 	runGit(t, repository, "commit", "-m", "local")
-	_, _, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
-	if err == nil || errors.Is(err, application.ErrUnrelatedHistory) {
+	_, _, err := provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
+	if err == nil || errors.Is(err, portyrepo.ErrUnrelatedHistory) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -520,9 +519,9 @@ func TestProvisionerConfigureRemoteDoesNotMapOperationalMergeBaseFailureToUnrela
 func TestProvisionerRemoveRemoteRemovesOnlyManagedOrigin(t *testing.T) {
 	remote := createLocalRemote(t, "main", false)
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(remote))
-	author := domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}
-	_, configuration, _ := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{Mode: domain.RepositorySetupInit, Branch: "main", Author: author})
-	_, configuration, err := provisioner.ConfigureRemote(context.Background(), application.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}}, configuration)
+	author := portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}
+	_, configuration, _ := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{Mode: portyrepo.RepositorySetupInit, Branch: "main", Author: author})
+	_, configuration, err := provisioner.ConfigureRemote(context.Background(), portyrepo.RepositoryRemoteProvisionRequest{RemoteURL: testRemoteURL, Branch: "main", Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}}, configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,9 +538,9 @@ func TestProvisionerRemoveRemoteLeavesUnmanagedOriginUntouched(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
 	initializeRepositoryAt(t, repository)
 	runGit(t, repository, "remote", "add", "origin", "https://example.com/repo.git")
-	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
+	configuration := portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupReady, Root: repository, Branch: "main", Author: portyrepo.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}}
 	_, _, err := provisioner.RemoveRemote(context.Background(), configuration)
-	if !errors.Is(err, application.ErrRepositoryRemoteUnavailable) || strings.TrimSpace(runGit(t, repository, "remote")) != "origin" {
+	if !errors.Is(err, portyrepo.ErrRepositoryRemoteUnavailable) || strings.TrimSpace(runGit(t, repository, "remote")) != "origin" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -550,9 +549,9 @@ func TestProvisionerRemoveRemoteRejectsChangedManagedOrigin(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
 	initializeRepositoryAt(t, repository)
 	runGit(t, repository, "remote", "add", "origin", "https://changed.example/repo.git")
-	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: repository, Branch: "main", Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}, Remote: &domain.RepositoryRemoteSummary{Name: "origin", URL: "https://expected.example/repo.git", Managed: true}}
+	configuration := portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupReady, Root: repository, Branch: "main", Author: portyrepo.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"}, Remote: &portyrepo.RepositoryRemoteSummary{Name: "origin", URL: "https://expected.example/repo.git", Managed: true}}
 	_, _, err := provisioner.RemoveRemote(context.Background(), configuration)
-	if !errors.Is(err, application.ErrRepositoryRemoteConflict) || strings.TrimSpace(runGit(t, repository, "remote")) != "origin" {
+	if !errors.Is(err, portyrepo.ErrRepositoryRemoteConflict) || strings.TrimSpace(runGit(t, repository, "remote")) != "origin" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -562,7 +561,7 @@ func TestProvisionerRemoteImportFetchesSelectedBranch(t *testing.T) {
 	runner := newLocalRemoteRunner(localRemote)
 	provisioner, repository := newTestProvisioner(t, runner)
 	request := remoteProvisionRequest("trunk")
-	request.Authentication = domain.RepositoryAuthentication{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: "import-token"}
+	request.Authentication = portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthHTTPS, Username: "git", Secret: "import-token"}
 
 	repositoryClient, configuration, err := provisioner.Provision(context.Background(), request)
 	if err != nil {
@@ -715,7 +714,7 @@ func TestProvisionerRemoteImportRejectsUnadvertisedBranch(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, newLocalRemoteRunner(createLocalRemote(t, "main", true)))
 
 	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("missing"))
-	if !errors.Is(err, application.ErrInvalidRequest) {
+	if !errors.Is(err, portyrepo.ErrInvalidRequest) {
 		t.Fatalf("Provision() error = %v, want ErrInvalidRequest", err)
 	}
 	if _, statErr := os.Lstat(repository); !errors.Is(statErr, os.ErrNotExist) {
@@ -746,7 +745,7 @@ func TestProvisionerRemoteImportRetryRejectsMismatchedOrigin(t *testing.T) {
 	runGit(t, repository, "remote", "set-url", "origin", "https://example.com/other/repo.git")
 
 	_, _, err := provisioner.Provision(context.Background(), request)
-	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+	if !errors.Is(err, portyrepo.ErrRepositoryPathNotEmpty) {
 		t.Fatalf("Provision() error = %v, want ErrRepositoryPathNotEmpty", err)
 	}
 }
@@ -762,7 +761,7 @@ func TestProvisionerRemoteImportRetryRejectsUnrelatedLocalHistory(t *testing.T) 
 	runGit(t, repository, "commit", "-m", "unrelated local commit")
 
 	_, _, err := provisioner.Provision(context.Background(), request)
-	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+	if !errors.Is(err, portyrepo.ErrRepositoryPathNotEmpty) {
 		t.Fatalf("Provision() error = %v, want ErrRepositoryPathNotEmpty", err)
 	}
 }
@@ -780,7 +779,7 @@ func TestProvisionerRemoteImportFailureRemovesOnlyCreatedArtifacts(t *testing.T)
 			}
 
 			_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
-			if !errors.Is(err, application.ErrRemoteUnavailable) {
+			if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 				t.Fatalf("Provision() error = %v, want ErrRemoteUnavailable", err)
 			}
 			info, statErr := os.Lstat(repository)
@@ -811,7 +810,7 @@ func TestProvisionerRemoteImportFailurePreservesFileAddedToPreExistingRoot(t *te
 	}
 
 	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
-	if !errors.Is(err, application.ErrRemoteUnavailable) {
+	if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 		t.Fatalf("Provision() error = %v, want ErrRemoteUnavailable", err)
 	}
 	if got, readErr := os.ReadFile(filepath.Join(repository, "keep.txt")); readErr != nil || string(got) != "must survive cleanup\n" {
@@ -841,7 +840,7 @@ func TestProvisionerRemoteImportCleanupRejectsParentSymlinkReplacement(t *testin
 	}
 
 	_, _, err := provisioner.Provision(context.Background(), remoteProvisionRequest("main"))
-	if !errors.Is(err, application.ErrRemoteUnavailable) {
+	if !errors.Is(err, portyrepo.ErrRemoteUnavailable) {
 		t.Fatalf("Provision() error = %v, want ErrRemoteUnavailable", err)
 	}
 	if got, readErr := os.ReadFile(filepath.Join(externalRepository, "keep.txt")); readErr != nil || string(got) != "external data\n" {
@@ -936,8 +935,8 @@ func TestProvisionerInspectPathClassifiesEmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inspection.State != domain.RepositoryPathEmpty {
-		t.Fatalf("state = %q, want %q", inspection.State, domain.RepositoryPathEmpty)
+	if inspection.State != portyrepo.RepositoryPathEmpty {
+		t.Fatalf("state = %q, want %q", inspection.State, portyrepo.RepositoryPathEmpty)
 	}
 }
 
@@ -949,8 +948,8 @@ func TestProvisionerInspectPathRejectsOccupiedNonRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inspection.State != domain.RepositoryPathOccupied {
-		t.Fatalf("state = %q, want %q", inspection.State, domain.RepositoryPathOccupied)
+	if inspection.State != portyrepo.RepositoryPathOccupied {
+		t.Fatalf("state = %q, want %q", inspection.State, portyrepo.RepositoryPathOccupied)
 	}
 }
 
@@ -965,8 +964,8 @@ func TestProvisionerInspectPathRejectsRepositoryRootSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inspection.State != domain.RepositoryPathInvalid {
-		t.Fatalf("state = %q, want %q", inspection.State, domain.RepositoryPathInvalid)
+	if inspection.State != portyrepo.RepositoryPathInvalid {
+		t.Fatalf("state = %q, want %q", inspection.State, portyrepo.RepositoryPathInvalid)
 	}
 }
 
@@ -979,8 +978,8 @@ func TestProvisionerInspectPathRejectsHostileGitConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inspection.State != domain.RepositoryPathInvalid {
-		t.Fatalf("state = %q, want %q", inspection.State, domain.RepositoryPathInvalid)
+	if inspection.State != portyrepo.RepositoryPathInvalid {
+		t.Fatalf("state = %q, want %q", inspection.State, portyrepo.RepositoryPathInvalid)
 	}
 }
 
@@ -994,18 +993,18 @@ func TestProvisionerInspectPathRejectsMultipleOriginURLs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inspection.State != domain.RepositoryPathInvalid {
-		t.Fatalf("state = %q, want %q", inspection.State, domain.RepositoryPathInvalid)
+	if inspection.State != portyrepo.RepositoryPathInvalid {
+		t.Fatalf("state = %q, want %q", inspection.State, portyrepo.RepositoryPathInvalid)
 	}
 }
 
 func TestProvisionerProvisionInitCreatesRequestedUnbornBranchAndIdentity(t *testing.T) {
 	recorder := &recordingDelegateRunner{delegate: portyprocess.NewRunner()}
 	provisioner, repository := newTestProvisioner(t, recorder)
-	author := domain.GitIdentity{Name: "Ada Lovelace", Email: "ada@example.invalid"}
+	author := portyrepo.GitIdentity{Name: "Ada Lovelace", Email: "ada@example.invalid"}
 
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode: domain.RepositorySetupInit, Branch: "trunk", Author: author,
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode: portyrepo.RepositorySetupInit, Branch: "trunk", Author: author,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1034,10 +1033,10 @@ func TestProvisionerProvisionInitCreatesRequestedUnbornBranchAndIdentity(t *test
 
 func TestProvisionerProvisionInitDoesNotCreateOrigin(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode:   domain.RepositorySetupInit,
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode:   portyrepo.RepositorySetupInit,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
+		Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1054,12 +1053,12 @@ func TestProvisionerProvisionInitRejectsNonEmptyDirectory(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
 	write(t, filepath.Join(repository, "keep.txt"), "do not replace\n")
 
-	_, _, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode:   domain.RepositorySetupInit,
+	_, _, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode:   portyrepo.RepositorySetupInit,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
+		Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
 	})
-	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+	if !errors.Is(err, portyrepo.ErrRepositoryPathNotEmpty) {
 		t.Fatalf("Provision() error = %v, want ErrRepositoryPathNotEmpty", err)
 	}
 	if got, err := os.ReadFile(filepath.Join(repository, "keep.txt")); err != nil || string(got) != "do not replace\n" {
@@ -1071,10 +1070,10 @@ func TestProvisionerProvisionAdoptDetectsBranchIdentityAndOrigin(t *testing.T) {
 	provisioner, repository := newTestProvisioner(t, portyprocess.NewRunner())
 	initializeRepositoryAt(t, repository)
 	runGit(t, repository, "remote", "add", "origin", "https://example.com/team/repo.git")
-	author := domain.GitIdentity{Name: "New Author", Email: "new@example.invalid"}
+	author := portyrepo.GitIdentity{Name: "New Author", Email: "new@example.invalid"}
 
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode: domain.RepositorySetupAdopt, Branch: "main", Author: author, ManageExistingRemote: true,
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode: portyrepo.RepositorySetupAdopt, Branch: "main", Author: author, ManageExistingRemote: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1093,12 +1092,12 @@ func TestProvisionerProvisionAdoptRejectsDetachedHead(t *testing.T) {
 	runGit(t, repository, "commit", "--allow-empty", "-m", "initial")
 	runGit(t, repository, "checkout", "--detach", "HEAD")
 
-	_, _, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode:   domain.RepositorySetupAdopt,
+	_, _, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode:   portyrepo.RepositorySetupAdopt,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
+		Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
 	})
-	if !errors.Is(err, application.ErrDetachedHead) {
+	if !errors.Is(err, portyrepo.ErrDetachedHead) {
 		t.Fatalf("Provision() error = %v, want ErrDetachedHead", err)
 	}
 }
@@ -1109,10 +1108,10 @@ func TestProvisionerProvisionAdoptLeavesIgnoredOriginUntouched(t *testing.T) {
 	const remoteURL = "https://example.com/team/repo.git"
 	runGit(t, repository, "remote", "add", "origin", remoteURL)
 
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode:   domain.RepositorySetupAdopt,
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode:   portyrepo.RepositorySetupAdopt,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
+		Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1127,10 +1126,10 @@ func TestProvisionerProvisionAdoptLeavesIgnoredOriginUntouched(t *testing.T) {
 
 func TestProvisionerProvisionRetryAcceptsExactInitializedRepository(t *testing.T) {
 	provisioner, _ := newTestProvisioner(t, portyprocess.NewRunner())
-	request := application.RepositoryProvisionRequest{
-		Mode:   domain.RepositorySetupInit,
+	request := portyrepo.RepositoryProvisionRequest{
+		Mode:   portyrepo.RepositorySetupInit,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
+		Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
 	}
 	if _, _, err := provisioner.Provision(context.Background(), request); err != nil {
 		t.Fatal(err)
@@ -1147,12 +1146,12 @@ func TestProvisionerProvisionRetryRejectsRepositoryWithHistory(t *testing.T) {
 	initializeRepositoryAt(t, repository)
 	runGit(t, repository, "commit", "--allow-empty", "-m", "existing history")
 
-	_, _, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode:   domain.RepositorySetupInit,
+	_, _, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode:   portyrepo.RepositorySetupInit,
 		Branch: "main",
-		Author: domain.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"},
+		Author: portyrepo.GitIdentity{Name: "Existing Author", Email: "existing@example.invalid"},
 	})
-	if !errors.Is(err, application.ErrRepositoryPathNotEmpty) {
+	if !errors.Is(err, portyrepo.ErrRepositoryPathNotEmpty) {
 		t.Fatalf("Provision() error = %v, want ErrRepositoryPathNotEmpty", err)
 	}
 }
@@ -1164,7 +1163,7 @@ func TestProvisionerProvisionAdoptUsesFinalOriginSnapshot(t *testing.T) {
 	const initialURL = "https://example.com/team/initial.git"
 	const finalURL = "https://example.com/team/final.git"
 	runGit(t, repository, "remote", "add", "origin", initialURL)
-	author := domain.GitIdentity{Name: "New Author", Email: "new@example.invalid"}
+	author := portyrepo.GitIdentity{Name: "New Author", Email: "new@example.invalid"}
 	mutated := false
 	runner := &recordingDelegateRunner{delegate: portyprocess.NewRunner()}
 	runner.after = func(request portyprocess.Request) {
@@ -1183,8 +1182,8 @@ func TestProvisionerProvisionAdoptUsesFinalOriginSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, configuration, err := provisioner.Provision(context.Background(), application.RepositoryProvisionRequest{
-		Mode: domain.RepositorySetupAdopt, Branch: "main", Author: author, ManageExistingRemote: true,
+	_, configuration, err := provisioner.Provision(context.Background(), portyrepo.RepositoryProvisionRequest{
+		Mode: portyrepo.RepositorySetupAdopt, Branch: "main", Author: author, ManageExistingRemote: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1307,13 +1306,13 @@ func (r *localRemoteRunner) args() [][]string {
 	return result
 }
 
-func remoteProvisionRequest(branch string) application.RepositoryProvisionRequest {
-	return application.RepositoryProvisionRequest{
-		Mode:           domain.RepositorySetupRemote,
+func remoteProvisionRequest(branch string) portyrepo.RepositoryProvisionRequest {
+	return portyrepo.RepositoryProvisionRequest{
+		Mode:           portyrepo.RepositorySetupRemote,
 		Branch:         branch,
-		Author:         domain.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
+		Author:         portyrepo.GitIdentity{Name: "Porty", Email: "porty@example.invalid"},
 		RemoteURL:      testRemoteURL,
-		Authentication: domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone},
+		Authentication: portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone},
 	}
 }
 

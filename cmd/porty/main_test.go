@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +16,8 @@ import (
 	"github.com/msoldin/porty/internal/app"
 	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/config"
-	"github.com/msoldin/porty/internal/domain"
-	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	gitcli "github.com/msoldin/porty/internal/git"
+	portyauth "github.com/msoldin/porty/internal/infrastructure/auth"
 	portyprocess "github.com/msoldin/porty/internal/process"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
@@ -87,7 +87,7 @@ func TestBuildHandlerLeavesRegisteredEmptyInstallInSetupState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if configuration.State != domain.RepositorySetupRegistered {
+	if configuration.State != portyrepo.RepositorySetupRegistered {
 		t.Fatalf("state = %q", configuration.State)
 	}
 }
@@ -100,16 +100,16 @@ func TestBuildHandlerReconcilesRegisteredExistingRepository(t *testing.T) {
 	}
 	assertReadyStatus(t, newTestHandler(t, db, startupConfig(dataDir)), http.StatusOK)
 	configuration, _, _ := portysqlite.NewRepositoryStore(db).Load(context.Background())
-	if configuration.State != domain.RepositorySetupReady || configuration.Branch != "main" {
+	if configuration.State != portyrepo.RepositorySetupReady || configuration.Branch != "main" {
 		t.Fatalf("configuration = %#v", configuration)
 	}
 }
 
 func TestBuildHandlerOpensReadyLocalOnlyRepository(t *testing.T) {
-	testBuildHandlerOpensReadyRepository(t, domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}, "")
+	testBuildHandlerOpensReadyRepository(t, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}, "")
 }
 func TestBuildHandlerRestoresReadyHTTPSRemoteClient(t *testing.T) {
-	testBuildHandlerOpensReadyRepository(t, domain.RepositoryAuthentication{Type: domain.RepositoryAuthHTTPS, Username: "git", Secret: "secret"}, "https://example.com/repo.git")
+	testBuildHandlerOpensReadyRepository(t, portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthHTTPS, Username: "git", Secret: "secret"}, "https://example.com/repo.git")
 }
 
 func TestBuildHandlerRestoresReadySSHRemoteClient(t *testing.T) {
@@ -126,7 +126,7 @@ func TestBuildHandlerRestoresReadySSHRemoteClient(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sshDir, "known_hosts"), []byte("host key"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	authentication := domain.RepositoryAuthentication{Type: domain.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDir, "id"), KnownHostsPath: filepath.Join(sshDir, "known_hosts")}
+	authentication := portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthSSH, SSHKeyPath: filepath.Join(sshDir, "id"), KnownHostsPath: filepath.Join(sshDir, "known_hosts")}
 	configuration := readyStartupConfiguration(dataDir, remoteURL, authentication.Type)
 	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), configuration, authentication); err != nil {
 		t.Fatal(err)
@@ -144,13 +144,13 @@ func TestBuildHandlerRestoresReadySSHRemoteClient(t *testing.T) {
 
 func TestBuildHandlerFailsReadinessForTamperedReadyRepository(t *testing.T) {
 	dataDir, db := startupDatabase(t)
-	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), readyStartupConfiguration(dataDir, "", domain.RepositoryAuthNone), domain.RepositoryAuthentication{Type: domain.RepositoryAuthNone}); err != nil {
+	if err := portysqlite.NewRepositoryStore(db).Save(context.Background(), readyStartupConfiguration(dataDir, "", portyrepo.RepositoryAuthNone), portyrepo.RepositoryAuthentication{Type: portyrepo.RepositoryAuthNone}); err != nil {
 		t.Fatal(err)
 	}
 	assertReadyStatus(t, newTestHandler(t, db, startupConfig(dataDir)), http.StatusServiceUnavailable)
 }
 
-func testBuildHandlerOpensReadyRepository(t *testing.T, authentication domain.RepositoryAuthentication, remoteURL string) {
+func testBuildHandlerOpensReadyRepository(t *testing.T, authentication portyrepo.RepositoryAuthentication, remoteURL string) {
 	t.Helper()
 	dataDir, db := startupDatabase(t)
 	initializeStartupRepository(t, dataDir, "main", remoteURL)
@@ -175,10 +175,10 @@ func startupConfig(dataDir string) config.Config {
 	cfg.DataDir = dataDir
 	return cfg
 }
-func readyStartupConfiguration(dataDir, remoteURL string, authType domain.RepositoryAuthType) domain.RepositoryConfiguration {
-	configuration := domain.RepositoryConfiguration{State: domain.RepositorySetupReady, Root: filepath.Join(dataDir, "repository"), Branch: "main", Author: domain.GitIdentity{Name: "Porty", Email: "porty@localhost"}}
+func readyStartupConfiguration(dataDir, remoteURL string, authType portyrepo.RepositoryAuthType) portyrepo.RepositoryConfiguration {
+	configuration := portyrepo.RepositoryConfiguration{State: portyrepo.RepositorySetupReady, Root: filepath.Join(dataDir, "repository"), Branch: "main", Author: portyrepo.GitIdentity{Name: "Porty", Email: "porty@localhost"}}
 	if remoteURL != "" {
-		configuration.Remote = &domain.RepositoryRemoteSummary{Name: "origin", URL: remoteURL, AuthType: authType, Managed: true}
+		configuration.Remote = &portyrepo.RepositoryRemoteSummary{Name: "origin", URL: remoteURL, AuthType: authType, Managed: true}
 	}
 	return configuration
 }

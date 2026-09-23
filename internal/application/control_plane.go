@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"path/filepath"
 	"strings"
 
@@ -30,7 +31,7 @@ type ControlPlane struct {
 	root        string
 	lookup      StackLookup
 	environment *EnvironmentService
-	repository  *RepositoryService
+	repository  *portyrepo.RepositoryService
 	runtime     RuntimeController
 	operations  *OperationService
 	deployments *DeploymentService
@@ -49,7 +50,7 @@ func (c *ControlPlane) ConfigureState(store interface {
 
 type LogPublisher interface{ PublishLog(string, string) }
 
-func NewControlPlane(root string, lookup StackLookup, environment *EnvironmentService, repository *RepositoryService, runtime RuntimeController, operations *OperationService, deployments *DeploymentService, coordinator *Coordinator, logPublishers ...LogPublisher) *ControlPlane {
+func NewControlPlane(root string, lookup StackLookup, environment *EnvironmentService, repository *portyrepo.RepositoryService, runtime RuntimeController, operations *OperationService, deployments *DeploymentService, coordinator *Coordinator, logPublishers ...LogPublisher) *ControlPlane {
 	control := &ControlPlane{root: root, lookup: lookup, environment: environment, repository: repository, runtime: runtime, operations: operations, deployments: deployments, coordinator: coordinator}
 	if len(logPublishers) > 0 {
 		control.logs = logPublishers[0]
@@ -57,15 +58,15 @@ func NewControlPlane(root string, lookup StackLookup, environment *EnvironmentSe
 	return control
 }
 
-func (c *ControlPlane) RepositoryStatus(ctx context.Context) (domain.GitStatus, error) {
+func (c *ControlPlane) RepositoryStatus(ctx context.Context) (portyrepo.GitStatus, error) {
 	return c.repository.Status(ctx)
 }
 
-func (c *ControlPlane) RepositoryHistory(ctx context.Context, limit int) ([]domain.GitCommit, error) {
+func (c *ControlPlane) RepositoryHistory(ctx context.Context, limit int) ([]portyrepo.GitCommit, error) {
 	return c.repository.History(ctx, limit)
 }
 
-func (c *ControlPlane) RepositoryHistoryPage(ctx context.Context, limit, offset int) ([]domain.GitCommit, error) {
+func (c *ControlPlane) RepositoryHistoryPage(ctx context.Context, limit, offset int) ([]portyrepo.GitCommit, error) {
 	return c.repository.HistoryPage(ctx, limit, offset)
 }
 

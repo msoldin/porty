@@ -2,11 +2,10 @@ package git
 
 import (
 	"errors"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/msoldin/porty/internal/application"
 )
 
 func TestRepositoryAttemptCleanupPreservesSubstitutedMetadataDuringOwnershipCapture(t *testing.T) {
@@ -34,7 +33,7 @@ func TestRepositoryAttemptCleanupPreservesSubstitutedMetadataDuringOwnershipCapt
 	if err != nil || string(content) != "external metadata\n" {
 		t.Fatalf("external metadata = %q, err = %v (reservation error = %v)", content, err, reserveErr)
 	}
-	if !errors.Is(reserveErr, application.ErrInvalidWorktree) {
+	if !errors.Is(reserveErr, portyrepo.ErrInvalidWorktree) {
 		t.Fatalf("reservation error = %v, want ErrInvalidWorktree", reserveErr)
 	}
 }

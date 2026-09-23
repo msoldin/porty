@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	portyrepo "github.com/msoldin/porty/internal/repository"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -186,30 +187,30 @@ func (*fakeActionAPI) StartAction(context.Context, domain.StackID, string) (doma
 }
 
 type fakeRepositorySetup struct {
-	request       domain.RepositorySetupRequest
-	remoteRequest domain.RepositoryRemoteRequest
-	inspection    domain.RemoteInspection
-	status        domain.RepositorySetupStatus
+	request       portyrepo.RepositorySetupRequest
+	remoteRequest portyrepo.RepositoryRemoteRequest
+	inspection    portyrepo.RemoteInspection
+	status        portyrepo.RepositorySetupStatus
 	err           error
 	ready         bool
 	readySet      bool
 }
 
-func (f *fakeRepositorySetup) Status(context.Context) (domain.RepositorySetupStatus, error) {
+func (f *fakeRepositorySetup) Status(context.Context) (portyrepo.RepositorySetupStatus, error) {
 	return f.status, f.err
 }
-func (f *fakeRepositorySetup) InspectRemote(context.Context, domain.RemoteInspectionRequest) (domain.RemoteInspection, error) {
+func (f *fakeRepositorySetup) InspectRemote(context.Context, portyrepo.RemoteInspectionRequest) (portyrepo.RemoteInspection, error) {
 	return f.inspection, f.err
 }
-func (f *fakeRepositorySetup) Setup(_ context.Context, request domain.RepositorySetupRequest) (domain.RepositorySetupStatus, error) {
+func (f *fakeRepositorySetup) Setup(_ context.Context, request portyrepo.RepositorySetupRequest) (portyrepo.RepositorySetupStatus, error) {
 	f.request = request
 	return f.status, f.err
 }
-func (f *fakeRepositorySetup) ConfigureRemote(_ context.Context, request domain.RepositoryRemoteRequest) (domain.RepositorySetupStatus, error) {
+func (f *fakeRepositorySetup) ConfigureRemote(_ context.Context, request portyrepo.RepositoryRemoteRequest) (portyrepo.RepositorySetupStatus, error) {
 	f.remoteRequest = request
 	return f.status, f.err
 }
-func (f *fakeRepositorySetup) RemoveRemote(context.Context) (domain.RepositorySetupStatus, error) {
+func (f *fakeRepositorySetup) RemoveRemote(context.Context) (portyrepo.RepositorySetupStatus, error) {
 	return f.status, f.err
 }
 func (f *fakeRepositorySetup) Ready(context.Context) (bool, error) {
