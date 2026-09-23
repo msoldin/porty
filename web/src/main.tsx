@@ -1,6 +1,6 @@
 import { render } from "preact";
-import { App } from "./App";
-import "./styles.css";
-import { applySavedTheme } from "./theme";
+import { App } from "./app/App";
+import "./app/styles.css";
+import { applySavedTheme } from "./app/theme";
 applySavedTheme();
 render(<App />, document.getElementById("app")!);

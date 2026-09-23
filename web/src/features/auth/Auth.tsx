@@ -1,6 +1,9 @@
 import { useState } from "preact/hooks";
-import { api, message, setCSRF, type Session } from "./api";
-import { Notice, Icon } from "./ui";
+import { message } from "../../lib/http";
+import { signIn } from "./api";
+import { type Session } from "./types";
+import { Icon } from "../../components/Icon";
+import { Notice } from "../../components/Feedback";
 export function Auth({
   registered,
   onSession,
@@ -31,16 +34,12 @@ export function Auth({
           const form = event.currentTarget;
           const data = new FormData(form);
           try {
-            const session = await api<Session>(
-              registered ? "/session" : "/setup/register",
-              "POST",
-              {
-                username: data.get("username"),
-                password: data.get("password"),
-              },
+            const session = await signIn(
+              registered,
+              data.get("username"),
+              data.get("password"),
             );
             form.reset();
-            setCSRF(session.csrfToken);
             onSession(session);
           } catch (error) {
             setError(message(error));

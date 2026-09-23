@@ -1,12 +1,12 @@
 import { useState } from "preact/hooks";
-import {
-  api,
-  message,
-  type Stack,
-  type Repository,
-  type Operation,
-} from "./api";
-import { Badge, Empty, Icon, Notice, isModified, remoteState } from "./ui";
+import { message } from "../../lib/http";
+import { createStack } from "./api";
+import { type Stack } from "./types";
+import { type Repository } from "../repository/types";
+import { type Operation } from "../operations/types";
+import { Icon } from "../../components/Icon";
+import { Badge, Empty, Notice } from "../../components/Feedback";
+import { isModified, remoteState } from "./stackStatus";
 
 export function Dashboard({
   stacks,
@@ -57,9 +57,7 @@ export function Dashboard({
             setBusy(true);
             setError("");
             try {
-              const stack = await api<Stack>("/stacks", "POST", {
-                name: data.get("name"),
-              });
+              const stack = await createStack(data.get("name"));
               setCreating(false);
               refresh();
               navigate(`/stacks/${encodeURIComponent(stack.id)}`);

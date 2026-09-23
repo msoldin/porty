@@ -1,17 +1,19 @@
 import { useState } from "preact/hooks";
+import { message } from "../../lib/http";
 import {
   configureRepositoryRemote,
   inspectRepositoryRemote,
-  message,
   removeRepositoryRemote,
+} from "./api";
+import {
   type RemoteAuthenticationInput,
   type RemoteInspection,
   type RepositoryAuthType,
   type RepositoryRemoteInput,
   type RepositorySetupStatus,
-} from "./api";
+} from "./types";
 import { RemoteAuthenticationFields } from "./RepositoryRemoteFields";
-import { Notice } from "./ui";
+import { Notice } from "../../components/Feedback";
 
 type Action = "configure" | "authentication" | null;
 

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { api, APIError, setCSRF } from "./api";
+import { api, APIError, setCSRF } from "./http";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -106,4 +106,17 @@ it("does not retry when refresh has expired", async () => {
   vi.stubGlobal("fetch", fetcher);
   await expect(api("/stacks")).rejects.toBeInstanceOf(APIError);
   expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("does not refresh or retry a rejected sign-in or setup request", async () => {
+  document.cookie = "porty_csrf=cookie-csrf; Path=/";
+  const fetcher = vi.fn(async () =>
+    Response.json({ error: { code: "AuthenticationFailed" } }, { status: 401 }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  await expect(
+    api("/session", "POST", { username: "admin", password: "wrong" }),
+  ).rejects.toBeInstanceOf(APIError);
+  await expect(api("/setup/status")).rejects.toBeInstanceOf(APIError);
+  expect(fetcher.mock.calls).toHaveLength(2);
 });

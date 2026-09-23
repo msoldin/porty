@@ -19,6 +19,7 @@ let writes: { path: string; init?: RequestInit }[];
 let stale = false;
 let holdSave: (() => void) | undefined;
 let delaySave = false;
+let createFails = false;
 let authenticated = true;
 let registered = true;
 let repositoryReady = true;
@@ -33,6 +34,7 @@ beforeEach(() => {
   writes = [];
   stale = false;
   delaySave = false;
+  createFails = false;
   holdSave = undefined;
   authenticated = true;
   registered = true;
@@ -61,6 +63,13 @@ beforeEach(() => {
         );
       if (path === "/setup/status")
         return Response.json({ registered, csrfToken: "register-csrf" });
+      if (path === "/stacks" && method === "POST" && createFails)
+        return Response.json(
+          {
+            error: { code: "CreateFailed", message: "Could not create stack" },
+          },
+          { status: 500 },
+        );
       if (
         (path === "/session" || path === "/setup/register") &&
         method === "POST"
@@ -349,6 +358,58 @@ describe("Porty administration interface", () => {
     expect(
       await screen.findByRole("heading", { name: "Stacks" }),
     ).toBeInTheDocument();
+  });
+  it("opens a stack from a direct hash link and handles malformed stack IDs", async () => {
+    location.hash = "#/stacks/s1";
+    const rendered = render(<App />);
+    expect(
+      await screen.findByRole("heading", { name: "paperless" }),
+    ).toBeInTheDocument();
+    rendered.unmount();
+    location.hash = "#/stacks/%E0%A4%A";
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", { name: "Stack not found" }),
+    ).toBeInTheDocument();
+  });
+  it("keeps an unsaved editor open when sign out is declined", async () => {
+    await edit(await openEditor());
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(
+      screen.getByRole("textbox", { name: "File contents" }),
+    ).toHaveTextContent("nginx");
+    expect(
+      writes.filter(
+        (value) => value.path === "/session" && value.init?.method === "DELETE",
+      ),
+    ).toHaveLength(0);
+  });
+  it("blocks repository actions and browser unload while the editor is unsaved", async () => {
+    await edit(await openEditor());
+    fireEvent.click(screen.getByRole("button", { name: "Fetch" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Save or discard editor changes",
+    );
+    expect(
+      writes.filter((value) => value.path === "/repository/actions/fetch"),
+    ).toHaveLength(0);
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+  });
+  it("keeps the create form and shows the server error after a failed create", async () => {
+    createFails = true;
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "New stack" }));
+    fireEvent.input(screen.getByPlaceholderText("my-stack"), {
+      target: { value: "broken" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create stack" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not create stack",
+    );
+    expect(screen.getByPlaceholderText("my-stack")).toHaveValue("broken");
   });
   it("preserves unsaved contents when navigation is declined", async () => {
     const editor = await openEditor();

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositorySettings } from "./RepositorySettings";
-import type { RemoteInspection, RepositorySetupStatus } from "./api";
+import { RemoteInspection, RepositorySetupStatus } from "./types";
 
 const localStatus: RepositorySetupStatus = {
   state: "ready",

@@ -6,6 +6,8 @@ SQLite migrations run automatically at startup through goose using the embedded 
 
 For a TLS reverse proxy, set `server.public_url` to the external origin (for example, `https://porty.example.com`). Porty uses that origin for CSRF checks and marks authentication cookies Secure. Direct TLS and local HTTP use the request origin when this setting is empty. Access cookies expire after 15 minutes; the browser refreshes them with a rotating token whose original login expires after seven days. Logout revokes the refresh family, while an access token already issued at logout can remain valid for at most 15 minutes. Password changes and resets rotate the signing key and revoke all refresh families immediately.
 
+The frontend entry point is `web/src/main.tsx`. `web/src/app/` owns session boot, hash routing, workspace coordination, theme, and global styles. Each directory under `web/src/features/` owns its domain UI, API functions, and types. `web/src/lib/http.ts` owns shared HTTP/CSRF/refresh behavior, and `web/src/components/` contains UI used across features. Unit and component tests sit beside their source; cross-feature browser tests remain in `web/e2e/`.
+
 ```sh
 (cd web && bun ci)
 (cd web && bun run test)

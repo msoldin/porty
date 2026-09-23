@@ -1,10 +1,11 @@
 import { render } from "@testing-library/preact";
 import { h } from "preact";
 import { afterEach, expect, it, vi } from "vitest";
-import { reduceStream, useOperationStream } from "./stream";
-import { refreshSession } from "./api";
+import { reduceStream } from "./streamState";
+import { useOperationStream } from "./useOperationStream";
+import { refreshSession } from "../../lib/http";
 
-vi.mock("./api", () => ({
+vi.mock("../../lib/http", () => ({
   refreshSession: vi.fn().mockResolvedValue(undefined),
 }));
 

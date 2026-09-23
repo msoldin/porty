@@ -1,16 +1,14 @@
 import { useEffect, useState } from "preact/hooks";
-import {
-  api,
-  message,
-  stackPath,
-  type Stack,
-  type Repository,
-  type Operation,
-  type Deployment,
-} from "./api";
-import { Badge, Empty, Icon, Notice, isModified, remoteState } from "./ui";
+import { message } from "../../lib/http";
+import { listDeployments, runStackAction } from "./api";
+import { type Stack, type Deployment } from "./types";
+import { type Repository } from "../repository/types";
+import { type Operation } from "../operations/types";
+import { Icon } from "../../components/Icon";
+import { Badge, Empty, Notice } from "../../components/Feedback";
+import { isModified, remoteState } from "./stackStatus";
 import { Editor } from "./Editor";
-import { StackSettings } from "./Settings";
+import { StackSettings } from "./StackSettings";
 
 export function StackDetail({
   stack,
@@ -51,7 +49,7 @@ export function StackDetail({
   );
   useEffect(() => {
     if (tab === "History" || tab === "Overview")
-      api<Deployment[] | null>(`${stackPath(stack.id)}/deployments?limit=50`)
+      listDeployments(stack.id)
         .then((value) => setDeployments(value || []))
         .catch((error) => setError(message(error)));
   }, [stack.id, tab, operations]);
@@ -102,9 +100,7 @@ export function StackDetail({
     setBusy(true);
     setError("");
     try {
-      onAction(
-        await api<Operation>(`${stackPath(stack.id)}/actions/${kind}`, "POST"),
-      );
+      onAction(await runStackAction(stack.id, kind));
     } catch (error) {
       setError(message(error));
     } finally {

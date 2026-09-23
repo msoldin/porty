@@ -1,4 +1,3 @@
-import type { ComponentChildren } from "preact";
 export function Icon({ name }: { name: string }) {
   const paths: Record<string, string> = {
     Stacks: "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5",
@@ -33,40 +32,5 @@ export function Icon({ name }: { name: string }) {
     >
       <path d={paths[name] || paths.File} />
     </svg>
-  );
-}
-export function Badge({
-  children,
-  tone = "neutral",
-}: {
-  children: ComponentChildren;
-  tone?: string;
-}) {
-  return <span class={`badge ${tone}`}>{children}</span>;
-}
-export function Notice({ children }: { children: ComponentChildren }) {
-  return (
-    <div class="notice" role="alert">
-      {children}
-    </div>
-  );
-}
-export function Empty({ children }: { children: ComponentChildren }) {
-  return <p class="empty">{children}</p>;
-}
-export function remoteState(repo?: Repository | null) {
-  if (!repo) return "Unknown";
-  if (repo.ahead && repo.behind)
-    return `Diverged +${repo.ahead} / −${repo.behind}`;
-  return repo.ahead
-    ? `Ahead ${repo.ahead}`
-    : repo.behind
-      ? `Behind ${repo.behind}`
-      : "Current";
-}
-import type { Repository, Stack } from "./api";
-export function isModified(stack: Stack, repo?: Repository | null) {
-  return (repo?.paths || []).some((path) =>
-    path.startsWith(`${stack.directoryName}/`),
   );
 }

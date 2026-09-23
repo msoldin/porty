@@ -1,4 +1,4 @@
-import type { RepositoryAuthType, RepositorySetupStatus } from "./api";
+import { RepositoryAuthType, RepositorySetupStatus } from "./types";
 
 export function RemoteAuthenticationFields({
   ssh,

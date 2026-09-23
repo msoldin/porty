@@ -1,14 +1,20 @@
 import { useEffect, useState } from "preact/hooks";
+import { message } from "../../lib/http";
 import {
-  api,
-  message,
   stackPath,
-  type Stack,
-  type FileEntry,
-  type FileContent,
+  listFiles,
+  getStackFile,
+  getDiff,
+  saveStackFile,
+  deleteStackFile,
+  moveStackFile,
+  createStackFile,
+  commitStack,
 } from "./api";
+import { type Stack, type FileEntry, type FileContent } from "./types";
 import { CodeEditor } from "./CodeEditor";
-import { Empty, Icon, Notice } from "./ui";
+import { Icon } from "../../components/Icon";
+import { Empty, Notice } from "../../components/Feedback";
 
 export function Editor({
   stack,
@@ -31,16 +37,14 @@ export function Editor({
   const [commitMessage, setCommitMessage] = useState("");
   const [notice, setNotice] = useState("");
   async function reloadDiff() {
-    setDiff((await api<{ diff: string }>(`${root}/diff`)).diff);
+    setDiff(await getDiff(stack.id));
   }
   async function open(path: string) {
     if (dirty && !confirm("Discard unsaved changes?")) return;
     setBusy(true);
     setError("");
     try {
-      const next = await api<FileContent>(
-        `${root}/files?path=${encodeURIComponent(path)}`,
-      );
+      const next = await getStackFile(stack.id, path);
       setFile(next);
       setContent(next.content);
       setDirty(false);
@@ -51,21 +55,21 @@ export function Editor({
     }
   }
   async function reloadTree() {
-    setTree((await api<FileEntry[] | null>(`${root}/tree`)) || []);
+    setTree((await listFiles(stack.id)) || []);
   }
   useEffect(() => {
     let active = true;
     Promise.all([
-      api<FileEntry[] | null>(`${root}/tree`),
-      api<FileContent>(`${root}/files?path=docker-compose.yml`),
-      api<{ diff: string }>(`${root}/diff`),
+      listFiles(stack.id),
+      getStackFile(stack.id, "docker-compose.yml"),
+      getDiff(stack.id),
     ])
       .then(([entries, file, difference]) => {
         if (!active) return;
         setTree(entries || []);
         setFile(file);
         setContent(file.content);
-        setDiff(difference.diff);
+        setDiff(difference);
         setDirty(false);
       })
       .catch((error) => active && setError(message(error)));
@@ -79,11 +83,11 @@ export function Editor({
     setError("");
     const snapshot = content;
     try {
-      const result = await api<{ hash: string }>(
-        `${root}/files?path=${encodeURIComponent(file.path)}`,
-        "PUT",
-        { content: snapshot },
-        { "If-Match": `"${file.hash}"` },
+      const result = await saveStackFile(
+        stack.id,
+        file.path,
+        snapshot,
+        file.hash,
       );
       setFile({ ...file, content: snapshot, hash: result.hash });
       setDirty(false);
@@ -106,25 +110,16 @@ export function Editor({
     setBusy(true);
     setError("");
     try {
-      if (kind === "delete")
-        await api(`${root}/files?path=${encodeURIComponent(path)}`, "DELETE");
-      else if (kind === "move")
-        await api(`${root}/files/move`, "POST", { from: file?.path, to: path });
-      else
-        await api(`${root}/files`, "POST", {
-          path,
-          content: "",
-          directory: kind === "directory",
-        });
+      if (kind === "delete") await deleteStackFile(stack.id, path);
+      else if (kind === "move") await moveStackFile(stack.id, file?.path, path);
+      else await createStackFile(stack.id, path, kind === "directory");
       setDirty(false);
       await reloadTree();
       await reloadDiff();
       refresh();
       if (kind === "delete") setFile(undefined);
       else if (kind !== "directory") {
-        const next = await api<FileContent>(
-          `${root}/files?path=${encodeURIComponent(path)}`,
-        );
+        const next = await getStackFile(stack.id, path);
         setFile(next);
         setContent(next.content);
       }
@@ -267,7 +262,7 @@ export function Editor({
               setError("");
               setNotice("");
               try {
-                await api(`${root}/commit`, "POST", { message: commitMessage });
+                await commitStack(stack.id, commitMessage);
                 setCommitMessage("");
                 setNotice(`Committed ${stack.directoryName}`);
                 await reloadDiff();

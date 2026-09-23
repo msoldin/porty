@@ -1,16 +1,16 @@
 import { useState } from "preact/hooks";
+import { message } from "../../lib/http";
+import { inspectRepositoryRemote, setupRepository } from "./api";
 import {
-  inspectRepositoryRemote,
-  message,
-  setupRepository,
   type GitIdentity,
   type RemoteAuthenticationInput,
   type RemoteInspection,
   type RepositoryRemoteInput,
   type RepositorySetupMode,
   type RepositorySetupStatus,
-} from "./api";
-import { Icon, Notice } from "./ui";
+} from "./types";
+import { Icon } from "../../components/Icon";
+import { Notice } from "../../components/Feedback";
 import { RemoteAuthenticationFields } from "./RepositoryRemoteFields";
 
 const choices: Array<{
