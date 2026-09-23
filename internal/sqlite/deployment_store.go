@@ -6,11 +6,17 @@ import (
 	"time"
 
 	"github.com/msoldin/porty/internal/domain"
+	"github.com/msoldin/porty/internal/sqlite/generated"
 )
 
-type DeploymentStore struct{ db *sql.DB }
+type DeploymentStore struct {
+	db      *sql.DB
+	queries *generated.Queries
+}
 
-func NewDeploymentStore(db *sql.DB) *DeploymentStore { return &DeploymentStore{db: db} }
+func NewDeploymentStore(db *sql.DB) *DeploymentStore {
+	return &DeploymentStore{db: db, queries: generated.New(db)}
+}
 
 func (s *DeploymentStore) SaveDeployment(ctx context.Context, deployment domain.Deployment) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -20,7 +26,7 @@ func (s *DeploymentStore) SaveDeployment(ctx context.Context, deployment domain.
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `INSERT INTO deployments(id,stack_id,operation_id,git_commit,dirty,diff_digest,compose_digest,status,started_at,completed_at,duration_ms,error_code) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
 		deployment.ID, deployment.StackID, deployment.OperationID, nullableString(deployment.GitCommit), deployment.Dirty, nullableString(deployment.DiffDigest), nullableString(deployment.ComposeDigest), deployment.Status,
-		encodeTime(deployment.StartedAt), encodeTime(deployment.CompletedAt), deployment.Duration.Milliseconds(), nullableString(deployment.ErrorCode))
+		encodeTime(deployment.StartedAt), nullableTime(deployment.CompletedAt), deployment.Duration.Milliseconds(), nullableString(deployment.ErrorCode))
 	if err != nil {
 		return err
 	}
@@ -28,7 +34,11 @@ func (s *DeploymentStore) SaveDeployment(ctx context.Context, deployment domain.
 }
 
 func (s *DeploymentStore) LatestDeployment(ctx context.Context, stackID domain.StackID) (domain.Deployment, error) {
-	return scanDeployment(s.db.QueryRowContext(ctx, deploymentSelect+` WHERE stack_id=? ORDER BY started_at DESC LIMIT 1`, stackID))
+	row, err := s.queries.GetLatestDeployment(ctx, string(stackID))
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	return deploymentFromRow(row), nil
 }
 
 func (s *DeploymentStore) Deployments(ctx context.Context, stackID domain.StackID, limit int) ([]domain.Deployment, error) {
@@ -42,44 +52,32 @@ func (s *DeploymentStore) DeploymentsPage(ctx context.Context, stackID domain.St
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := s.db.QueryContext(ctx, deploymentSelect+` WHERE stack_id=? ORDER BY started_at DESC LIMIT ? OFFSET ?`, stackID, limit, offset)
+	rows, err := s.queries.ListDeployments(ctx, generated.ListDeploymentsParams{StackID: string(stackID), Limit: int64(limit), Offset: int64(offset)})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]domain.Deployment, 0)
-	for rows.Next() {
-		deployment, err := scanDeployment(rows)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, deployment)
+	result := make([]domain.Deployment, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, deploymentFromRow(row))
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
-const deploymentSelect = `SELECT id,stack_id,operation_id,git_commit,dirty,diff_digest,compose_digest,status,started_at,completed_at,duration_ms,error_code FROM deployments`
-
-func scanDeployment(row rowScanner) (domain.Deployment, error) {
-	var deployment domain.Deployment
-	var gitCommit, diffDigest, composeDigest, completedAt, errorCode sql.NullString
-	var startedAt string
-	var durationMS sql.NullInt64
-	if err := row.Scan(&deployment.ID, &deployment.StackID, &deployment.OperationID, &gitCommit, &deployment.Dirty, &diffDigest, &composeDigest, &deployment.Status, &startedAt, &completedAt, &durationMS, &errorCode); err != nil {
-		return domain.Deployment{}, err
+func deploymentFromRow(row generated.Deployment) domain.Deployment {
+	deployment := domain.Deployment{
+		ID: row.ID, StackID: domain.StackID(row.StackID), OperationID: row.OperationID,
+		GitCommit: row.GitCommit.String, Dirty: row.Dirty != 0,
+		DiffDigest: row.DiffDigest.String, ComposeDigest: row.ComposeDigest.String,
+		Status: domain.DeploymentStatus(row.Status), ErrorCode: row.ErrorCode.String,
 	}
-	deployment.GitCommit = gitCommit.String
-	deployment.DiffDigest = diffDigest.String
-	deployment.ComposeDigest = composeDigest.String
-	deployment.ErrorCode = errorCode.String
-	deployment.StartedAt, _ = time.Parse(time.RFC3339Nano, startedAt)
-	if completedAt.Valid {
-		deployment.CompletedAt, _ = time.Parse(time.RFC3339Nano, completedAt.String)
+	deployment.StartedAt, _ = time.Parse(time.RFC3339Nano, row.StartedAt)
+	if row.CompletedAt.Valid {
+		deployment.CompletedAt, _ = time.Parse(time.RFC3339Nano, row.CompletedAt.String)
 	}
-	if durationMS.Valid {
-		deployment.Duration = time.Duration(durationMS.Int64) * time.Millisecond
+	if row.DurationMs.Valid {
+		deployment.Duration = time.Duration(row.DurationMs.Int64) * time.Millisecond
 	}
-	return deployment, nil
+	return deployment
 }
 
 func nullableString(value string) any {

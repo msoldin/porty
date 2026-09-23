@@ -2,6 +2,8 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -52,5 +54,40 @@ func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
 	}
 	if err := stacks.Purge(ctx, stack.ID); err != nil {
 		t.Fatalf("Purge() with deployment history = %v", err)
+	}
+}
+
+func TestDeploymentStoreKeepsUnfinishedTimestampNull(t *testing.T) {
+	ctx := context.Background()
+	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Now().UTC()
+	stackID := domain.StackID("stk_gateway")
+	if err := portysqlite.NewStackStore(db).Create(ctx, domain.Stack{ID: stackID, DirectoryName: "gateway", ComposeProjectName: "porty-gateway", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := portysqlite.NewOperationStore(db).CreateOperation(ctx, domain.Operation{ID: "op_1", Kind: "deploy", ScopeType: "stack", Status: domain.OperationRunning}); err != nil {
+		t.Fatal(err)
+	}
+	store := portysqlite.NewDeploymentStore(db)
+	if err := store.SaveDeployment(ctx, domain.Deployment{ID: "dep_1", StackID: stackID, OperationID: "op_1", StartedAt: now, Status: domain.DeploymentStatus("running")}); err != nil {
+		t.Fatal(err)
+	}
+	var nullCompletion bool
+	if err := db.QueryRowContext(ctx, "SELECT completed_at IS NULL FROM deployments WHERE id='dep_1'").Scan(&nullCompletion); err != nil {
+		t.Fatal(err)
+	}
+	if !nullCompletion {
+		t.Fatal("unfinished deployment stored a non-NULL completion timestamp")
+	}
+	latest, err := store.LatestDeployment(ctx, stackID)
+	if err != nil || !latest.CompletedAt.IsZero() {
+		t.Fatalf("latest = %#v, %v", latest, err)
+	}
+	if _, err := store.LatestDeployment(ctx, "missing"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing latest: %v", err)
 	}
 }
