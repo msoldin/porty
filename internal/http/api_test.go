@@ -1,11 +1,11 @@
-package httpapi
+package http
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	portyrepo "github.com/msoldin/porty/internal/repository"
-	"net/http"
+	stdhttp "net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -21,36 +21,36 @@ func TestStackEndpointsRequireSessionAndMutationsRequireCSRF(t *testing.T) {
 	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{Stacks: stacks})
 
 	unauthorized := httptest.NewRecorder()
-	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "http://porty.local/api/v1/stacks", nil))
-	if unauthorized.Code != http.StatusUnauthorized {
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/stacks", nil))
+	if unauthorized.Code != stdhttp.StatusUnauthorized {
 		t.Fatalf("unauthorized status = %d", unauthorized.Code)
 	}
 
-	listRequest := httptest.NewRequest(http.MethodGet, "http://porty.local/api/v1/stacks", nil)
+	listRequest := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/stacks", nil)
 	listRequest.AddCookie(sessionCookie)
 	listed := httptest.NewRecorder()
 	handler.ServeHTTP(listed, listRequest)
-	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte("gateway")) {
+	if listed.Code != stdhttp.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte("gateway")) {
 		t.Fatalf("list response = %d %s", listed.Code, listed.Body.String())
 	}
 
-	create := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/stacks", bytes.NewBufferString(`{"name":"worker"}`))
+	create := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/stacks", bytes.NewBufferString(`{"name":"worker"}`))
 	create.Header.Set("Origin", "http://porty.local")
 	create.AddCookie(sessionCookie)
 	denied := httptest.NewRecorder()
 	handler.ServeHTTP(denied, create)
-	if denied.Code != http.StatusForbidden {
+	if denied.Code != stdhttp.StatusForbidden {
 		t.Fatalf("missing CSRF status = %d", denied.Code)
 	}
 
-	create = httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/stacks", bytes.NewBufferString(`{"name":"worker"}`))
+	create = httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/stacks", bytes.NewBufferString(`{"name":"worker"}`))
 	create.Header.Set("Origin", "http://porty.local")
 	create.Header.Set("X-CSRF-Token", csrf)
-	create.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	create.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
 	create.AddCookie(sessionCookie)
 	created := httptest.NewRecorder()
 	handler.ServeHTTP(created, create)
-	if created.Code != http.StatusCreated || stacks.created != "worker" {
+	if created.Code != stdhttp.StatusCreated || stacks.created != "worker" {
 		t.Fatalf("create response = %d %s", created.Code, created.Body.String())
 	}
 }
@@ -59,26 +59,26 @@ func TestFileUpdateRequiresMatchingETag(t *testing.T) {
 	files := &fakeFileAPI{content: domain.FileContent{Path: "docker-compose.yml", Content: []byte("services: {}\n"), Hash: "sha256:old", Size: 13}}
 	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{Files: files})
 
-	request := httptest.NewRequest(http.MethodPut, "http://porty.local/api/v1/stacks/stk_gateway/files?path=docker-compose.yml", bytes.NewBufferString(`{"content":"services:\n  web: {}\n"}`))
+	request := httptest.NewRequest(stdhttp.MethodPut, "http://porty.local/api/v1/stacks/stk_gateway/files?path=docker-compose.yml", bytes.NewBufferString(`{"content":"services:\n  web: {}\n"}`))
 	request.Header.Set("Origin", "http://porty.local")
 	request.Header.Set("X-CSRF-Token", csrf)
-	request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
 	request.AddCookie(sessionCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusPreconditionRequired {
+	if response.Code != stdhttp.StatusPreconditionRequired {
 		t.Fatalf("missing If-Match status = %d: %s", response.Code, response.Body.String())
 	}
 
-	request = httptest.NewRequest(http.MethodPut, "http://porty.local/api/v1/stacks/stk_gateway/files?path=docker-compose.yml", bytes.NewBufferString(`{"content":"services:\n  web: {}\n"}`))
+	request = httptest.NewRequest(stdhttp.MethodPut, "http://porty.local/api/v1/stacks/stk_gateway/files?path=docker-compose.yml", bytes.NewBufferString(`{"content":"services:\n  web: {}\n"}`))
 	request.Header.Set("Origin", "http://porty.local")
 	request.Header.Set("X-CSRF-Token", csrf)
-	request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
 	request.Header.Set("If-Match", `"sha256:old"`)
 	request.AddCookie(sessionCookie)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || files.expectedHash != "sha256:old" {
+	if response.Code != stdhttp.StatusOK || files.expectedHash != "sha256:old" {
 		t.Fatalf("save response = %d %s, hash=%q", response.Code, response.Body.String(), files.expectedHash)
 	}
 }
@@ -86,14 +86,14 @@ func TestFileUpdateRequiresMatchingETag(t *testing.T) {
 func TestLongRunningActionReturnsAcceptedOperationResource(t *testing.T) {
 	actions := &fakeActionAPI{}
 	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{Actions: actions})
-	request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/stacks/stk_gateway/actions/deploy", nil)
+	request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/stacks/stk_gateway/actions/deploy", nil)
 	request.Header.Set("Origin", "http://porty.local")
 	request.Header.Set("X-CSRF-Token", csrf)
-	request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
 	request.AddCookie(sessionCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusAccepted || !bytes.Contains(response.Body.Bytes(), []byte(`"id":"op_1"`)) {
+	if response.Code != stdhttp.StatusAccepted || !bytes.Contains(response.Body.Bytes(), []byte(`"id":"op_1"`)) {
 		t.Fatalf("action response = %d %s", response.Code, response.Body.String())
 	}
 }
@@ -105,14 +105,14 @@ func TestRepositorySetupAuditStateAndPaginationContracts(t *testing.T) {
 	operations := &fakePagedOperations{}
 	handler, sessionCookie, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup, Audit: audit, State: state, Operations: operations})
 
-	request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/repository/setup", bytes.NewBufferString(`{"mode":"init","branch":"main"}`))
+	request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/repository/setup", bytes.NewBufferString(`{"mode":"init","branch":"main"}`))
 	request.Header.Set("Origin", "http://porty.local")
 	request.Header.Set("X-CSRF-Token", csrf)
-	request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+	request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
 	request.AddCookie(sessionCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated || setup.request.Mode != "init" {
+	if response.Code != stdhttp.StatusCreated || setup.request.Mode != "init" {
 		t.Fatalf("setup response = %d %s request=%#v", response.Code, response.Body.String(), setup.request)
 	}
 
@@ -121,11 +121,11 @@ func TestRepositorySetupAuditStateAndPaginationContracts(t *testing.T) {
 		"/api/v1/stacks/stk_gateway/state":      "current",
 		"/api/v1/operations?limit=20&offset=40": "op_page",
 	} {
-		req := httptest.NewRequest(http.MethodGet, "http://porty.local"+path, nil)
+		req := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local"+path, nil)
 		req.AddCookie(sessionCookie)
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, req)
-		if res.Code != http.StatusOK || !bytes.Contains(res.Body.Bytes(), []byte(want)) {
+		if res.Code != stdhttp.StatusOK || !bytes.Contains(res.Body.Bytes(), []byte(want)) {
 			t.Fatalf("GET %s = %d %s", path, res.Code, res.Body.String())
 		}
 	}
@@ -134,7 +134,7 @@ func TestRepositorySetupAuditStateAndPaginationContracts(t *testing.T) {
 	}
 }
 
-func authenticatedAPIRouter(t *testing.T, extra RouterOptions) (http.Handler, *http.Cookie, string) {
+func authenticatedAPIRouter(t *testing.T, extra RouterOptions) (stdhttp.Handler, *stdhttp.Cookie, string) {
 	t.Helper()
 	db, err := portysqlite.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
@@ -147,13 +147,13 @@ func authenticatedAPIRouter(t *testing.T, extra RouterOptions) (http.Handler, *h
 	extra.PublicURL = "http://porty.local"
 	handler := NewRouter(extra)
 	setupCSRF, setupCookie := setupToken(t, handler)
-	register := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+	register := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
 	register.Header.Set("Origin", "http://porty.local")
 	register.Header.Set("X-CSRF-Token", setupCSRF)
 	register.AddCookie(setupCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, register)
-	if response.Code != http.StatusCreated {
+	if response.Code != stdhttp.StatusCreated {
 		t.Fatalf("register = %d: %s", response.Code, response.Body.String())
 	}
 	var session SessionResponse

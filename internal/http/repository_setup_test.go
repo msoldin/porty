@@ -1,10 +1,10 @@
-package httpapi
+package http
 
 import (
 	"bytes"
 	"encoding/json"
 	portyrepo "github.com/msoldin/porty/internal/repository"
-	"net/http"
+	stdhttp "net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -16,12 +16,12 @@ func TestRepositorySetupStatusRequiresAuthenticationButNotReadyState(t *testing.
 	setup := notReadyRepositorySetup()
 	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
 	unauthorized := httptest.NewRecorder()
-	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "http://porty.local/api/v1/repository/setup/status", nil))
-	if unauthorized.Code != http.StatusUnauthorized {
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/repository/setup/status", nil))
+	if unauthorized.Code != stdhttp.StatusUnauthorized {
 		t.Fatalf("unauthorized status = %d", unauthorized.Code)
 	}
-	response := doAuthenticatedRequest(handler, session, "", http.MethodGet, "/api/v1/repository/setup/status", "")
-	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"required":true`)) {
+	response := doAuthenticatedRequest(handler, session, "", stdhttp.MethodGet, "/api/v1/repository/setup/status", "")
+	if response.Code != stdhttp.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"required":true`)) {
 		t.Fatalf("status = %d %s", response.Code, response.Body.String())
 	}
 }
@@ -31,12 +31,12 @@ func TestRepositoryRemoteInspectionRequiresCSRFButNotReadyState(t *testing.T) {
 	setup.inspection = portyrepo.RemoteInspection{RemoteURL: "https://example.com/repo.git", Branches: []string{"trunk"}, Suggested: "trunk"}
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
 	body := `{"remote":{"url":"https://user@example.com/repo.git","authentication":{"type":"none"}}}`
-	denied := doAuthenticatedRequest(handler, session, "", http.MethodPost, "/api/v1/repository/setup/inspect-remote", body)
-	if denied.Code != http.StatusForbidden {
+	denied := doAuthenticatedRequest(handler, session, "", stdhttp.MethodPost, "/api/v1/repository/setup/inspect-remote", body)
+	if denied.Code != stdhttp.StatusForbidden {
 		t.Fatalf("missing CSRF status = %d", denied.Code)
 	}
-	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup/inspect-remote", body)
-	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"suggestedBranch":"trunk"`)) {
+	response := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPost, "/api/v1/repository/setup/inspect-remote", body)
+	if response.Code != stdhttp.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"suggestedBranch":"trunk"`)) {
 		t.Fatalf("inspection = %d %s", response.Code, response.Body.String())
 	}
 }
@@ -45,8 +45,8 @@ func TestRepositorySetupAcceptsLocalOnlyRequest(t *testing.T) {
 	setup := notReadyRepositorySetup()
 	setup.status = readySetupStatus(nil)
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
-	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup", `{"mode":"init","branch":"main","author":{"name":"Porty","email":"porty@localhost"}}`)
-	if response.Code != http.StatusCreated || setup.request.Mode != portyrepo.RepositorySetupInit || setup.request.Remote != nil {
+	response := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPost, "/api/v1/repository/setup", `{"mode":"init","branch":"main","author":{"name":"Porty","email":"porty@localhost"}}`)
+	if response.Code != stdhttp.StatusCreated || setup.request.Mode != portyrepo.RepositorySetupInit || setup.request.Remote != nil {
 		t.Fatalf("setup = %d %s request=%#v", response.Code, response.Body.String(), setup.request)
 	}
 }
@@ -54,8 +54,8 @@ func TestRepositorySetupAcceptsLocalOnlyRequest(t *testing.T) {
 func TestRepositorySetupRejectsOversizedBody(t *testing.T) {
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup()})
 	body := `{"mode":"init","branch":"` + strings.Repeat("x", (1<<20)+1) + `"}`
-	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup", body)
-	if response.Code != http.StatusRequestEntityTooLarge {
+	response := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPost, "/api/v1/repository/setup", body)
+	if response.Code != stdhttp.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d", response.Code)
 	}
 }
@@ -66,17 +66,17 @@ func TestRepositorySetupNeverReturnsSubmittedSecret(t *testing.T) {
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
 	secret := "never-return-this-secret"
 	body := `{"mode":"remote","branch":"main","author":{"name":"Porty","email":"porty@localhost"},"remote":{"url":"https://example.com/repo.git","authentication":{"type":"https","username":"git","secret":"` + secret + `"}}}`
-	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup", body)
-	if response.Code != http.StatusCreated || strings.Contains(response.Body.String(), secret) {
+	response := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPost, "/api/v1/repository/setup", body)
+	if response.Code != stdhttp.StatusCreated || strings.Contains(response.Body.String(), secret) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
 
 func TestRepositoryRemoteSettingsRequireReadyState(t *testing.T) {
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup()})
-	for _, test := range []struct{ method, body string }{{http.MethodPut, `{"remote":{"url":"https://example.com/repo.git","authentication":{"type":"none"}},"branch":"main"}`}, {http.MethodDelete, ""}} {
+	for _, test := range []struct{ method, body string }{{stdhttp.MethodPut, `{"remote":{"url":"https://example.com/repo.git","authentication":{"type":"none"}},"branch":"main"}`}, {stdhttp.MethodDelete, ""}} {
 		response := doAuthenticatedRequest(handler, session, csrf, test.method, "/api/v1/repository/remote", test.body)
-		assertAPIError(t, response, http.StatusConflict, "RepositorySetupRequired")
+		assertAPIError(t, response, stdhttp.StatusConflict, "RepositorySetupRequired")
 	}
 }
 
@@ -97,7 +97,7 @@ func TestRepositorySetupErrorsUseStableCodes(t *testing.T) {
 			setup := notReadyRepositorySetup()
 			setup.err = test.err
 			handler, session, _ := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: setup})
-			response := doAuthenticatedRequest(handler, session, "", http.MethodGet, "/api/v1/repository/setup/status", "")
+			response := doAuthenticatedRequest(handler, session, "", stdhttp.MethodGet, "/api/v1/repository/setup/status", "")
 			assertAPIError(t, response, test.status, test.code)
 			if strings.Contains(response.Body.String(), test.err.Error()+":") {
 				t.Fatalf("wrapped error leaked: %s", response.Body.String())
@@ -109,14 +109,14 @@ func TestRepositorySetupErrorsUseStableCodes(t *testing.T) {
 func TestNormalReadRouteRequiresRepositorySetup(t *testing.T) {
 	stacks := &fakeStackAPI{items: []domain.Stack{{ID: "stk_one", DirectoryName: "one"}}}
 	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup(), Stacks: stacks})
-	response := doAuthenticatedRequest(handler, session, "", http.MethodGet, "/api/v1/stacks", "")
+	response := doAuthenticatedRequest(handler, session, "", stdhttp.MethodGet, "/api/v1/stacks", "")
 	assertAPIError(t, response, 409, "RepositorySetupRequired")
 }
 
 func TestNormalMutationRouteRequiresRepositorySetup(t *testing.T) {
 	stacks := &fakeStackAPI{}
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup(), Stacks: stacks})
-	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/stacks", `{"name":"blocked"}`)
+	response := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPost, "/api/v1/stacks", `{"name":"blocked"}`)
 	assertAPIError(t, response, 409, "RepositorySetupRequired")
 	if stacks.created != "" {
 		t.Fatalf("stack created before setup: %q", stacks.created)
@@ -131,8 +131,8 @@ func TestRepositorySetupAuditContainsNoSecretOrRawRemoteURL(t *testing.T) {
 	audit.recorded = nil
 	secret, rawURL := "audit-secret", "https://git@example.com/repo.git"
 	body := `{"mode":"remote","branch":"main","author":{"name":"Porty","email":"porty@localhost"},"remote":{"url":"` + rawURL + `","authentication":{"type":"https","username":"git","secret":"` + secret + `"}}}`
-	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup", body)
-	if response.Code != http.StatusCreated || len(audit.recorded) != 1 {
+	response := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPost, "/api/v1/repository/setup", body)
+	if response.Code != stdhttp.StatusCreated || len(audit.recorded) != 1 {
 		t.Fatalf("response/audit = %d/%#v", response.Code, audit.recorded)
 	}
 	encoded, _ := json.Marshal(audit.recorded[0])
@@ -144,8 +144,8 @@ func TestRepositorySetupAuditContainsNoSecretOrRawRemoteURL(t *testing.T) {
 	}
 	setup.err = portyrepo.ErrRemoteUnavailable
 	audit.recorded = nil
-	failed := doAuthenticatedRequest(handler, session, csrf, http.MethodPost, "/api/v1/repository/setup", body)
-	if failed.Code != http.StatusBadGateway || len(audit.recorded) != 1 || !strings.Contains(audit.recorded[0].TargetID, "code=RemoteUnavailable") {
+	failed := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPost, "/api/v1/repository/setup", body)
+	if failed.Code != stdhttp.StatusBadGateway || len(audit.recorded) != 1 || !strings.Contains(audit.recorded[0].TargetID, "code=RemoteUnavailable") {
 		t.Fatalf("failed audit = %d %#v", failed.Code, audit.recorded)
 	}
 }
@@ -156,14 +156,14 @@ func notReadyRepositorySetup() *fakeRepositorySetup {
 func readySetupStatus(remote *portyrepo.RepositoryRemoteSummary) portyrepo.RepositorySetupStatus {
 	return portyrepo.RepositorySetupStatus{State: portyrepo.RepositorySetupReady, Required: false, ManagedRemote: remote}
 }
-func doAuthenticatedRequest(handler http.Handler, session *http.Cookie, csrf, method, path, body string) *httptest.ResponseRecorder {
+func doAuthenticatedRequest(handler stdhttp.Handler, session *stdhttp.Cookie, csrf, method, path, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, "http://porty.local"+path, strings.NewReader(body))
 	request.AddCookie(session)
-	if method != http.MethodGet {
+	if method != stdhttp.MethodGet {
 		request.Header.Set("Origin", "http://porty.local")
 		if csrf != "" {
 			request.Header.Set("X-CSRF-Token", csrf)
-			request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
+			request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
 		}
 	}
 	response := httptest.NewRecorder()

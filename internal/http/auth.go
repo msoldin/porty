@@ -1,17 +1,17 @@
-package httpapi
+package http
 
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	portyauth "github.com/msoldin/porty/internal/auth"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	"io"
+	"log/slog"
 	"net"
-	"net/http"
+	stdhttp "net/http"
 	"strings"
 	"time"
 
@@ -26,6 +26,7 @@ const (
 )
 
 type RouterOptions struct {
+	AccessLogger    *slog.Logger
 	Readiness       func(context.Context) error
 	Auth            *portyauth.AuthService
 	PublicURL       string
@@ -40,7 +41,7 @@ type RouterOptions struct {
 	RepositorySetup RepositorySetupAPI
 	Audit           AuditAPI
 	State           StackStateAPI
-	Stream          http.Handler
+	Stream          stdhttp.Handler
 }
 
 type StackAPI interface {
@@ -119,26 +120,26 @@ type SessionResponse struct {
 	CSRFToken string `json:"csrfToken"`
 }
 
-func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
-	mux.HandleFunc("GET /api/v1/setup/status", func(w http.ResponseWriter, r *http.Request) {
+func registerAuthRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
+	mux.HandleFunc("GET /api/v1/setup/status", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		registered, err := options.Auth.Registered(r.Context())
 		if err != nil {
-			WriteError(w, r, http.StatusInternalServerError, "InternalError", "Unable to read setup state", nil)
+			WriteError(w, r, stdhttp.StatusInternalServerError, "InternalError", "Unable to read setup state", nil)
 			return
 		}
 		token := browserToken()
 		setCookie(w, setupCookieName, token, "/api/v1/setup", authCookieSecure(options), 600)
-		writeJSON(w, http.StatusOK, SetupStatusResponse{Registered: registered, CSRFToken: token})
+		writeJSON(w, stdhttp.StatusOK, SetupStatusResponse{Registered: registered, CSRFToken: token})
 	})
 
-	mux.HandleFunc("POST /api/v1/setup/register", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/setup/register", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		if !validOrigin(r, options.PublicURL) || !validDoubleSubmit(r, setupCookieName) {
-			WriteError(w, r, http.StatusForbidden, "PermissionDenied", "Request origin or CSRF token is invalid", nil)
+			WriteError(w, r, stdhttp.StatusForbidden, "PermissionDenied", "Request origin or CSRF token is invalid", nil)
 			return
 		}
 		var input struct{ Username, Password string }
 		if err := decodeJSON(r, &input); err != nil {
-			WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "Request body is invalid", nil)
+			WriteError(w, r, stdhttp.StatusBadRequest, "InvalidRequest", "Request body is invalid", nil)
 			return
 		}
 		credentials, err := options.Auth.Register(r.Context(), input.Username, input.Password)
@@ -148,17 +149,17 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 		}
 		setAuthCookies(w, credentials, options)
 		recordAudit(options, r, "", "auth.register", "user", strings.TrimSpace(input.Username), "succeeded")
-		writeJSON(w, http.StatusCreated, SessionResponse{Username: strings.TrimSpace(input.Username), CSRFToken: credentials.CSRFToken})
+		writeJSON(w, stdhttp.StatusCreated, SessionResponse{Username: strings.TrimSpace(input.Username), CSRFToken: credentials.CSRFToken})
 	})
 
-	mux.HandleFunc("POST /api/v1/session", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/session", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		if !validOrigin(r, options.PublicURL) {
-			WriteError(w, r, http.StatusForbidden, "PermissionDenied", "Request origin is invalid", nil)
+			WriteError(w, r, stdhttp.StatusForbidden, "PermissionDenied", "Request origin is invalid", nil)
 			return
 		}
 		var input struct{ Username, Password string }
 		if err := decodeJSON(r, &input); err != nil {
-			WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "Request body is invalid", nil)
+			WriteError(w, r, stdhttp.StatusBadRequest, "InvalidRequest", "Request body is invalid", nil)
 			return
 		}
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -169,12 +170,12 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 		}
 		setAuthCookies(w, credentials, options)
 		recordAudit(options, r, "", "auth.login", "user", input.Username, "succeeded")
-		writeJSON(w, http.StatusOK, SessionResponse{Username: input.Username, CSRFToken: credentials.CSRFToken})
+		writeJSON(w, stdhttp.StatusOK, SessionResponse{Username: input.Username, CSRFToken: credentials.CSRFToken})
 	})
 
-	mux.HandleFunc("POST /api/v1/session/refresh", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/session/refresh", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		if !validOrigin(r, options.PublicURL) || !validDoubleSubmit(r, csrfCookieName) {
-			WriteError(w, r, http.StatusForbidden, "PermissionDenied", "Request origin or CSRF token is invalid", nil)
+			WriteError(w, r, stdhttp.StatusForbidden, "PermissionDenied", "Request origin or CSRF token is invalid", nil)
 			return
 		}
 		cookie, err := r.Cookie(refreshCookieName)
@@ -188,27 +189,20 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 			return
 		}
 		setAuthCookies(w, credentials, options)
-		writeJSON(w, http.StatusOK, SessionResponse{Username: credentials.Username, CSRFToken: credentials.CSRFToken})
+		writeJSON(w, stdhttp.StatusOK, SessionResponse{Username: credentials.Username, CSRFToken: credentials.CSRFToken})
 	})
 
-	mux.HandleFunc("GET /api/v1/session", func(w http.ResponseWriter, r *http.Request) {
-		_, session, ok := authenticate(w, r, options.Auth)
-		if !ok {
-			return
-		}
+	mux.HandleFunc("GET /api/v1/session", authenticatedRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		session := principalFrom(r.Context())
 		csrf := ""
 		if cookie, err := r.Cookie(csrfCookieName); err == nil && options.Auth.CheckCSRF(session, cookie.Value) {
 			csrf = cookie.Value
 		}
-		writeJSON(w, http.StatusOK, SessionResponse{Username: session.Username, CSRFToken: csrf})
-	})
+		writeJSON(w, stdhttp.StatusOK, SessionResponse{Username: session.Username, CSRFToken: csrf})
+	}))
 
-	mux.HandleFunc("DELETE /api/v1/session", func(w http.ResponseWriter, r *http.Request) {
-		raw, session, ok := requireMutationAuth(w, r, options)
-		if !ok {
-			return
-		}
-		_ = raw
+	mux.HandleFunc("DELETE /api/v1/session", mutationAuthRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		session := principalFrom(r.Context())
 		refreshCookie, err := r.Cookie(refreshCookieName)
 		if err != nil || options.Auth.Logout(r.Context(), refreshCookie.Value, session.UserID) != nil {
 			writeAuthError(w, r, portyauth.ErrAuthenticationFailed)
@@ -216,93 +210,61 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 		}
 		recordAudit(options, r, session.UserID, "auth.logout", "user", session.UserID, "succeeded")
 		clearAuthCookies(w, options)
-		w.WriteHeader(http.StatusNoContent)
-	})
+		w.WriteHeader(stdhttp.StatusNoContent)
+	}))
 
-	mux.HandleFunc("PUT /api/v1/session/password", func(w http.ResponseWriter, r *http.Request) {
-		raw, session, ok := requireMutationAuth(w, r, options)
-		if !ok {
-			return
-		}
+	mux.HandleFunc("PUT /api/v1/session/password", mutationAuthRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		session := principalFrom(r.Context())
+		accessCookie, _ := r.Cookie(sessionCookieName)
 		var input struct{ CurrentPassword, NewPassword string }
 		if err := decodeJSON(r, &input); err != nil {
-			WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "Request body is invalid", nil)
+			WriteError(w, r, stdhttp.StatusBadRequest, "InvalidRequest", "Request body is invalid", nil)
 			return
 		}
-		if err := options.Auth.ChangePassword(r.Context(), raw, input.CurrentPassword, input.NewPassword); err != nil {
+		if err := options.Auth.ChangePassword(r.Context(), accessCookie.Value, input.CurrentPassword, input.NewPassword); err != nil {
 			recordAudit(options, r, session.UserID, "auth.password.change", "user", session.UserID, "failed")
 			writeAuthError(w, r, err)
 			return
 		}
 		recordAudit(options, r, session.UserID, "auth.password.change", "user", session.UserID, "succeeded")
 		clearAuthCookies(w, options)
-		w.WriteHeader(http.StatusNoContent)
-	})
-}
-
-func authenticate(w http.ResponseWriter, r *http.Request, service *portyauth.AuthService) (string, portyauth.Principal, bool) {
-	cookie, err := r.Cookie(sessionCookieName)
-	if err != nil {
-		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication required", nil)
-		return "", portyauth.Principal{}, false
-	}
-	session, err := service.Authenticate(r.Context(), cookie.Value)
-	if err != nil {
-		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication required", nil)
-		return "", portyauth.Principal{}, false
-	}
-	return cookie.Value, session, true
-}
-
-func requireMutationAuth(w http.ResponseWriter, r *http.Request, options RouterOptions) (string, portyauth.Principal, bool) {
-	if !validOrigin(r, options.PublicURL) {
-		WriteError(w, r, http.StatusForbidden, "PermissionDenied", "Request origin is invalid", nil)
-		return "", portyauth.Principal{}, false
-	}
-	raw, session, ok := authenticate(w, r, options.Auth)
-	if !ok {
-		return "", portyauth.Principal{}, false
-	}
-	if !validDoubleSubmit(r, csrfCookieName) || !options.Auth.CheckCSRF(session, r.Header.Get("X-CSRF-Token")) {
-		WriteError(w, r, http.StatusForbidden, "PermissionDenied", "CSRF token is invalid", nil)
-		return "", portyauth.Principal{}, false
-	}
-	return raw, session, true
+		w.WriteHeader(stdhttp.StatusNoContent)
+	}))
 }
 
 func authCookieSecure(options RouterOptions) bool {
 	return options.SecureHTTP || strings.HasPrefix(options.PublicURL, "https://")
 }
-func setAuthCookies(w http.ResponseWriter, credentials portyauth.Credentials, options RouterOptions) {
+func setAuthCookies(w stdhttp.ResponseWriter, credentials portyauth.Credentials, options RouterOptions) {
 	secure := authCookieSecure(options)
 	setCookie(w, sessionCookieName, credentials.AccessToken, "/", secure, int(portyauth.AccessLifetime/time.Second))
 	setCookie(w, refreshCookieName, credentials.RefreshToken, "/api/v1/session", secure, int(portyauth.RefreshLifetime/time.Second))
 	setCSRFCookie(w, credentials.CSRFToken, secure, int(portyauth.RefreshLifetime/time.Second))
 }
-func clearAuthCookies(w http.ResponseWriter, options RouterOptions) {
+func clearAuthCookies(w stdhttp.ResponseWriter, options RouterOptions) {
 	secure := authCookieSecure(options)
 	setCookie(w, sessionCookieName, "", "/", secure, -1)
 	setCookie(w, refreshCookieName, "", "/api/v1/session", secure, -1)
 	setCSRFCookie(w, "", secure, -1)
 }
 
-func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
+func writeAuthError(w stdhttp.ResponseWriter, r *stdhttp.Request, err error) {
 	switch {
 	case errors.Is(err, portyauth.ErrAlreadyRegistered):
-		WriteError(w, r, http.StatusConflict, "AlreadyRegistered", "Registration is closed", nil)
+		WriteError(w, r, stdhttp.StatusConflict, "AlreadyRegistered", "Registration is closed", nil)
 	case errors.Is(err, portyauth.ErrRateLimited):
-		WriteError(w, r, http.StatusTooManyRequests, "RateLimited", "Too many authentication attempts", nil)
+		WriteError(w, r, stdhttp.StatusTooManyRequests, "RateLimited", "Too many authentication attempts", nil)
 	case errors.Is(err, portyauth.ErrInvalidPassword), errors.Is(err, portyauth.ErrInvalidUsername):
-		WriteError(w, r, http.StatusBadRequest, "InvalidCredentials", err.Error(), nil)
+		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidCredentials", err.Error(), nil)
 	case errors.Is(err, portyauth.ErrAuthenticationFailed):
-		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication failed", nil)
+		WriteError(w, r, stdhttp.StatusUnauthorized, "AuthenticationFailed", "Authentication failed", nil)
 	default:
-		WriteError(w, r, http.StatusInternalServerError, "InternalError", "Authentication could not be completed", nil)
+		WriteError(w, r, stdhttp.StatusInternalServerError, "InternalError", "Authentication could not be completed", nil)
 	}
 }
 
-func decodeJSON(r *http.Request, value any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
+func decodeJSON(r *stdhttp.Request, value any) error {
+	decoder := json.NewDecoder(stdhttp.MaxBytesReader(nil, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
 		return err
@@ -316,37 +278,16 @@ func decodeJSON(r *http.Request, value any) error {
 	return nil
 }
 
-func validOrigin(r *http.Request, publicURL string) bool {
-	expected := strings.TrimRight(publicURL, "/")
-	if expected == "" {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		expected = scheme + "://" + r.Host
-	}
-	return r.Header.Get("Origin") == expected
-}
-
-func validDoubleSubmit(r *http.Request, name string) bool {
-	cookie, err := r.Cookie(name)
-	if err != nil {
-		return false
-	}
-	header := r.Header.Get("X-CSRF-Token")
-	return len(cookie.Value) == len(header) && subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) == 1
-}
-
 func browserToken() string {
 	buffer := make([]byte, 32)
 	_, _ = rand.Read(buffer)
 	return base64.RawURLEncoding.EncodeToString(buffer)
 }
 
-func setCookie(w http.ResponseWriter, name, value, path string, secure bool, maxAge int) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: path, HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: maxAge})
+func setCookie(w stdhttp.ResponseWriter, name, value, path string, secure bool, maxAge int) {
+	stdhttp.SetCookie(w, &stdhttp.Cookie{Name: name, Value: value, Path: path, HttpOnly: true, Secure: secure, SameSite: stdhttp.SameSiteStrictMode, MaxAge: maxAge})
 }
 
-func setCSRFCookie(w http.ResponseWriter, value string, secure bool, maxAge int) {
-	http.SetCookie(w, &http.Cookie{Name: csrfCookieName, Value: value, Path: "/", HttpOnly: false, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: maxAge})
+func setCSRFCookie(w stdhttp.ResponseWriter, value string, secure bool, maxAge int) {
+	stdhttp.SetCookie(w, &stdhttp.Cookie{Name: csrfCookieName, Value: value, Path: "/", HttpOnly: false, Secure: secure, SameSite: stdhttp.SameSiteStrictMode, MaxAge: maxAge})
 }

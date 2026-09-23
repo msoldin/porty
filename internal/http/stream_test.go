@@ -1,8 +1,8 @@
-package httpapi
+package http
 
 import (
 	"context"
-	"net/http"
+	stdhttp "net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -21,7 +21,7 @@ func TestAuthenticatedWebSocketSubscriptionStreamsSequencedEvents(t *testing.T) 
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	connection, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/stream", &coderws.DialOptions{HTTPHeader: http.Header{
+	connection, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/stream", &coderws.DialOptions{HTTPHeader: stdhttp.Header{
 		"Origin": []string{server.URL}, "Cookie": []string{sessionCookie.String()},
 	}})
 	if err != nil {
@@ -48,13 +48,16 @@ func TestAuthenticatedWebSocketSubscriptionStreamsSequencedEvents(t *testing.T) 
 
 func TestStreamRequiresRepositorySetupBeforeUpgrade(t *testing.T) {
 	called := false
-	stream := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(http.StatusNoContent) })
+	stream := stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
+		called = true
+		w.WriteHeader(stdhttp.StatusNoContent)
+	})
 	handler, sessionCookie, _ := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup(), Stream: stream})
-	request := httptest.NewRequest(http.MethodGet, "http://porty.local/api/v1/stream", nil)
+	request := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/stream", nil)
 	request.AddCookie(sessionCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	assertAPIError(t, response, http.StatusConflict, "RepositorySetupRequired")
+	assertAPIError(t, response, stdhttp.StatusConflict, "RepositorySetupRequired")
 	if called {
 		t.Fatal("stream upgraded before repository setup")
 	}

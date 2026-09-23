@@ -1,8 +1,9 @@
-package httpapi
+package http
 
 import (
 	"encoding/json"
-	"net/http"
+	"github.com/msoldin/porty/internal/http/middleware"
+	stdhttp "net/http"
 )
 
 type ErrorBody struct {
@@ -16,13 +17,13 @@ type ErrorResponse struct {
 	Error ErrorBody `json:"error"`
 }
 
-func WriteError(w http.ResponseWriter, r *http.Request, status int, code, message string, details map[string]any) {
+func WriteError(w stdhttp.ResponseWriter, r *stdhttp.Request, status int, code, message string, details map[string]any) {
 	writeJSON(w, status, ErrorResponse{Error: ErrorBody{
-		Code: code, Message: message, RequestID: RequestID(r.Context()), Details: details,
+		Code: code, Message: message, RequestID: middleware.RequestID(r.Context()), Details: details,
 	}})
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
+func writeJSON(w stdhttp.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)

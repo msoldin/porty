@@ -1,10 +1,10 @@
-package httpapi
+package middleware
 
 import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"net/http"
+	stdhttp "net/http"
 )
 
 type requestIDKey struct{}
@@ -18,8 +18,8 @@ func RequestID(ctx context.Context) string {
 	return id
 }
 
-func requestIDMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func AssignRequestID(next stdhttp.Handler) stdhttp.Handler {
+	return stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		var bytes [12]byte
 		_, _ = rand.Read(bytes[:])
 		id := "req_" + hex.EncodeToString(bytes[:])

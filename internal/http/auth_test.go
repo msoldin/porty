@@ -1,10 +1,10 @@
-package httpapi
+package http
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
+	stdhttp "net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -19,13 +19,13 @@ func TestOversizedJSONBodyIsRejected(t *testing.T) {
 	handler := newAuthRouter(t)
 	csrf, setupCookie := setupToken(t, handler)
 	body := `{"username":"admin","password":"` + strings.Repeat("x", (1<<20)+1) + `"}`
-	request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", strings.NewReader(body))
+	request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/setup/register", strings.NewReader(body))
 	request.Header.Set("Origin", "http://porty.local")
 	request.Header.Set("X-CSRF-Token", csrf)
 	request.AddCookie(setupCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
+	if response.Code != stdhttp.StatusBadRequest {
 		t.Fatalf("oversized body status = %d", response.Code)
 	}
 }
@@ -33,22 +33,22 @@ func TestOversizedJSONBodyIsRejected(t *testing.T) {
 func TestTrailingJSONValueIsRejected(t *testing.T) {
 	handler := newAuthRouter(t)
 	csrf, setupCookie := setupToken(t, handler)
-	request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", strings.NewReader(`{"username":"admin","password":"correct horse battery staple"}{}`))
+	request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/setup/register", strings.NewReader(`{"username":"admin","password":"correct horse battery staple"}{}`))
 	request.Header.Set("Origin", "http://porty.local")
 	request.Header.Set("X-CSRF-Token", csrf)
 	request.AddCookie(setupCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
+	if response.Code != stdhttp.StatusBadRequest {
 		t.Fatalf("trailing JSON status = %d", response.Code)
 	}
 }
 
-func newAuthRouter(t *testing.T) http.Handler {
+func newAuthRouter(t *testing.T) stdhttp.Handler {
 	return newAuthRouterWithPublicURL(t, "http://porty.local")
 }
 
-func newAuthRouterWithPublicURL(t *testing.T, publicURL string) http.Handler {
+func newAuthRouterWithPublicURL(t *testing.T, publicURL string) stdhttp.Handler {
 	t.Helper()
 	db, err := portysqlite.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
@@ -68,16 +68,16 @@ func newAuthRouterWithPublicURL(t *testing.T, publicURL string) http.Handler {
 func TestRefreshRotatesCookiesAndRejectsReplay(t *testing.T) {
 	handler := newAuthRouter(t)
 	csrf, setupCookie := setupToken(t, handler)
-	register := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+	register := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
 	register.Header.Set("Origin", "http://porty.local")
 	register.Header.Set("X-CSRF-Token", csrf)
 	register.AddCookie(setupCookie)
 	registered := httptest.NewRecorder()
 	handler.ServeHTTP(registered, register)
-	if registered.Code != http.StatusCreated {
+	if registered.Code != stdhttp.StatusCreated {
 		t.Fatalf("register: %d %s", registered.Code, registered.Body.String())
 	}
-	var access, refresh, csrfCookie *http.Cookie
+	var access, refresh, csrfCookie *stdhttp.Cookie
 	for _, cookie := range registered.Result().Cookies() {
 		switch cookie.Name {
 		case sessionCookieName:
@@ -91,8 +91,8 @@ func TestRefreshRotatesCookiesAndRejectsReplay(t *testing.T) {
 	if access == nil || refresh == nil || csrfCookie == nil || refresh.Path != "/api/v1/session" || refresh.MaxAge != 7*24*60*60 || access.MaxAge != 15*60 {
 		t.Fatalf("invalid auth cookies: %v", registered.Result().Cookies())
 	}
-	exchange := func(token, csrf *http.Cookie) *httptest.ResponseRecorder {
-		request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/session/refresh", nil)
+	exchange := func(token, csrf *stdhttp.Cookie) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/session/refresh", nil)
 		request.Header.Set("Origin", "http://porty.local")
 		request.Header.Set("X-CSRF-Token", csrf.Value)
 		request.AddCookie(token)
@@ -102,13 +102,13 @@ func TestRefreshRotatesCookiesAndRejectsReplay(t *testing.T) {
 		return response
 	}
 	rotated := exchange(refresh, csrfCookie)
-	if rotated.Code != http.StatusOK {
+	if rotated.Code != stdhttp.StatusOK {
 		t.Fatalf("refresh: %d %s", rotated.Code, rotated.Body.String())
 	}
-	if replay := exchange(refresh, csrfCookie); replay.Code != http.StatusUnauthorized {
+	if replay := exchange(refresh, csrfCookie); replay.Code != stdhttp.StatusUnauthorized {
 		t.Fatalf("replay: %d %s", replay.Code, replay.Body.String())
 	}
-	var successorRefresh, successorCSRF *http.Cookie
+	var successorRefresh, successorCSRF *stdhttp.Cookie
 	for _, cookie := range rotated.Result().Cookies() {
 		switch cookie.Name {
 		case refreshCookieName:
@@ -120,7 +120,7 @@ func TestRefreshRotatesCookiesAndRejectsReplay(t *testing.T) {
 	if successorRefresh == nil || successorCSRF == nil {
 		t.Fatal("refresh did not issue successor cookies")
 	}
-	if successor := exchange(successorRefresh, successorCSRF); successor.Code != http.StatusUnauthorized {
+	if successor := exchange(successorRefresh, successorCSRF); successor.Code != stdhttp.StatusUnauthorized {
 		t.Fatalf("successor survived replay: %d", successor.Code)
 	}
 }
@@ -128,7 +128,7 @@ func TestRefreshRotatesCookiesAndRejectsReplay(t *testing.T) {
 func TestProxyPublicURLControlsOriginAndSecureCookies(t *testing.T) {
 	handler := newAuthRouterWithPublicURL(t, "https://porty.example.com")
 	status := httptest.NewRecorder()
-	handler.ServeHTTP(status, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/v1/setup/status", nil))
+	handler.ServeHTTP(status, httptest.NewRequest(stdhttp.MethodGet, "http://127.0.0.1/api/v1/setup/status", nil))
 	setup := status.Result().Cookies()[0]
 	if !setup.Secure {
 		t.Fatal("setup cookie is not Secure behind HTTPS proxy")
@@ -137,13 +137,13 @@ func TestProxyPublicURLControlsOriginAndSecureCookies(t *testing.T) {
 	if err := json.Unmarshal(status.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+	request := httptest.NewRequest(stdhttp.MethodPost, "http://127.0.0.1/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
 	request.Header.Set("Origin", "https://porty.example.com")
 	request.Header.Set("X-CSRF-Token", body.CSRFToken)
 	request.AddCookie(setup)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
+	if response.Code != stdhttp.StatusCreated {
 		t.Fatalf("proxy register: %d %s", response.Code, response.Body.String())
 	}
 	for _, cookie := range response.Result().Cookies() {
@@ -153,12 +153,12 @@ func TestProxyPublicURLControlsOriginAndSecureCookies(t *testing.T) {
 	}
 }
 
-func setupToken(t *testing.T, handler http.Handler) (string, *http.Cookie) {
+func setupToken(t *testing.T, handler stdhttp.Handler) (string, *stdhttp.Cookie) {
 	t.Helper()
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "http://porty.local/api/v1/setup/status", nil)
+	request := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/setup/status", nil)
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
+	if response.Code != stdhttp.StatusOK {
 		t.Fatalf("setup status = %d: %s", response.Code, response.Body.String())
 	}
 	var body SetupStatusResponse
@@ -179,14 +179,14 @@ func TestRegisterLoginAndCSRFProtectedPasswordChange(t *testing.T) {
 	handler := newAuthRouter(t)
 	csrf, setupCookie := setupToken(t, handler)
 
-	register := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+	register := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
 	register.Header.Set("Content-Type", "application/json")
 	register.Header.Set("Origin", "http://porty.local")
 	register.Header.Set("X-CSRF-Token", csrf)
 	register.AddCookie(setupCookie)
 	registered := httptest.NewRecorder()
 	handler.ServeHTTP(registered, register)
-	if registered.Code != http.StatusCreated {
+	if registered.Code != stdhttp.StatusCreated {
 		t.Fatalf("register status = %d: %s", registered.Code, registered.Body.String())
 	}
 	sessionCookie := registered.Result().Cookies()[0]
@@ -195,27 +195,27 @@ func TestRegisterLoginAndCSRFProtectedPasswordChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	missingCSRF := httptest.NewRequest(http.MethodPut, "http://porty.local/api/v1/session/password", bytes.NewBufferString(`{"currentPassword":"correct horse battery staple","newPassword":"another correct horse battery staple"}`))
+	missingCSRF := httptest.NewRequest(stdhttp.MethodPut, "http://porty.local/api/v1/session/password", bytes.NewBufferString(`{"currentPassword":"correct horse battery staple","newPassword":"another correct horse battery staple"}`))
 	missingCSRF.Header.Set("Content-Type", "application/json")
 	missingCSRF.Header.Set("Origin", "http://porty.local")
 	missingCSRF.AddCookie(sessionCookie)
 	denied := httptest.NewRecorder()
 	handler.ServeHTTP(denied, missingCSRF)
-	if denied.Code != http.StatusForbidden {
+	if denied.Code != stdhttp.StatusForbidden {
 		t.Fatalf("missing CSRF status = %d, want 403", denied.Code)
 	}
 
 	change := missingCSRF.Clone(context.Background())
-	change.Body = http.NoBody
-	change = httptest.NewRequest(http.MethodPut, "http://porty.local/api/v1/session/password", bytes.NewBufferString(`{"currentPassword":"correct horse battery staple","newPassword":"another correct horse battery staple"}`))
+	change.Body = stdhttp.NoBody
+	change = httptest.NewRequest(stdhttp.MethodPut, "http://porty.local/api/v1/session/password", bytes.NewBufferString(`{"currentPassword":"correct horse battery staple","newPassword":"another correct horse battery staple"}`))
 	change.Header.Set("Content-Type", "application/json")
 	change.Header.Set("Origin", "http://porty.local")
 	change.Header.Set("X-CSRF-Token", session.CSRFToken)
-	change.AddCookie(&http.Cookie{Name: csrfCookieName, Value: session.CSRFToken})
+	change.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: session.CSRFToken})
 	change.AddCookie(sessionCookie)
 	changed := httptest.NewRecorder()
 	handler.ServeHTTP(changed, change)
-	if changed.Code != http.StatusNoContent {
+	if changed.Code != stdhttp.StatusNoContent {
 		t.Fatalf("password change status = %d: %s", changed.Code, changed.Body.String())
 	}
 }
@@ -224,17 +224,17 @@ func TestSecondRegistrationIsClosed(t *testing.T) {
 	handler := newAuthRouter(t)
 	csrf, setupCookie := setupToken(t, handler)
 	for attempt := 0; attempt < 2; attempt++ {
-		request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+		request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Origin", "http://porty.local")
 		request.Header.Set("X-CSRF-Token", csrf)
 		request.AddCookie(setupCookie)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
-		if attempt == 0 && response.Code != http.StatusCreated {
+		if attempt == 0 && response.Code != stdhttp.StatusCreated {
 			t.Fatalf("first registration = %d", response.Code)
 		}
-		if attempt == 1 && response.Code != http.StatusConflict {
+		if attempt == 1 && response.Code != stdhttp.StatusConflict {
 			t.Fatalf("second registration = %d, want 409", response.Code)
 		}
 	}
@@ -243,7 +243,7 @@ func TestSecondRegistrationIsClosed(t *testing.T) {
 func TestSessionRefreshReturnsTokenFromBoundCSRFCookie(t *testing.T) {
 	handler := newAuthRouter(t)
 	csrf, setupCookie := setupToken(t, handler)
-	register := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+	register := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
 	register.Header.Set("Content-Type", "application/json")
 	register.Header.Set("Origin", "http://porty.local")
 	register.Header.Set("X-CSRF-Token", csrf)
@@ -251,7 +251,7 @@ func TestSessionRefreshReturnsTokenFromBoundCSRFCookie(t *testing.T) {
 	registered := httptest.NewRecorder()
 	handler.ServeHTTP(registered, register)
 
-	var sessionCookie, csrfCookie *http.Cookie
+	var sessionCookie, csrfCookie *stdhttp.Cookie
 	for _, cookie := range registered.Result().Cookies() {
 		switch cookie.Name {
 		case sessionCookieName:
@@ -264,7 +264,7 @@ func TestSessionRefreshReturnsTokenFromBoundCSRFCookie(t *testing.T) {
 		t.Fatalf("registration cookies session=%v csrf=%v", sessionCookie, csrfCookie)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "http://porty.local/api/v1/session", nil)
+	request := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/session", nil)
 	request.AddCookie(sessionCookie)
 	request.AddCookie(csrfCookie)
 	response := httptest.NewRecorder()
@@ -280,8 +280,8 @@ func TestSessionRefreshReturnsTokenFromBoundCSRFCookie(t *testing.T) {
 
 func TestPasswordChangeRemainsAvailableBeforeRepositorySetup(t *testing.T) {
 	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{RepositorySetup: notReadyRepositorySetup()})
-	response := doAuthenticatedRequest(handler, session, csrf, http.MethodPut, "/api/v1/session/password", `{"CurrentPassword":"correct horse battery staple","NewPassword":"new correct horse battery staple"}`)
-	if response.Code != http.StatusNoContent {
+	response := doAuthenticatedRequest(handler, session, csrf, stdhttp.MethodPut, "/api/v1/session/password", `{"CurrentPassword":"correct horse battery staple","NewPassword":"new correct horse battery staple"}`)
+	if response.Code != stdhttp.StatusNoContent {
 		t.Fatalf("password change = %d %s", response.Code, response.Body.String())
 	}
 }

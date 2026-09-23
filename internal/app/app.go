@@ -7,6 +7,7 @@ import (
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 	"github.com/msoldin/porty/internal/config"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	gitcli "github.com/msoldin/porty/internal/git"
-	"github.com/msoldin/porty/internal/httpapi"
+	httpapi "github.com/msoldin/porty/internal/http"
 	portyprocess "github.com/msoldin/porty/internal/process"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 	portyws "github.com/msoldin/porty/internal/websocket"
@@ -27,8 +28,13 @@ import (
 // New assembles the application and its HTTP routes.
 func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, error) {
 	var repositorySafetyErr error
+	var accessHandler slog.Handler = slog.NewTextHandler(os.Stdout, nil)
+	if cfg.LogFormat == "json" {
+		accessHandler = slog.NewJSONHandler(os.Stdout, nil)
+	}
 	authService := portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
 	options := httpapi.RouterOptions{
+		AccessLogger: slog.New(accessHandler),
 		Readiness: func(ctx context.Context) error {
 			if repositorySafetyErr != nil {
 				return repositorySafetyErr
