@@ -46,3 +46,18 @@ func TestLoadRejectsPartialTLSConfiguration(t *testing.T) {
 		t.Fatal("Load() error = nil, want partial TLS configuration rejected")
 	}
 }
+
+func TestPublicURLRequiresCanonicalOrigin(t *testing.T) {
+	for _, value := range []string{"https://porty.example.com/path", "https://user@porty.example.com", "https://porty.example.com?x=1", "https://porty.example.com/", "ftp://porty.example.com"} {
+		cfg := Default()
+		cfg.Server.PublicURL = value
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("accepted %q", value)
+		}
+	}
+	cfg := Default()
+	cfg.Server.PublicURL = "https://porty.example.com"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -43,13 +44,35 @@ type Hub struct {
 	replay      []Event
 	nextID      uint64
 	subscribers map[uint64]*subscriber
+	connections map[uint64]context.CancelFunc
 }
 
 func NewHub(capacity int) *Hub {
 	if capacity <= 0 {
 		capacity = 256
 	}
-	return &Hub{capacity: capacity, subscribers: make(map[uint64]*subscriber)}
+	return &Hub{capacity: capacity, subscribers: make(map[uint64]*subscriber), connections: make(map[uint64]context.CancelFunc)}
+}
+
+func (h *Hub) RegisterConnection(cancel context.CancelFunc) func() {
+	h.mu.Lock()
+	h.nextID++
+	id := h.nextID
+	h.connections[id] = cancel
+	h.mu.Unlock()
+	return func() {
+		h.mu.Lock()
+		delete(h.connections, id)
+		h.mu.Unlock()
+	}
+}
+
+func (h *Hub) CloseConnections() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, cancel := range h.connections {
+		cancel()
+	}
 }
 
 func (h *Hub) PublishOperation(operation domain.Operation) {

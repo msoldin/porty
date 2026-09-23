@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
@@ -29,6 +30,17 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	if err := os.Chmod(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("secure database directory: %w", err)
 	}
+	// Goose reads the current version before applying migrations. Serialize startup
+	// across processes so two fresh opens cannot both apply the same SQL.
+	lock, err := os.OpenFile(path+".startup.lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open database startup lock: %w", err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return nil, fmt.Errorf("lock database startup: %w", err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	dsn := (&url.URL{Scheme: "file", Path: path}).String() + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -46,6 +58,10 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	if err := migrate(ctx, db); err != nil {
 		db.Close()
 		return nil, err
+	}
+	if err := initializeAuthKey(ctx, db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initialize auth key: %w", err)
 	}
 	return db, nil
 }

@@ -2,6 +2,7 @@ server:
   listen: "127.0.0.1:8080"
   tls_cert: ""
   tls_key: ""
+  public_url: "" # Set to the external origin, e.g. https://porty.example.com, behind a TLS proxy.
 data_dir: "/var/lib/porty"
 log_format: "json"
 max_editable_file_bytes: 1048576

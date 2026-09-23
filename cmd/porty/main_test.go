@@ -231,7 +231,7 @@ func TestResetPasswordCommandChangesPasswordAndRevokesSessions(t *testing.T) {
 	}
 	defer db.Close()
 	auth = portyauth.NewAuthService(portysqlite.NewAuthStore(db), portyauth.NewPasswordHasher(), time.Now)
-	if _, err := auth.Authenticate(ctx, credentials.SessionToken); err == nil {
+	if _, err := auth.Authenticate(ctx, credentials.AccessToken); err == nil {
 		t.Fatal("password reset did not revoke existing session")
 	}
 	if _, err := auth.Login(ctx, "admin", "new correct horse battery", "127.0.0.1"); err != nil {

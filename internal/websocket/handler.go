@@ -33,8 +33,11 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer connection.CloseNow()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+	unregister := h.Hub.RegisterConnection(func() { cancel(); connection.CloseNow() })
+	defer unregister()
+	go func() { <-ctx.Done(); connection.CloseNow() }()
 	outgoing := make(chan envelope, 64)
 	writerDone := make(chan struct{})
 	go func() {

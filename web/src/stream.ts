@@ -21,7 +21,7 @@ export function reduceStream(
 }
 
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { Operation } from "./api";
+import { refreshSession, type Operation } from "./api";
 export function useOperationStream(
   onOperation: (operation: Operation) => void,
   refresh: () => void,
@@ -83,7 +83,17 @@ export function useOperationStream(
         if (stopped) return;
         setConnection("Reconnecting");
         setGap(true);
-        timer = setTimeout(connect, Math.min(30000, 1000 * 2 ** attempts++));
+        timer = setTimeout(
+          async () => {
+            try {
+              await refreshSession();
+              if (!stopped) connect();
+            } catch {
+              if (!stopped) setConnection("Disconnected");
+            }
+          },
+          Math.min(30000, 1000 * 2 ** attempts++),
+        );
       };
       socket.onerror = () => socket.close();
     }

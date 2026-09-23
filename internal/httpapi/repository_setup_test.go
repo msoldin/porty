@@ -163,6 +163,7 @@ func doAuthenticatedRequest(handler http.Handler, session *http.Cookie, csrf, me
 		request.Header.Set("Origin", "http://porty.local")
 		if csrf != "" {
 			request.Header.Set("X-CSRF-Token", csrf)
+			request.AddCookie(&http.Cookie{Name: csrfCookieName, Value: csrf})
 		}
 	}
 	response := httptest.NewRecorder()

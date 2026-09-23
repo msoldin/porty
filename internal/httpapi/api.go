@@ -146,7 +146,7 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 			status, err := options.RepositorySetup.Status(r.Context())
 			writeResult(w, r, status, err, http.StatusOK)
 		}))
-		mux.HandleFunc("POST /api/v1/repository/setup/inspect-remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, _ portyauth.AuthenticatedSession) {
+		mux.HandleFunc("POST /api/v1/repository/setup/inspect-remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, _ portyauth.Principal) {
 			var input portyrepo.RemoteInspectionRequest
 			if decodeBody(w, r, &input) != nil {
 				return
@@ -154,7 +154,7 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 			inspection, err := options.RepositorySetup.InspectRemote(r.Context(), input)
 			writeResult(w, r, inspection, err, http.StatusOK)
 		}))
-		mux.HandleFunc("POST /api/v1/repository/setup", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session portyauth.AuthenticatedSession) {
+		mux.HandleFunc("POST /api/v1/repository/setup", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session portyauth.Principal) {
 			var input portyrepo.RepositorySetupRequest
 			if decodeBody(w, r, &input) != nil {
 				return
@@ -163,7 +163,7 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 			recordRepositoryAudit(options, r, session.UserID, "repository.setup."+string(input.Mode), input.Branch, status, err)
 			writeResult(w, r, status, err, http.StatusCreated)
 		}))
-		mux.HandleFunc("PUT /api/v1/repository/remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session portyauth.AuthenticatedSession) {
+		mux.HandleFunc("PUT /api/v1/repository/remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session portyauth.Principal) {
 			if !requireRepositoryReady(w, r, options) {
 				return
 			}
@@ -175,7 +175,7 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 			recordRepositoryAudit(options, r, session.UserID, "repository.remote.configure", input.Branch, status, err)
 			writeResult(w, r, status, err, http.StatusOK)
 		}))
-		mux.HandleFunc("DELETE /api/v1/repository/remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session portyauth.AuthenticatedSession) {
+		mux.HandleFunc("DELETE /api/v1/repository/remote", setupMutationRoute(options, func(w http.ResponseWriter, r *http.Request, session portyauth.Principal) {
 			if !requireRepositoryReady(w, r, options) {
 				return
 			}
@@ -198,11 +198,13 @@ func registerAPIRoutes(mux *http.ServeMux, options RouterOptions) {
 	}
 	if options.Stream != nil {
 		mux.HandleFunc("GET /api/v1/stream", func(w http.ResponseWriter, r *http.Request) {
-			if _, _, ok := authenticate(w, r, options.Auth); ok {
+			if _, principal, ok := authenticate(w, r, options.Auth); ok {
 				if !requireRepositoryReady(w, r, options) {
 					return
 				}
-				options.Stream.ServeHTTP(w, r)
+				ctx, cancel := context.WithDeadline(r.Context(), principal.ExpiresAt)
+				defer cancel()
+				options.Stream.ServeHTTP(w, r.WithContext(ctx))
 			}
 		})
 	}
@@ -354,7 +356,7 @@ func setupReadRoute(options RouterOptions, next http.HandlerFunc) http.HandlerFu
 	}
 }
 
-func setupMutationRoute(options RouterOptions, next func(http.ResponseWriter, *http.Request, portyauth.AuthenticatedSession)) http.HandlerFunc {
+func setupMutationRoute(options RouterOptions, next func(http.ResponseWriter, *http.Request, portyauth.Principal)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, session, ok := requireMutationAuth(w, r, options); ok {
 			next(w, r, session)

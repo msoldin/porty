@@ -1,5 +1,49 @@
-import { expect, it } from "vitest";
-import { reduceStream } from "./stream";
+import { render } from "@testing-library/preact";
+import { h } from "preact";
+import { afterEach, expect, it, vi } from "vitest";
+import { reduceStream, useOperationStream } from "./stream";
+import { refreshSession } from "./api";
+
+vi.mock("./api", () => ({
+  refreshSession: vi.fn().mockResolvedValue(undefined),
+}));
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
+
+it("refreshes access before reconnecting an expired idle stream", async () => {
+  vi.useFakeTimers();
+  class Socket {
+    static instances: Socket[] = [];
+    onopen: (() => void) | null = null;
+    onclose: (() => void) | null = null;
+    onmessage: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor(_url: string) {
+      Socket.instances.push(this);
+    }
+    send(_value: string) {}
+    close() {}
+  }
+  vi.stubGlobal("WebSocket", Socket);
+  function Probe() {
+    useOperationStream(
+      () => {},
+      () => {},
+    );
+    return null;
+  }
+  const rendered = render(h(Probe, {}));
+  expect(Socket.instances).toHaveLength(1);
+  Socket.instances[0].onclose?.();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(refreshSession).toHaveBeenCalledOnce();
+  expect(Socket.instances).toHaveLength(2);
+  rendered.unmount();
+});
 
 it("marks explicit stream gaps without claiming output is complete", () => {
   const next = reduceStream(

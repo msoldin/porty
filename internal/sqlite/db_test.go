@@ -50,7 +50,7 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	}
 	defer db.Close()
 
-	for _, table := range []string{"goose_db_version", "app_state", "repository_auth", "users", "sessions", "stacks", "stack_environment", "operations", "deployments", "audit_events"} {
+	for _, table := range []string{"goose_db_version", "app_state", "repository_auth", "users", "auth_keys", "refresh_tokens", "stacks", "stack_environment", "operations", "deployments", "audit_events"} {
 		var count int
 		err := db.QueryRowContext(context.Background(), "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&count)
 		if err != nil {
@@ -67,6 +67,10 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	}
 	if migrations != 1 {
 		t.Fatalf("migration count = %d, want 1", migrations)
+	}
+	var oldSessions int
+	if err := db.QueryRowContext(context.Background(), "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='sessions'").Scan(&oldSessions); err != nil || oldSessions != 0 {
+		t.Fatalf("old sessions table count=%d error=%v", oldSessions, err)
 	}
 	var appStateRows int
 	if err := db.QueryRowContext(context.Background(), "SELECT count(*) FROM app_state WHERE id=1 AND setup_state='unregistered'").Scan(&appStateRows); err != nil {
@@ -101,6 +105,39 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("database mode = %04o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestConcurrentFirstOpenKeepsOneSigningKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "porty.db")
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	keys := make(chan string, 2)
+	for range 2 {
+		go func() {
+			<-start
+			db, err := Open(context.Background(), path)
+			if err != nil {
+				results <- err
+				return
+			}
+			defer db.Close()
+			key, err := NewAuthStore(db).SigningKey(context.Background())
+			if err == nil {
+				keys <- string(key)
+			}
+			results <- err
+		}()
+	}
+	close(start)
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, second := <-keys, <-keys
+	if first != second {
+		t.Fatal("concurrent opens created different signing keys")
 	}
 }
 
@@ -148,6 +185,9 @@ func TestInitialMigrationDownRemovesDevelopmentSchema(t *testing.T) {
 	}
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db, files, goose.WithDisableGlobalRegistry(true))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Down(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := provider.Down(ctx); err != nil {

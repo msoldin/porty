@@ -36,7 +36,8 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			return db.PingContext(ctx)
 		},
 		Auth:       authService,
-		SecureHTTP: cfg.Server.TLSCert != "",
+		PublicURL:  cfg.Server.PublicURL,
+		SecureHTTP: cfg.Server.TLSCert != "" || len(cfg.Server.PublicURL) >= 8 && cfg.Server.PublicURL[:8] == "https://",
 	}
 	repositoryRoot := filepath.Join(cfg.DataDir, "repository")
 	coordinator := portyop.NewCoordinator()
@@ -52,6 +53,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 		}
 	}
 	hub := portyws.NewHub(512)
+	authService.OnKeyRotation(hub.CloseConnections)
 	options.Stream = portyws.Handler{Hub: hub}
 	operationStore := portysqlite.NewOperationStore(db)
 	_ = operationStore.FailInterrupted(ctx, time.Now().UTC())

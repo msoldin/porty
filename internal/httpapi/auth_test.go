@@ -45,6 +45,10 @@ func TestTrailingJSONValueIsRejected(t *testing.T) {
 }
 
 func newAuthRouter(t *testing.T) http.Handler {
+	return newAuthRouterWithPublicURL(t, "http://porty.local")
+}
+
+func newAuthRouterWithPublicURL(t *testing.T, publicURL string) http.Handler {
 	t.Helper()
 	db, err := portysqlite.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
@@ -56,9 +60,97 @@ func newAuthRouter(t *testing.T) http.Handler {
 	return NewRouter(RouterOptions{
 		Readiness:  func(context.Context) error { return nil },
 		Auth:       service,
-		PublicURL:  "http://porty.local",
+		PublicURL:  publicURL,
 		SecureHTTP: false,
 	})
+}
+
+func TestRefreshRotatesCookiesAndRejectsReplay(t *testing.T) {
+	handler := newAuthRouter(t)
+	csrf, setupCookie := setupToken(t, handler)
+	register := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+	register.Header.Set("Origin", "http://porty.local")
+	register.Header.Set("X-CSRF-Token", csrf)
+	register.AddCookie(setupCookie)
+	registered := httptest.NewRecorder()
+	handler.ServeHTTP(registered, register)
+	if registered.Code != http.StatusCreated {
+		t.Fatalf("register: %d %s", registered.Code, registered.Body.String())
+	}
+	var access, refresh, csrfCookie *http.Cookie
+	for _, cookie := range registered.Result().Cookies() {
+		switch cookie.Name {
+		case sessionCookieName:
+			access = cookie
+		case refreshCookieName:
+			refresh = cookie
+		case csrfCookieName:
+			csrfCookie = cookie
+		}
+	}
+	if access == nil || refresh == nil || csrfCookie == nil || refresh.Path != "/api/v1/session" || refresh.MaxAge != 7*24*60*60 || access.MaxAge != 15*60 {
+		t.Fatalf("invalid auth cookies: %v", registered.Result().Cookies())
+	}
+	exchange := func(token, csrf *http.Cookie) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "http://porty.local/api/v1/session/refresh", nil)
+		request.Header.Set("Origin", "http://porty.local")
+		request.Header.Set("X-CSRF-Token", csrf.Value)
+		request.AddCookie(token)
+		request.AddCookie(csrf)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	rotated := exchange(refresh, csrfCookie)
+	if rotated.Code != http.StatusOK {
+		t.Fatalf("refresh: %d %s", rotated.Code, rotated.Body.String())
+	}
+	if replay := exchange(refresh, csrfCookie); replay.Code != http.StatusUnauthorized {
+		t.Fatalf("replay: %d %s", replay.Code, replay.Body.String())
+	}
+	var successorRefresh, successorCSRF *http.Cookie
+	for _, cookie := range rotated.Result().Cookies() {
+		switch cookie.Name {
+		case refreshCookieName:
+			successorRefresh = cookie
+		case csrfCookieName:
+			successorCSRF = cookie
+		}
+	}
+	if successorRefresh == nil || successorCSRF == nil {
+		t.Fatal("refresh did not issue successor cookies")
+	}
+	if successor := exchange(successorRefresh, successorCSRF); successor.Code != http.StatusUnauthorized {
+		t.Fatalf("successor survived replay: %d", successor.Code)
+	}
+}
+
+func TestProxyPublicURLControlsOriginAndSecureCookies(t *testing.T) {
+	handler := newAuthRouterWithPublicURL(t, "https://porty.example.com")
+	status := httptest.NewRecorder()
+	handler.ServeHTTP(status, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/v1/setup/status", nil))
+	setup := status.Result().Cookies()[0]
+	if !setup.Secure {
+		t.Fatal("setup cookie is not Secure behind HTTPS proxy")
+	}
+	var body SetupStatusResponse
+	if err := json.Unmarshal(status.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/v1/setup/register", bytes.NewBufferString(`{"username":"admin","password":"correct horse battery staple"}`))
+	request.Header.Set("Origin", "https://porty.example.com")
+	request.Header.Set("X-CSRF-Token", body.CSRFToken)
+	request.AddCookie(setup)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("proxy register: %d %s", response.Code, response.Body.String())
+	}
+	for _, cookie := range response.Result().Cookies() {
+		if !cookie.Secure {
+			t.Fatalf("%s not Secure", cookie.Name)
+		}
+	}
 }
 
 func setupToken(t *testing.T, handler http.Handler) (string, *http.Cookie) {
@@ -119,6 +211,7 @@ func TestRegisterLoginAndCSRFProtectedPasswordChange(t *testing.T) {
 	change.Header.Set("Content-Type", "application/json")
 	change.Header.Set("Origin", "http://porty.local")
 	change.Header.Set("X-CSRF-Token", session.CSRFToken)
+	change.AddCookie(&http.Cookie{Name: csrfCookieName, Value: session.CSRFToken})
 	change.AddCookie(sessionCookie)
 	changed := httptest.NewRecorder()
 	handler.ServeHTTP(changed, change)

@@ -57,21 +57,21 @@ func TestInitialRegistrationIsAtomic(t *testing.T) {
 	}
 }
 
-func TestExpiredSessionAndPasswordResetRevokeAuthentication(t *testing.T) {
+func TestExpiredAccessAndPasswordResetRevokeAuthentication(t *testing.T) {
 	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	service := newAuthService(t, &now)
 	credentials, err := service.Register(context.Background(), "admin", "correct horse battery staple")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Authenticate(context.Background(), credentials.SessionToken); err != nil {
+	if _, err := service.Authenticate(context.Background(), credentials.AccessToken); err != nil {
 		t.Fatalf("new session rejected: %v", err)
 	}
 
 	if err := service.ResetPassword(context.Background(), "new correct horse battery staple"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Authenticate(context.Background(), credentials.SessionToken); !errors.Is(err, portyauth.ErrAuthenticationFailed) {
+	if _, err := service.Authenticate(context.Background(), credentials.AccessToken); !errors.Is(err, portyauth.ErrAuthenticationFailed) {
 		t.Fatalf("session after reset error = %v, want authentication failed", err)
 	}
 
@@ -80,7 +80,7 @@ func TestExpiredSessionAndPasswordResetRevokeAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(13 * time.Hour)
-	if _, err := service.Authenticate(context.Background(), newCredentials.SessionToken); !errors.Is(err, portyauth.ErrAuthenticationFailed) {
+	if _, err := service.Authenticate(context.Background(), newCredentials.AccessToken); !errors.Is(err, portyauth.ErrAuthenticationFailed) {
 		t.Fatalf("expired session error = %v, want authentication failed", err)
 	}
 }

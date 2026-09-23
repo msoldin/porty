@@ -13,12 +13,14 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/msoldin/porty/internal/domain"
 )
 
 const (
 	sessionCookieName = "porty_session"
+	refreshCookieName = "porty_refresh"
 	csrfCookieName    = "porty_csrf"
 	setupCookieName   = "porty_setup"
 )
@@ -125,7 +127,7 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 			return
 		}
 		token := browserToken()
-		setCookie(w, setupCookieName, token, "/api/v1/setup", options.SecureHTTP, 600)
+		setCookie(w, setupCookieName, token, "/api/v1/setup", authCookieSecure(options), 600)
 		writeJSON(w, http.StatusOK, SetupStatusResponse{Registered: registered, CSRFToken: token})
 	})
 
@@ -144,8 +146,7 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 			writeAuthError(w, r, err)
 			return
 		}
-		setCookie(w, sessionCookieName, credentials.SessionToken, "/", options.SecureHTTP, 7*24*60*60)
-		setCSRFCookie(w, credentials.CSRFToken, options.SecureHTTP, 7*24*60*60)
+		setAuthCookies(w, credentials, options)
 		recordAudit(options, r, "", "auth.register", "user", strings.TrimSpace(input.Username), "succeeded")
 		writeJSON(w, http.StatusCreated, SessionResponse{Username: strings.TrimSpace(input.Username), CSRFToken: credentials.CSRFToken})
 	})
@@ -166,10 +167,28 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 			writeAuthError(w, r, err)
 			return
 		}
-		setCookie(w, sessionCookieName, credentials.SessionToken, "/", options.SecureHTTP, 7*24*60*60)
-		setCSRFCookie(w, credentials.CSRFToken, options.SecureHTTP, 7*24*60*60)
+		setAuthCookies(w, credentials, options)
 		recordAudit(options, r, "", "auth.login", "user", input.Username, "succeeded")
 		writeJSON(w, http.StatusOK, SessionResponse{Username: input.Username, CSRFToken: credentials.CSRFToken})
+	})
+
+	mux.HandleFunc("POST /api/v1/session/refresh", func(w http.ResponseWriter, r *http.Request) {
+		if !validOrigin(r, options.PublicURL) || !validDoubleSubmit(r, csrfCookieName) {
+			WriteError(w, r, http.StatusForbidden, "PermissionDenied", "Request origin or CSRF token is invalid", nil)
+			return
+		}
+		cookie, err := r.Cookie(refreshCookieName)
+		if err != nil {
+			writeAuthError(w, r, portyauth.ErrAuthenticationFailed)
+			return
+		}
+		credentials, err := options.Auth.Refresh(r.Context(), cookie.Value, r.Header.Get("X-CSRF-Token"))
+		if err != nil {
+			writeAuthError(w, r, err)
+			return
+		}
+		setAuthCookies(w, credentials, options)
+		writeJSON(w, http.StatusOK, SessionResponse{Username: credentials.Username, CSRFToken: credentials.CSRFToken})
 	})
 
 	mux.HandleFunc("GET /api/v1/session", func(w http.ResponseWriter, r *http.Request) {
@@ -189,10 +208,14 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 		if !ok {
 			return
 		}
-		_ = options.Auth.Logout(r.Context(), raw)
+		_ = raw
+		refreshCookie, err := r.Cookie(refreshCookieName)
+		if err != nil || options.Auth.Logout(r.Context(), refreshCookie.Value, session.UserID) != nil {
+			writeAuthError(w, r, portyauth.ErrAuthenticationFailed)
+			return
+		}
 		recordAudit(options, r, session.UserID, "auth.logout", "user", session.UserID, "succeeded")
-		setCookie(w, sessionCookieName, "", "/", options.SecureHTTP, -1)
-		setCSRFCookie(w, "", options.SecureHTTP, -1)
+		clearAuthCookies(w, options)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -212,40 +235,55 @@ func registerAuthRoutes(mux *http.ServeMux, options RouterOptions) {
 			return
 		}
 		recordAudit(options, r, session.UserID, "auth.password.change", "user", session.UserID, "succeeded")
-		setCookie(w, sessionCookieName, "", "/", options.SecureHTTP, -1)
-		setCSRFCookie(w, "", options.SecureHTTP, -1)
+		clearAuthCookies(w, options)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
 
-func authenticate(w http.ResponseWriter, r *http.Request, service *portyauth.AuthService) (string, portyauth.AuthenticatedSession, bool) {
+func authenticate(w http.ResponseWriter, r *http.Request, service *portyauth.AuthService) (string, portyauth.Principal, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication required", nil)
-		return "", portyauth.AuthenticatedSession{}, false
+		return "", portyauth.Principal{}, false
 	}
 	session, err := service.Authenticate(r.Context(), cookie.Value)
 	if err != nil {
 		WriteError(w, r, http.StatusUnauthorized, "AuthenticationFailed", "Authentication required", nil)
-		return "", portyauth.AuthenticatedSession{}, false
+		return "", portyauth.Principal{}, false
 	}
 	return cookie.Value, session, true
 }
 
-func requireMutationAuth(w http.ResponseWriter, r *http.Request, options RouterOptions) (string, portyauth.AuthenticatedSession, bool) {
+func requireMutationAuth(w http.ResponseWriter, r *http.Request, options RouterOptions) (string, portyauth.Principal, bool) {
 	if !validOrigin(r, options.PublicURL) {
 		WriteError(w, r, http.StatusForbidden, "PermissionDenied", "Request origin is invalid", nil)
-		return "", portyauth.AuthenticatedSession{}, false
+		return "", portyauth.Principal{}, false
 	}
 	raw, session, ok := authenticate(w, r, options.Auth)
 	if !ok {
-		return "", portyauth.AuthenticatedSession{}, false
+		return "", portyauth.Principal{}, false
 	}
-	if !options.Auth.CheckCSRF(session, r.Header.Get("X-CSRF-Token")) {
+	if !validDoubleSubmit(r, csrfCookieName) || !options.Auth.CheckCSRF(session, r.Header.Get("X-CSRF-Token")) {
 		WriteError(w, r, http.StatusForbidden, "PermissionDenied", "CSRF token is invalid", nil)
-		return "", portyauth.AuthenticatedSession{}, false
+		return "", portyauth.Principal{}, false
 	}
 	return raw, session, true
+}
+
+func authCookieSecure(options RouterOptions) bool {
+	return options.SecureHTTP || strings.HasPrefix(options.PublicURL, "https://")
+}
+func setAuthCookies(w http.ResponseWriter, credentials portyauth.Credentials, options RouterOptions) {
+	secure := authCookieSecure(options)
+	setCookie(w, sessionCookieName, credentials.AccessToken, "/", secure, int(portyauth.AccessLifetime/time.Second))
+	setCookie(w, refreshCookieName, credentials.RefreshToken, "/api/v1/session", secure, int(portyauth.RefreshLifetime/time.Second))
+	setCSRFCookie(w, credentials.CSRFToken, secure, int(portyauth.RefreshLifetime/time.Second))
+}
+func clearAuthCookies(w http.ResponseWriter, options RouterOptions) {
+	secure := authCookieSecure(options)
+	setCookie(w, sessionCookieName, "", "/", secure, -1)
+	setCookie(w, refreshCookieName, "", "/api/v1/session", secure, -1)
+	setCSRFCookie(w, "", secure, -1)
 }
 
 func writeAuthError(w http.ResponseWriter, r *http.Request, err error) {

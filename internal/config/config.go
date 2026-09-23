@@ -4,8 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -13,9 +15,10 @@ import (
 const defaultMaxEditableFileBytes int64 = 1 << 20
 
 type Server struct {
-	Listen  string `yaml:"listen"`
-	TLSCert string `yaml:"tls_cert"`
-	TLSKey  string `yaml:"tls_key"`
+	Listen    string `yaml:"listen"`
+	TLSCert   string `yaml:"tls_cert"`
+	TLSKey    string `yaml:"tls_key"`
+	PublicURL string `yaml:"public_url"`
 }
 
 type Config struct {
@@ -42,6 +45,7 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (Config, error) 
 	logFormat := flags.String("log-format", "", "log format")
 	tlsCert := flags.String("tls-cert", "", "TLS certificate")
 	tlsKey := flags.String("tls-key", "", "TLS key")
+	publicURL := flags.String("public-url", "", "external public origin")
 	if err := flags.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -67,6 +71,7 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (Config, error) 
 	applyEnv("PORTY_LOG_FORMAT", &cfg.LogFormat)
 	applyEnv("PORTY_TLS_CERT", &cfg.Server.TLSCert)
 	applyEnv("PORTY_TLS_KEY", &cfg.Server.TLSKey)
+	applyEnv("PORTY_PUBLIC_URL", &cfg.Server.PublicURL)
 	if value, ok := lookupEnv("PORTY_MAX_EDITABLE_FILE_BYTES"); ok {
 		parsed, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -87,6 +92,8 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (Config, error) 
 			cfg.Server.TLSCert = *tlsCert
 		case "tls-key":
 			cfg.Server.TLSKey = *tlsKey
+		case "public-url":
+			cfg.Server.PublicURL = *publicURL
 		}
 	})
 
@@ -105,6 +112,12 @@ func (c Config) Validate() error {
 	}
 	if (c.Server.TLSCert == "") != (c.Server.TLSKey == "") {
 		return errors.New("TLS certificate and key must be configured together")
+	}
+	if c.Server.PublicURL != "" {
+		u, err := url.Parse(c.Server.PublicURL)
+		if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Hostname() == "" || u.Host != strings.ToLower(u.Host) || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.String() != c.Server.PublicURL || u.Scheme == "https" && u.Port() == "443" || u.Scheme == "http" && u.Port() == "80" {
+			return errors.New("server.public_url must be a canonical HTTP origin")
+		}
 	}
 	if c.LogFormat != "text" && c.LogFormat != "json" {
 		return errors.New("log_format must be text or json")
