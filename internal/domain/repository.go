@@ -1,11 +1,12 @@
 package domain
 
 type GitStatus struct {
-	Branch string   `json:"branch"`
-	Dirty  bool     `json:"dirty"`
-	Ahead  int      `json:"ahead"`
-	Behind int      `json:"behind"`
-	Paths  []string `json:"paths"`
+	Configured bool     `json:"configured"`
+	Branch     string   `json:"branch"`
+	Dirty      bool     `json:"dirty"`
+	Ahead      int      `json:"ahead"`
+	Behind     int      `json:"behind"`
+	Paths      []string `json:"paths"`
 }
 
 type GitCommit struct {

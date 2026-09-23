@@ -2,6 +2,7 @@ package composecli_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -65,11 +66,26 @@ func TestNormalizedConfigDigestDoesNotReturnRenderedSecrets(t *testing.T) {
 	}
 }
 
+func TestCommandFailureIncludesRedactedProcessOutput(t *testing.T) {
+	runner := &composeRunner{t: t, output: "permission denied for very-secret", err: errors.New("exit status 1")}
+	client := composecli.New(runner, time.Second)
+	request := composecli.Request{StackDir: t.TempDir(), ProjectName: "porty-web-123", Environment: map[string]string{"TOKEN": "very-secret"}}
+
+	err := client.Start(context.Background(), request)
+	if err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if strings.Contains(err.Error(), "very-secret") {
+		t.Fatalf("Start() exposed secret: %v", err)
+	}
+}
+
 type composeRunner struct {
 	t        *testing.T
 	calls    []portyprocess.Request
 	envPaths []string
 	output   string
+	err      error
 }
 
 func (r *composeRunner) Run(ctx context.Context, request portyprocess.Request) (portyprocess.Result, error) {
@@ -95,5 +111,5 @@ func (r *composeRunner) Run(ctx context.Context, request portyprocess.Request) (
 			r.t.Fatalf("environment contents = %q", contents)
 		}
 	}
-	return portyprocess.Result{Output: r.output}, nil
+	return portyprocess.Result{Output: r.output}, r.err
 }

@@ -25,6 +25,7 @@ let repositoryReady = true;
 let repositoryRequired: boolean | undefined;
 let hasManagedRemote = true;
 let sockets = 0;
+let repositoryStatus: Record<string, unknown>;
 beforeEach(() => {
   location.hash = "";
   writes = [];
@@ -37,6 +38,14 @@ beforeEach(() => {
   repositoryRequired = undefined;
   hasManagedRemote = true;
   sockets = 0;
+  repositoryStatus = {
+    configured: true,
+    branch: "main",
+    dirty: true,
+    ahead: 1,
+    behind: 0,
+    paths: ["paperless/docker-compose.yml", "other/config.yml"],
+  };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -129,13 +138,7 @@ beforeEach(() => {
           },
         },
         "/stacks": [stack],
-        "/repository/status": {
-          branch: "main",
-          dirty: true,
-          ahead: 1,
-          behind: 0,
-          paths: ["paperless/docker-compose.yml", "other/config.yml"],
-        },
+        "/repository/status": repositoryStatus,
         "/repository/history?limit=50": [
           {
             sha: "abcdef123",
@@ -291,6 +294,26 @@ describe("Porty administration interface", () => {
       expect(sockets).toBe(0);
     },
   );
+  it("keeps repository actions disabled when status is unconfigured", async () => {
+    location.hash = "/repository";
+    repositoryStatus = {
+      configured: false,
+      branch: "main",
+      dirty: false,
+      ahead: 0,
+      behind: 0,
+      paths: null,
+    };
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Repository" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Not configured")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pull" })).toBeDisabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
   it("keeps working-tree and remote states independent and does not invent runtime health", async () => {
     render(<App />);
     const link = await screen.findByRole("link", { name: "paperless" });

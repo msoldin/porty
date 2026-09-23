@@ -259,11 +259,18 @@ func unsafeConfigKey(key string) bool {
 }
 
 func (c *Client) Status(ctx context.Context) (Status, error) {
+	configured, err := c.configured()
+	if err != nil {
+		return Status{}, err
+	}
+	status := Status{Configured: configured, Branch: c.branch}
+	if !configured {
+		return status, nil
+	}
 	result, err := c.run(ctx, "status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all")
 	if err != nil {
 		return Status{}, err
 	}
-	status := Status{Branch: c.branch}
 	items := strings.Split(result.Output, "\x00")
 	for index := 0; index < len(items); index++ {
 		item := items[index]
@@ -292,7 +299,9 @@ func (c *Client) Status(ctx context.Context) (Status, error) {
 }
 
 func parseBranchHeader(status *Status, header string) {
-	if branch, _, found := strings.Cut(header, "..."); found {
+	if branch, found := strings.CutPrefix(header, "No commits yet on "); found {
+		status.Branch = strings.TrimSpace(branch)
+	} else if branch, _, found := strings.Cut(header, "..."); found {
 		status.Branch = strings.Fields(branch)[0]
 	} else if fields := strings.Fields(header); len(fields) > 0 {
 		status.Branch = fields[0]
@@ -412,6 +421,20 @@ func (c *Client) HistoryPage(ctx context.Context, limit, offset int) ([]Commit, 
 	if offset < 0 {
 		offset = 0
 	}
+	configured, err := c.configured()
+	if err != nil {
+		return nil, err
+	}
+	if !configured {
+		return []Commit{}, nil
+	}
+	head, err := c.run(ctx, "rev-parse", "--verify", "--quiet", "HEAD")
+	if err != nil {
+		if head.ExitCode == 1 {
+			return []Commit{}, nil
+		}
+		return nil, err
+	}
 	result, err := c.run(ctx, "log", "--date=iso-strict", "--format=%H%x00%s%x00%an%x00%aI%x00", "--skip", strconv.Itoa(offset), "-n", strconv.Itoa(limit))
 	if err != nil {
 		return nil, err
@@ -451,6 +474,17 @@ func (c *Client) validateAuthentication() error {
 		return nil
 	}
 	return validateSSHMaterial(c.sshKeyPath, c.knownHostsPath)
+}
+
+func (c *Client) configured() (bool, error) {
+	_, err := os.Lstat(filepath.Join(c.repo, ".git"))
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
 }
 
 func runAt(ctx context.Context, runner Runner, directory string, redact, extraEnv []string, arguments ...string) (portyprocess.Result, error) {

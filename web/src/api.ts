@@ -9,6 +9,7 @@ export type Stack = {
 };
 export type StackState = { runtime: string; freshness: string };
 export type Repository = {
+  configured: boolean;
   branch: string;
   dirty: boolean;
   ahead: number;

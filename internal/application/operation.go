@@ -72,6 +72,9 @@ func (s *OperationService) execute(operation domain.Operation, secrets []string,
 	_ = s.store.UpdateOperation(ctx, operation)
 	s.publish(operation)
 	output, err := run(ctx)
+	if err != nil && strings.TrimSpace(output) == "" {
+		output = err.Error()
+	}
 	for _, secret := range secrets {
 		if secret != "" {
 			output = strings.ReplaceAll(output, secret, "[REDACTED]")

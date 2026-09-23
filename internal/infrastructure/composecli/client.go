@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/msoldin/porty/internal/domain"
@@ -26,6 +27,8 @@ type Client struct {
 	runner  Runner
 	timeout time.Duration
 }
+
+const maxCommandOutput = 1 << 20
 
 func New(runner Runner, timeout time.Duration) *Client {
 	if timeout <= 0 {
@@ -138,9 +141,22 @@ func (c *Client) run(parent context.Context, request Request, action ...string) 
 	defer cancel()
 	result, err := c.runner.Run(ctx, portyprocess.Request{
 		Name: "docker", Args: arguments, Dir: request.StackDir, Redact: secrets,
-		MaxOutput: 1 << 20, CleanEnv: true, Env: []string{"DOCKER_CLI_HINTS=false"},
+		MaxOutput: maxCommandOutput, CleanEnv: true, Env: []string{"DOCKER_CLI_HINTS=false"},
 	})
 	if err != nil {
+		detail := result.Output
+		for _, secret := range secrets {
+			if secret != "" {
+				detail = strings.ReplaceAll(detail, secret, "[REDACTED]")
+			}
+		}
+		detail = strings.TrimSpace(detail)
+		if len(detail) > maxCommandOutput {
+			detail = detail[:maxCommandOutput]
+		}
+		if detail != "" {
+			return result, fmt.Errorf("docker compose %s: %s: %w", action[0], detail, err)
+		}
 		return result, fmt.Errorf("docker compose %s: %w", action[0], err)
 	}
 	return result, nil

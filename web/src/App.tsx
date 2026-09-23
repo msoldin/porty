@@ -285,6 +285,7 @@ function Workspace({
   const operation = operations.find(
     (operation) => operation.id === selectedOperation,
   );
+  const configuredRepo = repo?.configured ? repo : null;
   const nav = [
     { name: "Stacks", path: "/" },
     { name: "Repository", path: "/repository" },
@@ -359,7 +360,7 @@ function Workspace({
             <strong>Repository</strong>
             <span>
               <Icon name="Repository" />
-              {repo?.branch || "Not configured"}
+              {configuredRepo?.branch || "Not configured"}
             </span>
           </div>
           <div>
@@ -379,14 +380,19 @@ function Workspace({
               Fetch
             </button>
             <button
-              disabled={busy || !repo || !remoteEnabled}
+              disabled={busy || !configuredRepo || !remoteEnabled}
               onClick={() => repoAction("pull")}
             >
               <Icon name="Pull" />
               Pull
             </button>
             <button
-              disabled={busy || !repo || !remoteEnabled || repo.ahead === 0}
+              disabled={
+                busy ||
+                !configuredRepo ||
+                !remoteEnabled ||
+                configuredRepo.ahead === 0
+              }
               onClick={() => repoAction("push")}
             >
               <Icon name="Push" />
@@ -412,7 +418,7 @@ function Workspace({
             <StackDetail
               key={selectedStack.id}
               stack={selectedStack}
-              repo={repo}
+              repo={configuredRepo}
               operations={operations}
               dirty={dirty}
               setDirty={setDirty}
@@ -423,7 +429,7 @@ function Workspace({
           ) : route === "/" ? (
             <Dashboard
               stacks={stacks}
-              repo={repo}
+              repo={configuredRepo}
               operations={operations}
               navigate={navigate}
               refresh={refresh}
@@ -432,7 +438,8 @@ function Workspace({
             <div class="detail-content">
               <h1>Repository</h1>
               <p class="muted">
-                Branch {repo?.branch || "not configured"} · remote origin
+                Branch {configuredRepo?.branch || "not configured"} · remote
+                origin
               </p>
               <h2>History</h2>
               {commits.map((commit) => (

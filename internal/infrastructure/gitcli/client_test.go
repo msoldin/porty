@@ -75,7 +75,11 @@ func TestNetworkCommandsUseFixedArgumentsAndHardenedEnvironment(t *testing.T) {
 
 func TestStatusParsesAheadAndBehindDivergence(t *testing.T) {
 	runner := &staticRunner{result: portyprocess.Result{Output: "## main...origin/main [ahead 2, behind 3]\x00 M alpha/docker-compose.yml\x00"}}
-	client, err := gitcli.New(runner, "/srv/porty/repository", "main")
+	repository := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repository, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	client, err := gitcli.New(runner, repository, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +89,52 @@ func TestStatusParsesAheadAndBehindDivergence(t *testing.T) {
 	}
 	if status.Ahead != 2 || status.Behind != 3 || !status.Dirty {
 		t.Fatalf("Status() = %#v", status)
+	}
+}
+
+func TestUninitializedRepositoryReturnsCleanStatusAndHistory(t *testing.T) {
+	repository := t.TempDir()
+	client, err := gitcli.New(portyprocess.NewRunner(), repository, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := client.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Configured || status.Branch != "main" || status.Dirty || status.Ahead != 0 || status.Behind != 0 || len(status.Paths) != 0 {
+		t.Fatalf("Status() = %#v", status)
+	}
+	history, err := client.History(context.Background(), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("History() = %#v, want empty", history)
+	}
+}
+
+func TestInitializedRepositoryWithoutCommitsReportsBranchAndEmptyHistory(t *testing.T) {
+	repository := initRepository(t)
+	client, err := gitcli.New(portyprocess.NewRunner(), repository, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := client.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Configured || status.Branch != "main" || status.Dirty {
+		t.Fatalf("Status() = %#v", status)
+	}
+	history, err := client.History(context.Background(), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("History() = %#v, want empty", history)
 	}
 }
 
