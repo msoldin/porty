@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -29,5 +30,13 @@ func TestAuditStoreRecordsAndPaginatesEvents(t *testing.T) {
 	}
 	if len(events) != 1 || events[0].ID != "aud_1" {
 		t.Fatalf("AuditEvents() = %#v", events)
+	}
+	if events[0].ActorUserID != "" || events[0].SourceIP != "" || events[0].OccurredAt.IsZero() {
+		t.Fatalf("nullable audit fields = %#v", events[0])
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := store.AuditEvents(cancelled, 1, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled audit query: %v", err)
 	}
 }
