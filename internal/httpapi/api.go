@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	portyauth "github.com/msoldin/porty/internal/auth"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"net"
@@ -15,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 )
@@ -474,7 +474,7 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, r, http.StatusPreconditionFailed, "StaleFile", "The file changed since it was opened", nil)
 	case errors.Is(err, portyfs.ErrTooLarge):
 		WriteError(w, r, http.StatusRequestEntityTooLarge, "LimitExceeded", "The requested content exceeds a limit", nil)
-	case errors.Is(err, application.ErrOperationConflict):
+	case errors.Is(err, portyop.ErrOperationConflict):
 		WriteError(w, r, http.StatusConflict, "OperationConflict", "A conflicting operation is in progress", nil)
 	case errors.Is(err, portyrepo.ErrInvalidRequest):
 		WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "The request is invalid", nil)

@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	"sync"
 	"testing"
-
-	"github.com/msoldin/porty/internal/application"
 )
 
 func TestRepositorySetupStatusOffersModesForEmptyPath(t *testing.T) {
@@ -176,7 +175,7 @@ func TestRepositorySetupSerializesConcurrentMutations(t *testing.T) {
 	if err := <-firstResult; err != nil {
 		t.Fatalf("first Setup() error = %v", err)
 	}
-	if !errors.Is(secondErr, application.ErrOperationConflict) {
+	if !errors.Is(secondErr, portyop.ErrOperationConflict) {
 		t.Fatalf("concurrent Setup() error = %v, want ErrOperationConflict", secondErr)
 	}
 	if provisioner.maxConcurrent != 1 {
@@ -315,7 +314,7 @@ func TestRepositorySetupStatusReportsMountedSSHMaterial(t *testing.T) {
 
 func newRepositorySetupService(store *fakeRepositorySetupStore, provisioner *fakeRepositoryProvisioner) (*portyrepo.RepositorySetupService, *portyrepo.RepositoryService) {
 	repository := portyrepo.NewRepositoryService(&setupGitRepository{head: "original"})
-	return portyrepo.NewRepositorySetupService(store, provisioner, repository, application.NewCoordinator(), portyrepo.RepositorySetupOptions{
+	return portyrepo.NewRepositorySetupService(store, provisioner, repository, portyop.NewCoordinator(), portyrepo.RepositorySetupOptions{
 		SSHKeyPath: "/srv/porty/ssh/id", KnownHostsPath: "/srv/porty/ssh/known_hosts",
 	}), repository
 }

@@ -1,20 +1,20 @@
-package application_test
+package operation_test
 
 import (
 	"context"
 	"errors"
+	portyop "github.com/msoldin/porty/internal/operation"
 	"reflect"
 	"testing"
 
-	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestDeployValidatesBeforeApplyingAndRecordsDigest(t *testing.T) {
 	runtime := &fakeComposeRuntime{}
 	store := &fakeDeploymentStore{}
-	service := application.NewDeploymentService(runtime, store, application.NewCoordinator())
-	request := application.DeployRequest{StackID: "stk_gateway", OperationID: "op_request", StackDir: "/srv/stacks/gateway", ProjectName: "porty-gateway-123", GitCommit: "abc123", Dirty: true}
+	service := portyop.NewDeploymentService(runtime, store, portyop.NewCoordinator())
+	request := portyop.DeployRequest{StackID: "stk_gateway", OperationID: "op_request", StackDir: "/srv/stacks/gateway", ProjectName: "porty-gateway-123", GitCommit: "abc123", Dirty: true}
 	deployment, err := service.Deploy(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -31,28 +31,28 @@ func TestDeployValidatesBeforeApplyingAndRecordsDigest(t *testing.T) {
 }
 
 func TestCoordinatorRejectsConflictingStackOperation(t *testing.T) {
-	coordinator := application.NewCoordinator()
+	coordinator := portyop.NewCoordinator()
 	release, err := coordinator.Try(false, "stk_gateway")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	if _, err := coordinator.Try(false, "stk_gateway"); !errors.Is(err, application.ErrOperationConflict) {
+	if _, err := coordinator.Try(false, "stk_gateway"); !errors.Is(err, portyop.ErrOperationConflict) {
 		t.Fatalf("second Try() = %v", err)
 	}
 }
 
 type fakeComposeRuntime struct{ calls []string }
 
-func (f *fakeComposeRuntime) Validate(context.Context, application.ComposeRequest) error {
+func (f *fakeComposeRuntime) Validate(context.Context, portyop.ComposeRequest) error {
 	f.calls = append(f.calls, "validate")
 	return nil
 }
-func (f *fakeComposeRuntime) Digest(context.Context, application.ComposeRequest) (string, error) {
+func (f *fakeComposeRuntime) Digest(context.Context, portyop.ComposeRequest) (string, error) {
 	f.calls = append(f.calls, "digest")
 	return "sha256:desired", nil
 }
-func (f *fakeComposeRuntime) Deploy(context.Context, application.ComposeRequest, bool) error {
+func (f *fakeComposeRuntime) Deploy(context.Context, portyop.ComposeRequest, bool) error {
 	f.calls = append(f.calls, "deploy")
 	return nil
 }

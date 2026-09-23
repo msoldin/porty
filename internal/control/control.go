@@ -1,4 +1,4 @@
-package application
+package control
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"path/filepath"
@@ -17,15 +18,15 @@ import (
 )
 
 type RuntimeController interface {
-	Validate(context.Context, ComposeRequest) error
-	Status(context.Context, ComposeRequest) (string, error)
-	Digest(context.Context, ComposeRequest) (string, error)
-	Start(context.Context, ComposeRequest) error
-	Stop(context.Context, ComposeRequest) error
-	Restart(context.Context, ComposeRequest) error
-	Deploy(context.Context, ComposeRequest, bool) error
-	Pull(context.Context, ComposeRequest) error
-	Logs(context.Context, ComposeRequest, int) (string, error)
+	Validate(context.Context, portyop.ComposeRequest) error
+	Status(context.Context, portyop.ComposeRequest) (string, error)
+	Digest(context.Context, portyop.ComposeRequest) (string, error)
+	Start(context.Context, portyop.ComposeRequest) error
+	Stop(context.Context, portyop.ComposeRequest) error
+	Restart(context.Context, portyop.ComposeRequest) error
+	Deploy(context.Context, portyop.ComposeRequest, bool) error
+	Pull(context.Context, portyop.ComposeRequest) error
+	Logs(context.Context, portyop.ComposeRequest, int) (string, error)
 }
 
 type ControlPlane struct {
@@ -34,29 +35,21 @@ type ControlPlane struct {
 	environment *portystack.EnvironmentService
 	repository  *portyrepo.RepositoryService
 	runtime     RuntimeController
-	operations  *OperationService
-	deployments *DeploymentService
-	coordinator *Coordinator
+	operations  *portyop.OperationService
+	deployments *portyop.DeploymentService
+	coordinator *portyop.Coordinator
 	logs        LogPublisher
-	stateStore  interface {
-		LatestDeployment(context.Context, domain.StackID) (domain.Deployment, error)
-	}
+	stateStore  DeploymentStateStore
 }
 
-func (c *ControlPlane) ConfigureState(store interface {
+type DeploymentStateStore interface {
 	LatestDeployment(context.Context, domain.StackID) (domain.Deployment, error)
-}) {
-	c.stateStore = store
 }
 
 type LogPublisher interface{ PublishLog(string, string) }
 
-func NewControlPlane(root string, lookup portystack.StackLookup, environment *portystack.EnvironmentService, repository *portyrepo.RepositoryService, runtime RuntimeController, operations *OperationService, deployments *DeploymentService, coordinator *Coordinator, logPublishers ...LogPublisher) *ControlPlane {
-	control := &ControlPlane{root: root, lookup: lookup, environment: environment, repository: repository, runtime: runtime, operations: operations, deployments: deployments, coordinator: coordinator}
-	if len(logPublishers) > 0 {
-		control.logs = logPublishers[0]
-	}
-	return control
+func NewControlPlane(root string, lookup portystack.StackLookup, environment *portystack.EnvironmentService, repository *portyrepo.RepositoryService, runtime RuntimeController, operations *portyop.OperationService, deployments *portyop.DeploymentService, coordinator *portyop.Coordinator, stateStore DeploymentStateStore, logs LogPublisher) *ControlPlane {
+	return &ControlPlane{root: root, lookup: lookup, environment: environment, repository: repository, runtime: runtime, operations: operations, deployments: deployments, coordinator: coordinator, stateStore: stateStore, logs: logs}
 }
 
 func (c *ControlPlane) RepositoryStatus(ctx context.Context) (portyrepo.GitStatus, error) {
@@ -100,7 +93,7 @@ func (c *ControlPlane) StartRepositoryAction(ctx context.Context, action string)
 	if err != nil {
 		return domain.Operation{}, err
 	}
-	operation, startErr := c.operations.Start(ctx, OperationRequest{Kind: action, ScopeType: "repository"}, func(jobCtx context.Context) (string, error) {
+	operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{Kind: action, ScopeType: "repository"}, func(jobCtx context.Context) (string, error) {
 		defer release()
 		var actionErr error
 		if action == "fetch" {
@@ -127,7 +120,7 @@ func (c *ControlPlane) StackState(ctx context.Context, id domain.StackID) (domai
 	if err != nil {
 		return domain.StackState{}, err
 	}
-	request := ComposeRequest{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	request := portyop.ComposeRequest{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
 	status, err := c.runtime.Status(ctx, request)
 	if err != nil {
 		return domain.StackState{}, err
@@ -188,15 +181,15 @@ func (c *ControlPlane) StartAction(ctx context.Context, id domain.StackID, actio
 	if err != nil {
 		return domain.Operation{}, err
 	}
-	request := ComposeRequest{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	request := portyop.ComposeRequest{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
 	switch action {
 	case "deploy", "recreate":
 		release, err := c.coordinator.Try(false, string(id))
 		if err != nil {
 			return domain.Operation{}, err
 		}
-		operationID := NewOperationID()
-		operation, startErr := c.operations.Start(ctx, OperationRequest{ID: operationID, Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values)}, func(jobCtx context.Context) (string, error) {
+		operationID := portyop.NewOperationID()
+		operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{ID: operationID, Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values)}, func(jobCtx context.Context) (string, error) {
 			defer release()
 			status, statusErr := c.repository.Status(jobCtx)
 			if statusErr != nil {
@@ -215,7 +208,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id domain.StackID, actio
 				digest := sha256.Sum256([]byte(diff))
 				diffDigest = "sha256:" + hex.EncodeToString(digest[:])
 			}
-			deployment, err := c.deployments.DeployLocked(jobCtx, DeployRequest{StackID: id, OperationID: operationID, StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: values, GitCommit: head, Dirty: status.Dirty, DiffDigest: diffDigest, Recreate: action == "recreate"})
+			deployment, err := c.deployments.DeployLocked(jobCtx, portyop.DeployRequest{StackID: id, OperationID: operationID, StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: values, GitCommit: head, Dirty: status.Dirty, DiffDigest: diffDigest, Recreate: action == "recreate"})
 			return fmt.Sprintf("deployment %s", deployment.ID), err
 		})
 		if startErr != nil {
@@ -227,7 +220,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id domain.StackID, actio
 		if err != nil {
 			return domain.Operation{}, err
 		}
-		operation, startErr := c.operations.Start(ctx, OperationRequest{Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), DiscardOutput: action == "logs"}, func(jobCtx context.Context) (string, error) {
+		operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), DiscardOutput: action == "logs"}, func(jobCtx context.Context) (string, error) {
 			defer release()
 			switch action {
 			case "validate":

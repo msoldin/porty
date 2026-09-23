@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"database/sql"
+	portycontrol "github.com/msoldin/porty/internal/control"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"net/http"
@@ -10,7 +12,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
 	portyauth "github.com/msoldin/porty/internal/auth"
 	composecli "github.com/msoldin/porty/internal/compose"
 	"github.com/msoldin/porty/internal/config"
@@ -38,7 +39,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 		SecureHTTP: cfg.Server.TLSCert != "",
 	}
 	repositoryRoot := filepath.Join(cfg.DataDir, "repository")
-	coordinator := application.NewCoordinator()
+	coordinator := portyop.NewCoordinator()
 	runner := portyprocess.NewRunner()
 	compose := composecli.New(runner, 5*time.Minute)
 	if err := os.MkdirAll(repositoryRoot, 0o700); err == nil {
@@ -87,10 +88,9 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 					err = reconcileErr
 				}
 			}
-			operations := application.NewOperationService(operationStore, hub, 10*time.Minute, 256<<10)
-			deployments := application.NewDeploymentService(compose, deploymentStore, coordinator)
-			control := application.NewControlPlane(repositoryRoot, stackStore, environment, repositoryService, compose, operations, deployments, coordinator, hub)
-			control.ConfigureState(deploymentStore)
+			operations := portyop.NewOperationService(operationStore, hub, 10*time.Minute, 256<<10)
+			deployments := portyop.NewDeploymentService(compose, deploymentStore, coordinator)
+			control := portycontrol.NewControlPlane(repositoryRoot, stackStore, environment, repositoryService, compose, operations, deployments, coordinator, deploymentStore, hub)
 			options.Repository = control
 			options.Actions = control
 			options.State = control

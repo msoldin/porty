@@ -1,22 +1,22 @@
-package application_test
+package operation_test
 
 import (
 	"context"
 	"errors"
+	portyop "github.com/msoldin/porty/internal/operation"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestOperationContinuesAfterRequestDisconnectAndRedactsOutput(t *testing.T) {
 	store := &memoryOperationStore{completed: make(chan domain.Operation, 1)}
-	service := application.NewOperationService(store, nil, time.Second, 64)
+	service := portyop.NewOperationService(store, nil, time.Second, 64)
 	requestContext, cancel := context.WithCancel(context.Background())
-	operation, err := service.Start(requestContext, application.OperationRequest{Kind: "pull", ScopeType: "repository", Secrets: []string{"secret"}}, func(context.Context) (string, error) {
+	operation, err := service.Start(requestContext, portyop.OperationRequest{Kind: "pull", ScopeType: "repository", Secrets: []string{"secret"}}, func(context.Context) (string, error) {
 		time.Sleep(20 * time.Millisecond)
 		return "secret" + strings.Repeat("x", 80), nil
 	})
@@ -39,8 +39,8 @@ func TestOperationContinuesAfterRequestDisconnectAndRedactsOutput(t *testing.T) 
 
 func TestOperationCanDiscardSensitiveOutput(t *testing.T) {
 	store := &memoryOperationStore{completed: make(chan domain.Operation, 1)}
-	service := application.NewOperationService(store, nil, time.Second, 64)
-	_, err := service.Start(context.Background(), application.OperationRequest{Kind: "logs", ScopeType: "stack", DiscardOutput: true}, func(context.Context) (string, error) {
+	service := portyop.NewOperationService(store, nil, time.Second, 64)
+	_, err := service.Start(context.Background(), portyop.OperationRequest{Kind: "logs", ScopeType: "stack", DiscardOutput: true}, func(context.Context) (string, error) {
 		return "container secret output", nil
 	})
 	if err != nil {
@@ -58,8 +58,8 @@ func TestOperationCanDiscardSensitiveOutput(t *testing.T) {
 
 func TestFailedOperationRecordsBoundedRedactedError(t *testing.T) {
 	store := &memoryOperationStore{completed: make(chan domain.Operation, 1)}
-	service := application.NewOperationService(store, nil, time.Second, 64)
-	_, err := service.Start(context.Background(), application.OperationRequest{Kind: "start", ScopeType: "stack", Secrets: []string{"secret"}}, func(context.Context) (string, error) {
+	service := portyop.NewOperationService(store, nil, time.Second, 64)
+	_, err := service.Start(context.Background(), portyop.OperationRequest{Kind: "start", ScopeType: "stack", Secrets: []string{"secret"}}, func(context.Context) (string, error) {
 		return "", errors.New("docker compose up: permission denied for secret: " + strings.Repeat("x", 80))
 	})
 	if err != nil {

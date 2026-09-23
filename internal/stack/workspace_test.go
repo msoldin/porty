@@ -3,12 +3,12 @@ package stack_test
 import (
 	"context"
 	"errors"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
@@ -59,7 +59,7 @@ func TestWorkspaceCoordinatesMutationsAndStopsComposeBeforeDelete(t *testing.T) 
 	}
 	defer db.Close()
 	store := portysqlite.NewStackStore(db)
-	coordinator := application.NewCoordinator()
+	coordinator := portyop.NewCoordinator()
 	runtime := &deletionRuntime{t: t}
 	workspace := portystack.NewCoordinatedWorkspaceService(portystack.NewStackService(files, store), store, files, portystack.NewEnvironmentService(store), coordinator, runtime, root)
 	stack, err := workspace.CreateStack(ctx, "gateway")
@@ -72,7 +72,7 @@ func TestWorkspaceCoordinatesMutationsAndStopsComposeBeforeDelete(t *testing.T) 
 	}
 	_, err = workspace.WriteFile(ctx, stack.ID, "docker-compose.yml", []byte("services: {}\n"), "wrong")
 	release()
-	if !errors.Is(err, application.ErrOperationConflict) {
+	if !errors.Is(err, portyop.ErrOperationConflict) {
 		t.Fatalf("WriteFile() during operation = %v, want conflict", err)
 	}
 	runtime.wantCompose = filepath.Join(root, "gateway", "docker-compose.yml")

@@ -1,32 +1,33 @@
-package application_test
+package control_test
 
 import (
 	"context"
 	"errors"
+	portycontrol "github.com/msoldin/porty/internal/control"
+	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"testing"
 	"time"
 
-	"github.com/msoldin/porty/internal/application"
 	"github.com/msoldin/porty/internal/domain"
 )
 
 func TestControlPlaneRejectsConflictBeforeAcceptAndRecordsDeploymentProvenance(t *testing.T) {
 	ctx := context.Background()
-	coordinator := application.NewCoordinator()
+	coordinator := portyop.NewCoordinator()
 	operations := &countingOperationStore{}
 	deploymentStore := &capturingDeploymentStore{saved: make(chan domain.Deployment, 1)}
 	runtime := &controlRuntime{}
 	environment := portystack.NewEnvironmentService(controlEnvironmentStore{})
-	service := application.NewDeploymentService(runtime, deploymentStore, coordinator)
-	control := application.NewControlPlane("/srv/repository", controlLookup{}, environment, portyrepo.NewRepositoryService(controlGit{}), runtime, application.NewOperationService(operations, nil, time.Second, 1024), service, coordinator)
+	service := portyop.NewDeploymentService(runtime, deploymentStore, coordinator)
+	control := portycontrol.NewControlPlane("/srv/repository", controlLookup{}, environment, portyrepo.NewRepositoryService(controlGit{}), runtime, portyop.NewOperationService(operations, nil, time.Second, 1024), service, coordinator, nil, nil)
 
 	release, err := coordinator.Try(false, "stk_gateway")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := control.StartAction(ctx, "stk_gateway", "deploy"); !errors.Is(err, application.ErrOperationConflict) {
+	if _, err := control.StartAction(ctx, "stk_gateway", "deploy"); !errors.Is(err, portyop.ErrOperationConflict) {
 		t.Fatalf("StartAction() conflict = %v", err)
 	}
 	if operations.created != 0 {
@@ -81,19 +82,19 @@ func (controlGit) Push(context.Context) error                                  {
 
 type controlRuntime struct{}
 
-func (*controlRuntime) Validate(context.Context, application.ComposeRequest) error { return nil }
-func (*controlRuntime) Digest(context.Context, application.ComposeRequest) (string, error) {
+func (*controlRuntime) Validate(context.Context, portyop.ComposeRequest) error { return nil }
+func (*controlRuntime) Digest(context.Context, portyop.ComposeRequest) (string, error) {
 	return "sha256:compose", nil
 }
-func (*controlRuntime) Status(context.Context, application.ComposeRequest) (string, error) {
+func (*controlRuntime) Status(context.Context, portyop.ComposeRequest) (string, error) {
 	return `[]`, nil
 }
-func (*controlRuntime) Start(context.Context, application.ComposeRequest) error        { return nil }
-func (*controlRuntime) Stop(context.Context, application.ComposeRequest) error         { return nil }
-func (*controlRuntime) Restart(context.Context, application.ComposeRequest) error      { return nil }
-func (*controlRuntime) Deploy(context.Context, application.ComposeRequest, bool) error { return nil }
-func (*controlRuntime) Pull(context.Context, application.ComposeRequest) error         { return nil }
-func (*controlRuntime) Logs(context.Context, application.ComposeRequest, int) (string, error) {
+func (*controlRuntime) Start(context.Context, portyop.ComposeRequest) error        { return nil }
+func (*controlRuntime) Stop(context.Context, portyop.ComposeRequest) error         { return nil }
+func (*controlRuntime) Restart(context.Context, portyop.ComposeRequest) error      { return nil }
+func (*controlRuntime) Deploy(context.Context, portyop.ComposeRequest, bool) error { return nil }
+func (*controlRuntime) Pull(context.Context, portyop.ComposeRequest) error         { return nil }
+func (*controlRuntime) Logs(context.Context, portyop.ComposeRequest, int) (string, error) {
 	return "", nil
 }
 
