@@ -1068,7 +1068,7 @@ go test -race ./internal/application ./internal/infrastructure/gitcli ./internal
 
 Expected: PASS without race reports.
 
-Verification limit: race testing could not start because this host has no C compiler. The uncached full Go suite passed.
+Verification: the race suite passed after a C compiler was installed; the uncached full Go suite passed.
 
 - [x] **Step 2: Run complete backend verification**
 
