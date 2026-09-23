@@ -16,11 +16,9 @@ jobs:
         with:
           go-version: 1.27.1
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          bun-version: 1.4.2
       - name: Install sqlc v1.31.1
         run: |
           curl -fsSL https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz
@@ -33,16 +31,20 @@ jobs:
           sqlc generate
           git status --porcelain -- internal/sqlite/generated > /tmp/sqlc-status
           test ! -s /tmp/sqlc-status
-      - run: npm --prefix web ci
-      - run: npm --prefix web test
-      - run: npm --prefix web run typecheck
-      - run: npm --prefix web run build
+      - run: bun ci
+        working-directory: web
+      - run: bun run test
+        working-directory: web
+      - run: bun run typecheck
+        working-directory: web
+      - run: bun run build
+        working-directory: web
       - run: go test -race ./...
       - run: go vet ./...
       - run: go build -trimpath -o /tmp/porty-e2e ./cmd/porty
-      - run: npx playwright install --with-deps chromium
+      - run: bunx playwright install --with-deps chromium
         working-directory: web
-      - run: PORTY_E2E_BINARY=/tmp/porty-e2e npm run test:e2e
+      - run: PORTY_E2E_BINARY=/tmp/porty-e2e bun run test:e2e
         working-directory: web
       - run: ./deploy/package_test.sh
       - run: docker build --tag porty:verify .

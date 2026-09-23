@@ -8,6 +8,11 @@ import {
 } from "./api";
 import { Notice } from "./ui";
 import { RepositorySettings } from "./RepositorySettings";
+import {
+  getThemePreference,
+  setThemePreference,
+  type ThemePreference,
+} from "./theme";
 
 function EnvironmentRow({
   name,
@@ -228,9 +233,28 @@ export function AccountSettings({
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [theme, setTheme] = useState<ThemePreference>(getThemePreference);
   return (
     <div class="settings-content">
       <h1>Settings</h1>
+      <section class="appearance-settings">
+        <h2>Appearance</h2>
+        <label>
+          Theme
+          <select
+            value={theme}
+            onChange={(event) => {
+              const preference = event.currentTarget.value as ThemePreference;
+              setThemePreference(preference);
+              setTheme(preference);
+            }}
+          >
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+      </section>
       <RepositorySettings
         status={repositoryStatus}
         onChange={onRepositoryChange}

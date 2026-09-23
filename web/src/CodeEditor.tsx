@@ -8,11 +8,23 @@ import {
   highlightActiveLineGutter,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import {
-  syntaxHighlighting,
-  defaultHighlightStyle,
-} from "@codemirror/language";
+import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { yaml } from "@codemirror/lang-yaml";
+import { tags } from "@lezer/highlight";
+
+const editorHighlight = HighlightStyle.define([
+  { tag: [tags.keyword, tags.operatorKeyword], color: "var(--syntax-keyword)" },
+  {
+    tag: [tags.string, tags.special(tags.string)],
+    color: "var(--syntax-string)",
+  },
+  { tag: [tags.number, tags.bool, tags.atom], color: "var(--syntax-number)" },
+  { tag: [tags.comment, tags.meta], color: "var(--syntax-comment)" },
+  {
+    tag: [tags.propertyName, tags.attributeName],
+    color: "var(--syntax-property)",
+  },
+]);
 
 export function CodeEditor({
   initial,
@@ -39,7 +51,7 @@ export function CodeEditor({
           highlightActiveLineGutter(),
           history(),
           yaml(),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(editorHighlight),
           editable.current.of([
             EditorState.readOnly.of(readOnly),
             EditorView.editable.of(!readOnly),
@@ -50,7 +62,14 @@ export function CodeEditor({
             if (update.docChanged) change.current(update.state.doc.toString());
           }),
           EditorView.theme({
-            "&": { height: "100%" },
+            "&": {
+              height: "100%",
+              background: "var(--surface)",
+              color: "var(--text-strong)",
+            },
+            ".cm-cursor": { borderLeftColor: "var(--text-strong)" },
+            ".cm-activeLine": { background: "var(--editor-active-line)" },
+            ".cm-activeLineGutter": { background: "var(--editor-active-line)" },
             ".cm-scroller": {
               overflow: "auto",
               fontFamily: "var(--mono)",
@@ -58,9 +77,9 @@ export function CodeEditor({
               lineHeight: "1.65",
             },
             ".cm-gutters": {
-              background: "#fafbfe",
+              background: "var(--surface-soft)",
               border: "none",
-              color: "#71809b",
+              color: "var(--muted)",
             },
             ".cm-content": { padding: "14px 0" },
             ".cm-line": { paddingLeft: "12px" },

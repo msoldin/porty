@@ -27,6 +27,8 @@ let hasManagedRemote = true;
 let sockets = 0;
 let repositoryStatus: Record<string, unknown>;
 beforeEach(() => {
+  localStorage.clear();
+  document.documentElement.removeAttribute("data-theme");
   location.hash = "";
   writes = [];
   stale = false;
@@ -222,6 +224,20 @@ async function edit(element: HTMLElement) {
 }
 
 describe("Porty administration interface", () => {
+  it("lets the administrator override the system appearance and restore it", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("link", { name: "Settings" }));
+    const theme = await screen.findByLabelText("Theme");
+    expect(theme).toHaveValue("system");
+
+    fireEvent.change(theme, { target: { value: "dark" } });
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(localStorage.getItem("porty-theme")).toBe("dark");
+
+    fireEvent.change(theme, { target: { value: "system" } });
+    expect(document.documentElement).not.toHaveAttribute("data-theme");
+    expect(localStorage.getItem("porty-theme")).toBeNull();
+  });
   it("disables remote-only actions for a ready local-only repository", async () => {
     hasManagedRemote = false;
     render(<App />);

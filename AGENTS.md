@@ -69,11 +69,11 @@ Prefer Preact and browser APIs over unnecessary dependencies.
 
 ### Frontend
 
-* `npm --prefix web test`
-* `npm --prefix web run typecheck`
-* `npm --prefix web run build`
-* `npm --prefix web run dev`
-* `npm --prefix web run test:e2e`
+* `(cd web && bun run test)`
+* `(cd web && bun run typecheck)`
+* `(cd web && bun run build)`
+* `(cd web && bun run dev)`
+* `(cd web && bun run test:e2e)`
 
 ### Packaging
 

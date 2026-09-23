@@ -1,19 +1,36 @@
 :root {
+  color-scheme: light dark;
   font-family:
     Inter,
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  color: #101b35;
-  background: #fff;
+  color: light-dark(#101b35, #e8eefc);
+  background: light-dark(#fff, #111827);
   font-synthesis: none;
-  --blue: #0750ff;
-  --border: #e3e8f0;
-  --muted: #697991;
+  --blue: light-dark(#0750ff, #89adff);
+  --border: light-dark(#e3e8f0, #344158);
+  --muted: light-dark(#697991, #a7b5ce);
+  --surface: light-dark(#fff, #192235);
+  --surface-soft: light-dark(#fafbfd, #172033);
+  --surface-raised: light-dark(#f5f7fa, #202b40);
+  --text-strong: light-dark(#0c1934, #f2f5fc);
+  --syntax-keyword: light-dark(#7751aa, #c7a5ff);
+  --syntax-string: light-dark(#a12936, #ff9a9f);
+  --syntax-number: light-dark(#24599b, #a7c4ff);
+  --syntax-comment: light-dark(#697991, #9eabc1);
+  --syntax-property: light-dark(#176a63, #87d8c8);
+  --editor-active-line: light-dark(#f5f8ff, #25334a);
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 14px;
   line-height: 1.5;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -48,37 +65,37 @@ button {
   gap: 9px;
   min-height: 40px;
   padding: 8px 15px;
-  border: 1px solid #cdd6e5;
+  border: 1px solid light-dark(#cdd6e5, #46536c);
   border-radius: 5px;
-  background: white;
-  color: #20314e;
+  background: var(--surface);
+  color: light-dark(#20314e, #e0e9fb);
   cursor: pointer;
   font-weight: 500;
 }
 button:hover:not(:disabled) {
-  background: #f1f5ff;
-  border-color: #a0b7ed;
+  background: light-dark(#f1f5ff, #263a5d);
+  border-color: light-dark(#a0b7ed, #7094d8);
 }
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 button.primary {
-  background: var(--blue);
-  border-color: var(--blue);
+  background: light-dark(#0750ff, #315bc1);
+  border-color: light-dark(#0750ff, #315bc1);
   color: #fff;
   box-shadow: 0 2px 3px #0750ff15;
 }
 button.primary:hover:not(:disabled) {
-  background: #0043db;
+  background: light-dark(#0043db, #3e6bda);
 }
 button.danger {
-  border-color: #ff9d9d;
-  color: #d51620;
+  border-color: light-dark(#ff9d9d, #d4878e);
+  color: light-dark(#d51620, #ff8790);
 }
 button.accent {
-  border-color: #96b5ff;
-  color: #0047e7;
+  border-color: light-dark(#96b5ff, #5e83c4);
+  color: light-dark(#0047e7, #91b5ff);
 }
 button.small {
   min-height: 30px;
@@ -138,16 +155,16 @@ h4 {
 input,
 select,
 textarea {
-  border: 1px solid #d7deea;
+  border: 1px solid light-dark(#d7deea, #46536c);
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface);
   padding: 10px 12px;
-  color: #15203b;
+  color: light-dark(#15203b, #e4ebfa);
   min-width: 0;
 }
 input::placeholder,
 textarea::placeholder {
-  color: #7b8aa1;
+  color: light-dark(#7b8aa1, #9facbf);
 }
 label {
   display: flex;
@@ -169,9 +186,9 @@ pre {
 }
 .notice {
   padding: 12px 20px;
-  background: #fff5df;
-  border-bottom: 1px solid #ecd9aa;
-  color: #784d0c;
+  background: light-dark(#fff5df, #40331f);
+  border-bottom: 1px solid light-dark(#ecd9aa, #66512b);
+  color: light-dark(#784d0c, #ffd88a);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -188,26 +205,26 @@ pre {
   white-space: nowrap;
   padding: 4px 7px;
   border-radius: 4px;
-  background: #f4f6fa;
+  background: light-dark(#f4f6fa, #29354a);
   font-size: 12px;
   font-weight: 500;
-  color: #263852;
+  color: light-dark(#263852, #e2eafa);
 }
 .badge.success {
-  background: #e0f7e8;
-  color: #137440;
+  background: light-dark(#e0f7e8, #1d3f32);
+  color: light-dark(#137440, #82dfaa);
 }
 .badge.warning {
-  background: #fff0ce;
-  color: #945706;
+  background: light-dark(#fff0ce, #43351d);
+  color: light-dark(#945706, #ffce7e);
 }
 .badge.danger {
-  background: #ffe0e1;
-  color: #bf2429;
+  background: light-dark(#ffe0e1, #48272d);
+  color: light-dark(#bf2429, #ff929a);
 }
 .badge.blue {
-  background: #eaf1ff;
-  color: #0750ff;
+  background: light-dark(#eaf1ff, #263b5e);
+  color: light-dark(#0750ff, #89adff);
 }
 .runtime {
   display: inline-flex;
@@ -220,7 +237,7 @@ pre {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #8390a5;
+  background: light-dark(#8390a5, #8393aa);
 }
 .app-shell {
   display: grid;
@@ -231,7 +248,7 @@ pre {
   grid-template-columns: 204px minmax(0, 1fr) 380px;
 }
 .sidebar {
-  background: #fafbfd;
+  background: var(--surface-soft);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -247,7 +264,7 @@ pre {
   font-size: 29px;
   line-height: 1.1;
   font-weight: 700;
-  color: #0c1934;
+  color: var(--text-strong);
   padding: 0 14px;
   letter-spacing: -0.6px;
 }
@@ -272,13 +289,13 @@ pre {
   align-items: center;
   gap: 20px;
   padding: 15px 15px;
-  color: #42516b;
+  color: light-dark(#42516b, #b5c2d8);
   border-radius: 4px;
   position: relative;
   font-size: 14px;
 }
 .sidebar nav a.active {
-  background: #eaf1ff;
+  background: light-dark(#eaf1ff, #263b5e);
   color: var(--blue);
 }
 .sidebar nav a.active:before {
@@ -379,7 +396,7 @@ pre {
   position: absolute;
   left: 13px;
   top: 12px;
-  color: #607089;
+  color: light-dark(#607089, #adbad0);
 }
 .search input {
   width: 100%;
@@ -414,7 +431,7 @@ td > a {
   padding-left: 18px;
 }
 .stack-table tr:hover td {
-  background: #f5f8ff;
+  background: light-dark(#f5f8ff, #22324e);
 }
 .stack-table td > svg {
   width: 14px;
@@ -431,7 +448,7 @@ td > a {
 }
 .create-stack {
   padding: 18px;
-  background: #f7f9fc;
+  background: light-dark(#f7f9fc, #1c293d);
   border: 1px solid var(--border);
   border-radius: 5px;
 }
@@ -524,7 +541,7 @@ td > a {
 }
 .pane-title span > svg {
   margin-right: 8px;
-  color: #5e6d87;
+  color: light-dark(#5e6d87, #aab8d0);
 }
 .pane-title .muted {
   font-size: 11px;
@@ -562,7 +579,7 @@ td > a {
 }
 .file-row.selected {
   color: var(--blue);
-  background: #e8f0ff;
+  background: light-dark(#e8f0ff, #2c4264);
 }
 .file-row:disabled {
   opacity: 0.7;
@@ -597,7 +614,7 @@ td > a {
 .editor-status svg {
   width: 15px;
   margin-right: 7px;
-  color: #238636;
+  color: light-dark(#238636, #82dfaa);
 }
 .editor-status button {
   font-size: 11px;
@@ -626,16 +643,16 @@ td > a {
   min-width: max-content;
 }
 .diff-output .addition {
-  background: #ddfbe5;
-  color: #166330;
+  background: light-dark(#ddfbe5, #193a2b);
+  color: light-dark(#166330, #9ce6b7);
 }
 .diff-output .deletion {
-  background: #ffe4e6;
-  color: #b12635;
+  background: light-dark(#ffe4e6, #46272e);
+  color: light-dark(#b12635, #ff9aa4);
 }
 .diff-output .hunk {
-  background: #edf1f7;
-  color: #607089;
+  background: light-dark(#edf1f7, #2a3549);
+  color: light-dark(#607089, #adbad0);
 }
 .diff-output .empty {
   padding: 15px;
@@ -666,14 +683,14 @@ td > a {
 }
 .commit-footer span {
   font-size: 11px;
-  color: #137440;
+  color: light-dark(#137440, #82dfaa);
 }
 .commit-footer button {
   font-size: 12px;
 }
 .output {
-  background: #f5f7fa;
-  border: 1px solid #edf0f5;
+  background: var(--surface-raised);
+  border: 1px solid light-dark(#edf0f5, #37455d);
   border-radius: 5px;
   padding: 18px;
   font-size: 12px;
@@ -693,7 +710,7 @@ td > a {
   top: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--surface);
   min-width: 0;
 }
 .drawer-title {
@@ -746,6 +763,13 @@ td > a {
 .settings-content {
   max-width: 860px;
 }
+.appearance-settings {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+}
+.appearance-settings label {
+  max-width: 220px;
+}
 .repository-settings {
   padding-bottom: 28px;
   margin-bottom: 30px;
@@ -764,7 +788,7 @@ td > a {
   align-items: center;
 }
 .danger-zone {
-  border-top: 1px solid #f1ced0;
+  border-top: 1px solid light-dark(#f1ced0, #69414b);
   padding-top: 25px;
   margin-top: 40px;
 }

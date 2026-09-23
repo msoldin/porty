@@ -7,8 +7,8 @@ Porty runs on one Linux server and manages the Docker daemon with the same effec
 Install Docker Engine with the Compose plugin and Git. Build the frontend and binary as an unprivileged build user:
 
 ```sh
-npm --prefix web ci
-npm --prefix web run build
+(cd web && bun ci)
+(cd web && bun run build)
 GOTOOLCHAIN=local go build -trimpath -o porty ./cmd/porty
 ```
 

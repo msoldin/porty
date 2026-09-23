@@ -58,11 +58,48 @@ async function register(page: Page) {
   await expect(page.getByRole("heading", { name: "Stacks" })).toBeVisible();
 }
 
+test("appearance follows the operating system and a saved override", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto(baseURL);
+  await expect(page.getByRole("heading", { name: "Porty" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => getComputedStyle(document.documentElement).backgroundColor,
+      ),
+    )
+    .toBe("rgb(17, 24, 39)");
+  await page.screenshot({ path: testInfo.outputPath("dark-auth.png") });
+
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => getComputedStyle(document.documentElement).backgroundColor,
+      ),
+    )
+    .toBe("rgb(255, 255, 255)");
+  await page.evaluate(() => localStorage.setItem("porty-theme", "dark"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => getComputedStyle(document.documentElement).backgroundColor,
+      ),
+    )
+    .toBe("rgb(17, 24, 39)");
+});
+
 test("administrator creates, edits, commits, and deploys a stack", async ({
   page,
 }, testInfo) => {
   await page.route("**/api/v1/stacks/*/state", async (route) => {
-    await route.fulfill({ json: { runtime: "stopped", freshness: "never_deployed" } });
+    await route.fulfill({
+      json: { runtime: "stopped", freshness: "never_deployed" },
+    });
   });
   await page.route("**/api/v1/stacks/*/actions/deploy", async (route) => {
     await route.fulfill({
@@ -99,6 +136,8 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await page.getByRole("button", { name: "Close operation" }).click();
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("button", { name: "Add remote" })).toBeVisible();
+  await page.getByLabel("Theme").selectOption("dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   for (const actionName of ["Fetch", "Pull", "Push"]) {
     const action = page.getByRole("button", { name: actionName });
     if (await action.count()) {
@@ -106,7 +145,20 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     }
   }
   await page.screenshot({
-    path: testInfo.outputPath("critical-journey.png"),
+    path: testInfo.outputPath("dark-settings.png"),
+    fullPage: false,
+  });
+  await page.getByRole("link", { name: "Stacks" }).click();
+  await page.getByRole("link", { name: "paperless" }).click();
+  await page.getByRole("tab", { name: "Editor" }).click();
+  await expect(page.locator(".cm-editor")).toBeVisible();
+  expect(
+    await page
+      .locator(".cm-editor")
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).toBe("rgb(25, 34, 53)");
+  await page.screenshot({
+    path: testInfo.outputPath("dark-editor.png"),
     fullPage: false,
   });
   expect(

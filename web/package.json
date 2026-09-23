@@ -2,6 +2,7 @@
   "name": "porty-web",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "bun@1.4.2",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -16,6 +17,7 @@
     "@codemirror/language": "^6.11.3",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.6",
+    "@lezer/highlight": "^1.2.3",
     "preact": "^10.27.2"
   },
   "devDependencies": {
