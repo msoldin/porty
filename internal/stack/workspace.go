@@ -1,4 +1,4 @@
-package application
+package stack
 
 import (
 	"context"
@@ -26,20 +26,24 @@ type WorkspaceService struct {
 	lookup      StackLookup
 	files       WorkspaceFiles
 	environment *EnvironmentService
-	coordinator *Coordinator
+	coordinator operationLocker
 	runtime     StackShutdown
 	root        string
 }
 
 type StackShutdown interface {
-	Down(context.Context, ComposeRequest) error
+	Down(context.Context, domain.ComposeRequest) error
+}
+
+type operationLocker interface {
+	Try(bool, string) (func(), error)
 }
 
 func NewWorkspaceService(stacks *StackService, lookup StackLookup, files WorkspaceFiles, environment *EnvironmentService) *WorkspaceService {
 	return &WorkspaceService{stacks: stacks, lookup: lookup, files: files, environment: environment}
 }
 
-func NewCoordinatedWorkspaceService(stacks *StackService, lookup StackLookup, files WorkspaceFiles, environment *EnvironmentService, coordinator *Coordinator, runtime StackShutdown, root string) *WorkspaceService {
+func NewCoordinatedWorkspaceService(stacks *StackService, lookup StackLookup, files WorkspaceFiles, environment *EnvironmentService, coordinator operationLocker, runtime StackShutdown, root string) *WorkspaceService {
 	return &WorkspaceService{stacks: stacks, lookup: lookup, files: files, environment: environment, coordinator: coordinator, runtime: runtime, root: root}
 }
 
@@ -91,7 +95,7 @@ func (s *WorkspaceService) DeleteStack(ctx context.Context, id domain.StackID) e
 		if err != nil {
 			return err
 		}
-		request := ComposeRequest{StackDir: filepath.Join(s.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+		request := domain.ComposeRequest{StackDir: filepath.Join(s.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
 		if err := s.runtime.Down(ctx, request); err != nil {
 			return err
 		}

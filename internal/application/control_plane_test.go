@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	portyrepo "github.com/msoldin/porty/internal/repository"
+	portystack "github.com/msoldin/porty/internal/stack"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func TestControlPlaneRejectsConflictBeforeAcceptAndRecordsDeploymentProvenance(t
 	operations := &countingOperationStore{}
 	deploymentStore := &capturingDeploymentStore{saved: make(chan domain.Deployment, 1)}
 	runtime := &controlRuntime{}
-	environment := application.NewEnvironmentService(controlEnvironmentStore{})
+	environment := portystack.NewEnvironmentService(controlEnvironmentStore{})
 	service := application.NewDeploymentService(runtime, deploymentStore, coordinator)
 	control := application.NewControlPlane("/srv/repository", controlLookup{}, environment, portyrepo.NewRepositoryService(controlGit{}), runtime, application.NewOperationService(operations, nil, time.Second, 1024), service, coordinator)
 

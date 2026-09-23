@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	portyrepo "github.com/msoldin/porty/internal/repository"
+	portystack "github.com/msoldin/porty/internal/stack"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 	if err := os.MkdirAll(repositoryRoot, 0o700); err == nil {
 		if files, err := portyfs.Open(repositoryRoot, portyfs.Limits{MaxEditableBytes: cfg.MaxEditableFileBytes, MaxDepth: 32, MaxEntries: 10_000}); err == nil {
 			stackStore := portysqlite.NewStackStore(db)
-			workspace := application.NewCoordinatedWorkspaceService(application.NewStackService(files, stackStore), stackStore, files, application.NewEnvironmentService(stackStore), coordinator, compose, repositoryRoot)
+			workspace := portystack.NewCoordinatedWorkspaceService(portystack.NewStackService(files, stackStore), stackStore, files, portystack.NewEnvironmentService(stackStore), coordinator, compose, repositoryRoot)
 			options.Stacks = workspace
 			options.Files = workspace
 			options.Environment = workspace
@@ -68,7 +69,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			err = loadErr
 		}
 		if err == nil {
-			environment := application.NewEnvironmentService(stackStore)
+			environment := portystack.NewEnvironmentService(stackStore)
 			repositoryService := portyrepo.NewRepositoryService(git)
 			repositoryService.Replace(git, configuration.Remote != nil && configuration.Remote.Managed)
 			helper, helperErr := os.Executable()

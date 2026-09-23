@@ -1,13 +1,13 @@
-package application_test
+package stack_test
 
 import (
 	"context"
 	"errors"
+	portystack "github.com/msoldin/porty/internal/stack"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/msoldin/porty/internal/application"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
@@ -30,7 +30,7 @@ func TestDiscoveringSameDirectoryPreservesStableStackIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	service := application.NewStackService(files, portysqlite.NewStackStore(db))
+	service := portystack.NewStackService(files, portysqlite.NewStackStore(db))
 
 	first, err := service.Discover(context.Background())
 	if err != nil {
@@ -49,7 +49,7 @@ func TestRenameMovesDirectoryAndKeepsStableIdentity(t *testing.T) {
 	ctx := context.Background()
 	files, store, closeAll := stackFixture(t)
 	defer closeAll()
-	service := application.NewStackService(files, store)
+	service := portystack.NewStackService(files, store)
 
 	created, err := service.Create(ctx, "gateway")
 	if err != nil {
@@ -67,16 +67,41 @@ func TestRenameMovesDirectoryAndKeepsStableIdentity(t *testing.T) {
 	}
 }
 
+func TestCreateRemovesDirectoryWhenMetadataWriteFails(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	files, err := portyfs.Open(root, portyfs.Limits{MaxEditableBytes: 1 << 20, MaxDepth: 32, MaxEntries: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer files.Close()
+	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `CREATE TRIGGER reject_stack BEFORE INSERT ON stacks BEGIN SELECT RAISE(ABORT, 'blocked'); END`); err != nil {
+		t.Fatal(err)
+	}
+	service := portystack.NewStackService(files, portysqlite.NewStackStore(db))
+	if _, err := service.Create(ctx, "gateway"); err == nil {
+		t.Fatal("Create succeeded despite the failed metadata write")
+	}
+	if _, err := os.Stat(filepath.Join(root, "gateway")); !os.IsNotExist(err) {
+		t.Fatalf("failed stack directory remained: %v", err)
+	}
+}
+
 func TestEnvironmentServiceReturnsKeysWithoutValues(t *testing.T) {
 	ctx := context.Background()
 	_, store, closeAll := stackFixture(t)
 	defer closeAll()
-	stacks := application.NewStackService(noopStackFiles{}, store)
+	stacks := portystack.NewStackService(noopStackFiles{}, store)
 	created, err := stacks.Create(ctx, "gateway")
 	if err != nil {
 		t.Fatal(err)
 	}
-	environment := application.NewEnvironmentService(store)
+	environment := portystack.NewEnvironmentService(store)
 	if err := environment.Set(ctx, created.ID, "TOKEN", "super-secret"); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +112,7 @@ func TestEnvironmentServiceReturnsKeysWithoutValues(t *testing.T) {
 	if len(keys) != 1 || keys[0] != "TOKEN" {
 		t.Fatalf("Keys() = %#v, want [TOKEN]", keys)
 	}
-	if err := environment.Set(ctx, created.ID, "BAD-KEY", "value"); !errors.Is(err, application.ErrInvalidEnvironment) {
+	if err := environment.Set(ctx, created.ID, "BAD-KEY", "value"); !errors.Is(err, portystack.ErrInvalidEnvironment) {
 		t.Fatalf("invalid Set() error = %v", err)
 	}
 }

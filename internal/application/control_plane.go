@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	portyrepo "github.com/msoldin/porty/internal/repository"
+	portystack "github.com/msoldin/porty/internal/stack"
 	"path/filepath"
 	"strings"
 
@@ -29,8 +30,8 @@ type RuntimeController interface {
 
 type ControlPlane struct {
 	root        string
-	lookup      StackLookup
-	environment *EnvironmentService
+	lookup      portystack.StackLookup
+	environment *portystack.EnvironmentService
 	repository  *portyrepo.RepositoryService
 	runtime     RuntimeController
 	operations  *OperationService
@@ -50,7 +51,7 @@ func (c *ControlPlane) ConfigureState(store interface {
 
 type LogPublisher interface{ PublishLog(string, string) }
 
-func NewControlPlane(root string, lookup StackLookup, environment *EnvironmentService, repository *portyrepo.RepositoryService, runtime RuntimeController, operations *OperationService, deployments *DeploymentService, coordinator *Coordinator, logPublishers ...LogPublisher) *ControlPlane {
+func NewControlPlane(root string, lookup portystack.StackLookup, environment *portystack.EnvironmentService, repository *portyrepo.RepositoryService, runtime RuntimeController, operations *OperationService, deployments *DeploymentService, coordinator *Coordinator, logPublishers ...LogPublisher) *ControlPlane {
 	control := &ControlPlane{root: root, lookup: lookup, environment: environment, repository: repository, runtime: runtime, operations: operations, deployments: deployments, coordinator: coordinator}
 	if len(logPublishers) > 0 {
 		control.logs = logPublishers[0]

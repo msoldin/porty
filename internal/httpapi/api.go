@@ -8,6 +8,7 @@ import (
 	"errors"
 	portyauth "github.com/msoldin/porty/internal/auth"
 	portyrepo "github.com/msoldin/porty/internal/repository"
+	portystack "github.com/msoldin/porty/internal/stack"
 	"net"
 	"net/http"
 	"strconv"
@@ -467,7 +468,7 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		WriteError(w, r, http.StatusNotFound, "NotFound", "Resource not found", nil)
-	case errors.Is(err, portyfs.ErrInvalidPath), errors.Is(err, application.ErrInvalidEnvironment):
+	case errors.Is(err, portyfs.ErrInvalidPath), errors.Is(err, portystack.ErrInvalidEnvironment):
 		WriteError(w, r, http.StatusBadRequest, "InvalidRequest", "The request is invalid", nil)
 	case errors.Is(err, portyfs.ErrStaleFile):
 		WriteError(w, r, http.StatusPreconditionFailed, "StaleFile", "The file changed since it was opened", nil)

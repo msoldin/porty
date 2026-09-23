@@ -1,8 +1,9 @@
-package application_test
+package stack_test
 
 import (
 	"context"
 	"errors"
+	portystack "github.com/msoldin/porty/internal/stack"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,7 +27,7 @@ func TestWorkspaceResolvesOpaqueStackIDForFileAndEnvironmentOperations(t *testin
 	}
 	defer db.Close()
 	store := portysqlite.NewStackStore(db)
-	workspace := application.NewWorkspaceService(application.NewStackService(files, store), store, files, application.NewEnvironmentService(store))
+	workspace := portystack.NewWorkspaceService(portystack.NewStackService(files, store), store, files, portystack.NewEnvironmentService(store))
 	stack, err := workspace.CreateStack(ctx, "gateway")
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +61,7 @@ func TestWorkspaceCoordinatesMutationsAndStopsComposeBeforeDelete(t *testing.T) 
 	store := portysqlite.NewStackStore(db)
 	coordinator := application.NewCoordinator()
 	runtime := &deletionRuntime{t: t}
-	workspace := application.NewCoordinatedWorkspaceService(application.NewStackService(files, store), store, files, application.NewEnvironmentService(store), coordinator, runtime, root)
+	workspace := portystack.NewCoordinatedWorkspaceService(portystack.NewStackService(files, store), store, files, portystack.NewEnvironmentService(store), coordinator, runtime, root)
 	stack, err := workspace.CreateStack(ctx, "gateway")
 	if err != nil {
 		t.Fatal(err)
