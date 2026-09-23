@@ -1059,7 +1059,7 @@ git commit -m "docs: cover repository first-start setup"
 **Files:**
 - Modify: `web/dist/`
 
-- [ ] **Step 1: Run formatting and race-sensitive tests**
+- [x] **Step 1: Run formatting and race-sensitive tests**
 
 ```bash
 gofmt -w internal/domain/repository_setup.go internal/application/repository_setup.go internal/application/repository_setup_test.go internal/application/repository.go internal/application/repository_test.go internal/infrastructure/sqlite/repository_store.go internal/infrastructure/sqlite/repository_store_test.go internal/infrastructure/gitcli/client.go internal/infrastructure/gitcli/client_test.go internal/infrastructure/gitcli/setup.go internal/infrastructure/gitcli/setup_test.go cmd/porty/git_helper.go cmd/porty/git_helper_test.go cmd/porty/main.go cmd/porty/main_test.go internal/httpapi/auth.go internal/httpapi/api.go internal/httpapi/api_test.go internal/httpapi/auth_test.go internal/httpapi/stream_test.go internal/httpapi/repository_setup_test.go
@@ -1068,7 +1068,9 @@ go test -race ./internal/application ./internal/infrastructure/gitcli ./internal
 
 Expected: PASS without race reports.
 
-- [ ] **Step 2: Run complete backend verification**
+Verification limit: race testing could not start because this host has no C compiler. The uncached full Go suite passed.
+
+- [x] **Step 2: Run complete backend verification**
 
 ```bash
 go test ./...
@@ -1078,7 +1080,7 @@ go build ./cmd/porty
 
 Expected: PASS.
 
-- [ ] **Step 3: Run complete frontend verification**
+- [x] **Step 3: Run complete frontend verification**
 
 ```bash
 npm --prefix web test
@@ -1088,13 +1090,13 @@ npm --prefix web run build
 
 Expected: PASS; build regenerates hashed `web/dist/` assets.
 
-- [ ] **Step 4: Run packaging verification**
+- [x] **Step 4: Run packaging verification**
 
 Run: `./deploy/package_test.sh`
 
 Expected: PASS, including embedded assets and systemd state-directory assumptions.
 
-- [ ] **Step 5: Review generated and security-sensitive diffs**
+- [x] **Step 5: Review generated and security-sensitive diffs**
 
 ```bash
 git status --short
@@ -1111,17 +1113,19 @@ Expected:
 - No secret appears in response structs, audit payloads, snapshots, or errors.
 - Only intended source files and regenerated assets changed.
 
-- [ ] **Step 6: Perform requirement and review-focus self-review**
+- [x] **Step 6: Perform requirement and review-focus self-review**
 
 Map every approved requirement to a test and implementation location. Re-run the five Review Focus scenarios as focused tests. Confirm interface signatures match across application fakes, SQLite, Git, HTTP, and startup wiring.
 
-- [ ] **Step 7: Commit generated assets**
+- [x] **Step 7: Commit generated assets**
 
 ```bash
 git add web/dist
 git commit -m "chore: rebuild embedded frontend"
 ```
 
-- [ ] **Step 8: Request code review**
+- [x] **Step 8: Request code review**
 
 Use `superpowers:requesting-code-review` with emphasis on fixed-root/symlink safety, auth redaction, retry atomicity, branch discovery, unrelated-history protection, and readiness-gate coverage.
+
+Review was performed inline because the repository and task instructions prohibit subagents. The two findings were fixed with failing regression tests before implementation.
