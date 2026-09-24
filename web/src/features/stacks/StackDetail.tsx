@@ -9,6 +9,7 @@ import { Badge, Empty, Notice } from "../../components/Feedback";
 import { isModified, remoteState } from "./stackStatus";
 import { Editor } from "./Editor";
 import { StackSettings } from "./StackSettings";
+import { useStackLogs } from "./useStackLogs";
 
 export function StackDetail({
   stack,
@@ -33,15 +34,11 @@ export function StackDetail({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
-  const [logOutput, setLogOutput] = useState("");
-  const [logGap, setLogGap] = useState(false);
+  const stackLogs = useStackLogs(stack.id, tab === "Logs");
   const active = operations.find(
     (operation) =>
       operation.scopeId === stack.id &&
       ["running", "queued"].includes(operation.status),
-  );
-  const logs = operations.find(
-    (operation) => operation.scopeId === stack.id && operation.kind === "logs",
   );
   const status = operations.find(
     (operation) =>
@@ -53,36 +50,6 @@ export function StackDetail({
         .then((value) => setDeployments(value || []))
         .catch((error) => setError(message(error)));
   }, [stack.id, tab, operations]);
-  useEffect(() => {
-    if (tab !== "Logs") return;
-    const socket = new WebSocket(
-      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/v1/stream`,
-    );
-    socket.onopen = () =>
-      socket.send(
-        JSON.stringify({
-          type: "subscribe",
-          subscriptionId: "logs",
-          topic: `logs:${stack.id}`,
-          since: 0,
-        }),
-      );
-    socket.onmessage = (event) => {
-      try {
-        const value = JSON.parse(event.data);
-        if (value.subscriptionId !== "logs") return;
-        if (value.type === "gap") setLogGap(true);
-        else if (
-          value.type === "log" &&
-          typeof value.payload?.output === "string"
-        )
-          setLogOutput(value.payload.output.slice(-65536));
-      } catch {
-        setLogGap(true);
-      }
-    };
-    return () => socket.close();
-  }, [stack.id, tab]);
   async function action(kind: string) {
     if (dirty) {
       setError(
@@ -253,21 +220,27 @@ export function StackDetail({
       )}
       {tab === "Logs" && (
         <div class="detail-content">
-          <div class="page-heading">
-            <h2>Container logs</h2>
-            <button disabled={busy || !!active} onClick={() => action("logs")}>
-              <Icon name="Refresh" />
-              Load logs
-            </button>
-          </div>
-          <p class="muted">Latest 500 lines. Reload to refresh the snapshot.</p>
+          <h2>Container logs</h2>
+          <p class="muted">Latest 500 lines. Updates automatically.</p>
+          {stackLogs.status === "loading" && !stackLogs.error && (
+            <p role="status">Loading logs…</p>
+          )}
+          {stackLogs.status === "reconnecting" && (
+            <p role="status">Reconnecting to logs…</p>
+          )}
+          {stackLogs.status === "disconnected" && (
+            <p role="status">Log connection unavailable. Retrying…</p>
+          )}
+          {stackLogs.error && <Notice>{stackLogs.error}</Notice>}
           <pre class="output">
-            {logOutput ||
-              (logs
-                ? logs.status
-                : "Load logs to inspect recent container output.")}
+            {stackLogs.output ||
+              (stackLogs.status === "connected"
+                ? "Waiting for container output…"
+                : "")}
           </pre>
-          {logGap && <Notice>Some log output was missed. Reload logs.</Notice>}
+          {stackLogs.gap && (
+            <Notice>Some log output was missed. Refreshing logs…</Notice>
+          )}
         </div>
       )}
       {tab === "History" && (

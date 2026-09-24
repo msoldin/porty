@@ -120,6 +120,25 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await page.getByLabel("Stack name").fill("paperless");
   await page.getByRole("button", { name: "Create stack", exact: true }).click();
   await expect(page.getByRole("heading", { name: "paperless" })).toBeVisible();
+  await page.route("**/api/v1/stacks/*/actions/logs", (route) =>
+    route.fulfill({
+      status: 202,
+      json: {
+        id: "opr_e2e_logs",
+        kind: "logs",
+        scopeType: "stack",
+        scopeId: "paperless",
+        status: "succeeded",
+        outputTruncated: false,
+      },
+    }),
+  );
+  const logRequest = page.waitForRequest("**/api/v1/stacks/*/actions/logs");
+  await page.getByRole("tab", { name: "Logs" }).click();
+  await logRequest;
+  await expect(page.getByText("Waiting for container output…")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Load logs" })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("live-logs.png") });
   await page.getByRole("tab", { name: "Editor" }).click();
   const editor = page.getByRole("textbox", { name: "File contents" });
   await editor.fill("services:\n  web:\n    image: nginx:alpine\n");
