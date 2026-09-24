@@ -13,7 +13,7 @@ import (
 	portystack "github.com/msoldin/porty/internal/stack"
 )
 
-func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
+func TestDeploymentStoreTracksSuccessfulHistoryAfterFailedDeployments(t *testing.T) {
 	ctx := context.Background()
 	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
 	if err != nil {
@@ -27,7 +27,21 @@ func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := portysqlite.NewDeploymentStore(db)
+	hasDeployed, err := store.HasSuccessfulDeployment(ctx, stack.ID)
+	if err != nil || hasDeployed {
+		t.Fatalf("new stack has successful deployment = %v, %v", hasDeployed, err)
+	}
 	operations := portysqlite.NewOperationStore(db)
+	if err := operations.CreateOperation(ctx, portyop.Operation{ID: "op_failed_first", Kind: "deploy", ScopeType: "stack", ScopeID: string(stack.ID), Status: portyop.OperationFailed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveDeployment(ctx, portyop.Deployment{ID: "dep_failed_first", StackID: stack.ID, OperationID: "op_failed_first", Status: portyop.DeploymentFailed, StartedAt: now.Add(-time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	hasDeployed, err = store.HasSuccessfulDeployment(ctx, stack.ID)
+	if err != nil || hasDeployed {
+		t.Fatalf("failed-only stack has successful deployment = %v, %v", hasDeployed, err)
+	}
 	if err := operations.CreateOperation(ctx, portyop.Operation{ID: "op_1", Kind: "deploy", ScopeType: "stack", ScopeID: string(stack.ID), Status: portyop.OperationRunning}); err != nil {
 		t.Fatal(err)
 	}
@@ -39,15 +53,29 @@ func TestDeploymentStorePersistsHistoryAndLatestSnapshot(t *testing.T) {
 	if err := store.SaveDeployment(ctx, deployment); err != nil {
 		t.Fatal(err)
 	}
+	hasDeployed, err = store.HasSuccessfulDeployment(ctx, stack.ID)
+	if err != nil || !hasDeployed {
+		t.Fatalf("deployed stack has successful deployment = %v, %v", hasDeployed, err)
+	}
+	if err := operations.CreateOperation(ctx, portyop.Operation{ID: "op_failed_later", Kind: "deploy", ScopeType: "stack", ScopeID: string(stack.ID), Status: portyop.OperationFailed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveDeployment(ctx, portyop.Deployment{ID: "dep_failed_later", StackID: stack.ID, OperationID: "op_failed_later", Status: portyop.DeploymentFailed, StartedAt: now.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	hasDeployed, err = store.HasSuccessfulDeployment(ctx, stack.ID)
+	if err != nil || !hasDeployed {
+		t.Fatalf("prior success after later failure = %v, %v", hasDeployed, err)
+	}
 	latest, err := store.LatestDeployment(ctx, stack.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if latest.ID != deployment.ID || latest.ComposeDigest != deployment.ComposeDigest || latest.Duration != time.Second {
+	if latest.ID != "dep_failed_later" || latest.Status != portyop.DeploymentFailed {
 		t.Fatalf("LatestDeployment() = %#v", latest)
 	}
 	history, err := store.Deployments(ctx, stack.ID, 20)
-	if err != nil || len(history) != 1 {
+	if err != nil || len(history) != 3 {
 		t.Fatalf("Deployments() = %#v, %v", history, err)
 	}
 	if err := stacks.Archive(ctx, stack.ID, now.Add(2*time.Second)); err != nil {

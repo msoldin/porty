@@ -37,6 +37,20 @@ func (q *Queries) GetLatestDeployment(ctx context.Context, stackID string) (Depl
 	return i, err
 }
 
+const hasSuccessfulDeployment = `-- name: HasSuccessfulDeployment :one
+SELECT EXISTS(
+    SELECT 1 FROM deployments
+    WHERE stack_id = ?1 AND status = 'succeeded'
+) AS has_deployed
+`
+
+func (q *Queries) HasSuccessfulDeployment(ctx context.Context, stackID string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasSuccessfulDeployment, stackID)
+	var has_deployed bool
+	err := row.Scan(&has_deployed)
+	return has_deployed, err
+}
+
 const listDeployments = `-- name: ListDeployments :many
 SELECT id, stack_id, operation_id, git_commit, dirty, diff_digest, compose_digest, status, started_at, completed_at, duration_ms, error_code
 FROM deployments

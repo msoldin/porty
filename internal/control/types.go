@@ -15,6 +15,7 @@ type AuditEvent struct {
 }
 
 type StackState struct {
-	Runtime   RuntimeState        `json:"runtime"`
-	Freshness DeploymentFreshness `json:"freshness"`
+	Runtime     RuntimeState        `json:"runtime"`
+	Freshness   DeploymentFreshness `json:"freshness"`
+	HasDeployed bool                `json:"hasDeployed"`
 }

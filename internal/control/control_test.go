@@ -76,6 +76,36 @@ func TestFailedDeploymentReportsComposeError(t *testing.T) {
 	}
 }
 
+func TestStackStateReportsPriorSuccessfulDeploymentAfterLatestFailure(t *testing.T) {
+	runtime := &controlRuntime{}
+	environment := portystack.NewEnvironmentService(controlEnvironmentStore{})
+	stateStore := deploymentStateStore{
+		latest:        portyop.Deployment{Status: portyop.DeploymentFailed},
+		hasSuccessful: true,
+	}
+	control := portycontrol.NewControlPlane("/srv/repository", controlLookup{}, environment, nil, runtime, nil, nil, nil, stateStore, nil)
+	state, err := control.StackState(context.Background(), "stk_gateway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.HasDeployed || state.Freshness != portycontrol.DeploymentUnverifiable {
+		t.Fatalf("StackState() = %#v", state)
+	}
+}
+
+type deploymentStateStore struct {
+	latest        portyop.Deployment
+	hasSuccessful bool
+}
+
+func (s deploymentStateStore) LatestDeployment(context.Context, portystack.StackID) (portyop.Deployment, error) {
+	return s.latest, nil
+}
+
+func (s deploymentStateStore) HasSuccessfulDeployment(context.Context, portystack.StackID) (bool, error) {
+	return s.hasSuccessful, nil
+}
+
 type controlLookup struct{}
 
 func (controlLookup) ByID(context.Context, portystack.StackID) (portystack.Stack, error) {

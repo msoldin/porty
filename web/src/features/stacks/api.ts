@@ -27,6 +27,10 @@ export async function listStacksWithState(): Promise<Stack[]> {
   );
 }
 
+export function getStackState(id: string): Promise<StackState> {
+  return api<StackState>(`${stackPath(id)}/state`);
+}
+
 export function createStack(name: FormDataEntryValue | null): Promise<Stack> {
   return api("/stacks", "POST", { name });
 }

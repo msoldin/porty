@@ -7,6 +7,7 @@ import { type Operation } from "../operations/types";
 import { Icon } from "../../components/Icon";
 import { Badge, Empty, Notice } from "../../components/Feedback";
 import { isModified, remoteState } from "./stackStatus";
+import { useStackState } from "./useStackState";
 
 export function Dashboard({
   stacks,
@@ -129,67 +130,15 @@ export function Dashboard({
             </tr>
           </thead>
           <tbody>
-            {visible.map((stack) => {
-              const active = operations.find(
-                (operation) =>
-                  operation.scopeId === stack.id &&
-                  ["queued", "running"].includes(operation.status),
-              );
-              return (
-                <tr key={stack.id}>
-                  <td>
-                    <a
-                      href={`#/stacks/${encodeURIComponent(stack.id)}`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        navigate(`/stacks/${encodeURIComponent(stack.id)}`);
-                      }}
-                    >
-                      {stack.directoryName}
-                    </a>
-                  </td>
-                  <td>
-                    <span class="runtime">
-                      <i />
-                      {stack.state?.runtime || "Unknown"}
-                    </span>
-                  </td>
-                  <td>
-                    <Badge
-                      tone={isModified(stack, repo) ? "warning" : "neutral"}
-                    >
-                      {repo
-                        ? isModified(stack, repo)
-                          ? "Modified"
-                          : "Clean"
-                        : "Unavailable"}
-                    </Badge>
-                  </td>
-                  <td>
-                    <Badge tone={repo?.behind ? "danger" : "success"}>
-                      {remoteState(repo)}
-                    </Badge>
-                  </td>
-                  <td>
-                    <Badge>
-                      {stack.state?.freshness?.replaceAll("_", " ") ||
-                        (active ? `${active.kind}…` : "Unverified")}
-                    </Badge>
-                  </td>
-                  <td>
-                    {active ? (
-                      <Badge tone="blue">{active.kind}…</Badge>
-                    ) : (
-                      <span class="muted">Not checked</span>
-                    )}
-                  </td>
-                  <td class="muted">—</td>
-                  <td>
-                    <Icon name="Chevron" />
-                  </td>
-                </tr>
-              );
-            })}
+            {visible.map((stack) => (
+              <StackRow
+                key={stack.id}
+                stack={stack}
+                repo={repo}
+                operations={operations}
+                navigate={navigate}
+              />
+            ))}
           </tbody>
         </table>
       </div>
@@ -201,5 +150,76 @@ export function Dashboard({
         </Empty>
       )}
     </section>
+  );
+}
+
+function StackRow({
+  stack,
+  repo,
+  operations,
+  navigate,
+}: {
+  stack: Stack;
+  repo: Repository | null;
+  operations: Operation[];
+  navigate: (path: string) => void;
+}) {
+  const state = useStackState(stack.id);
+  const active = operations.find(
+    (operation) =>
+      operation.scopeId === stack.id &&
+      ["queued", "running"].includes(operation.status),
+  );
+  return (
+    <tr>
+      <td>
+        <a
+          href={`#/stacks/${encodeURIComponent(stack.id)}`}
+          onClick={(event) => {
+            event.preventDefault();
+            navigate(`/stacks/${encodeURIComponent(stack.id)}`);
+          }}
+        >
+          {stack.directoryName}
+        </a>
+      </td>
+      <td>
+        <span class="runtime">
+          <i />
+          {state?.runtime || "Unknown"}
+        </span>
+      </td>
+      <td>
+        <Badge tone={isModified(stack, repo) ? "warning" : "neutral"}>
+          {repo
+            ? isModified(stack, repo)
+              ? "Modified"
+              : "Clean"
+            : "Unavailable"}
+        </Badge>
+      </td>
+      <td>
+        <Badge tone={repo?.behind ? "danger" : "success"}>
+          {remoteState(repo)}
+        </Badge>
+      </td>
+      <td>
+        <Badge>
+          {state?.freshness?.replaceAll("_", " ") ||
+            (active ? `${active.kind}…` : "Unverified")}
+        </Badge>
+      </td>
+      <td>
+        {active ? (
+          <Badge tone="blue">{active.kind}…</Badge>
+        ) : (
+          <span class="muted">Not checked</span>
+        )}
+      </td>
+      <td class="muted">—</td>
+      <td>
+        <Icon name="Chevron" />
+      </td>
+    </tr>
   );
 }

@@ -42,6 +42,10 @@ func (s *DeploymentStore) LatestDeployment(ctx context.Context, stackID portysta
 	return deploymentFromRow(row), nil
 }
 
+func (s *DeploymentStore) HasSuccessfulDeployment(ctx context.Context, stackID portystack.StackID) (bool, error) {
+	return s.queries.HasSuccessfulDeployment(ctx, string(stackID))
+}
+
 func (s *DeploymentStore) Deployments(ctx context.Context, stackID portystack.StackID, limit int) ([]portyop.Deployment, error) {
 	return s.DeploymentsPage(ctx, stackID, limit, 0)
 }

@@ -45,6 +45,7 @@ type ControlPlane struct {
 
 type DeploymentStateStore interface {
 	LatestDeployment(context.Context, portystack.StackID) (portyop.Deployment, error)
+	HasSuccessfulDeployment(context.Context, portystack.StackID) (bool, error)
 }
 
 type LogPublisher interface{ PublishLog(string, string) }
@@ -132,6 +133,7 @@ func (c *ControlPlane) StackState(ctx context.Context, id portystack.StackID) (S
 		return StackState{}, err
 	}
 	var snapshot *DeploymentSnapshot
+	hasDeployed := false
 	if c.stateStore != nil {
 		latest, latestErr := c.stateStore.LatestDeployment(ctx, id)
 		if latestErr == nil {
@@ -140,8 +142,12 @@ func (c *ControlPlane) StackState(ctx context.Context, id portystack.StackID) (S
 		if latestErr != nil && !errors.Is(latestErr, sql.ErrNoRows) {
 			return StackState{}, latestErr
 		}
+		hasDeployed, err = c.stateStore.HasSuccessfulDeployment(ctx, id)
+		if err != nil {
+			return StackState{}, err
+		}
 	}
-	return StackState{Runtime: AggregateRuntime(containers), Freshness: ClassifyDeployment(snapshot, digest, false)}, nil
+	return StackState{Runtime: AggregateRuntime(containers), Freshness: ClassifyDeployment(snapshot, digest, false), HasDeployed: hasDeployed}, nil
 }
 
 func parseContainerStates(rows []api.ContainerSummary) []ContainerState {

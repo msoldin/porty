@@ -106,6 +106,7 @@ type StackEnvironment struct {
 	Key       string
 	Value     []byte
 	UpdatedAt string
+	Secret    int64
 }
 
 type User struct {

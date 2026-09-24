@@ -8,7 +8,11 @@ export type Stack = {
   state?: StackState;
 };
 
-export type StackState = { runtime: string; freshness: string };
+export type StackState = {
+  runtime: string;
+  freshness: string;
+  hasDeployed: boolean;
+};
 
 export type FileEntry = {
   path: string;

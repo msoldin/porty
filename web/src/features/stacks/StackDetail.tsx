@@ -10,6 +10,7 @@ import { isModified, remoteState } from "./stackStatus";
 import { Editor } from "./Editor";
 import { StackSettings } from "./StackSettings";
 import { useStackLogs } from "./useStackLogs";
+import { useStackState } from "./useStackState";
 
 export function StackDetail({
   stack,
@@ -35,6 +36,9 @@ export function StackDetail({
   const [busy, setBusy] = useState(false);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const stackLogs = useStackLogs(stack.id, tab === "Logs");
+  const state = useStackState(stack.id);
+  const showRuntimeActions =
+    state?.hasDeployed && state.runtime === "running" && !stack.archivedAt;
   const active = operations.find(
     (operation) =>
       operation.scopeId === stack.id &&
@@ -91,7 +95,11 @@ export function StackDetail({
         <div class="page-heading">
           <h1>{stack.directoryName}</h1>
           <div class="action-group">
-            {["stop", "restart", "validate", "deploy"].map((kind) => (
+            {[
+              ...(showRuntimeActions ? ["stop", "restart"] : []),
+              "validate",
+              "deploy",
+            ].map((kind) => (
               <button
                 disabled={busy || !!active || !!stack.archivedAt}
                 class={
@@ -123,9 +131,9 @@ export function StackDetail({
           <div>
             <span class="runtime">
               <i />
-              {stack.state?.runtime || "Unknown"}
+              {state?.runtime || "Unknown"}
             </span>
-            <small>Refresh status to inspect runtime</small>
+            <small>Docker state updates automatically</small>
           </div>
           <div>
             <Badge tone={isModified(stack, repo) ? "warning" : "neutral"}>
@@ -143,7 +151,7 @@ export function StackDetail({
           </div>
           <div>
             <Badge>
-              {stack.state?.freshness?.replaceAll("_", " ") ||
+              {state?.freshness?.replaceAll("_", " ") ||
                 (active ? `${active.kind}…` : "Unverified")}
             </Badge>
             <small>Deployment freshness</small>
@@ -182,7 +190,7 @@ export function StackDetail({
         <div class="detail-content">
           <h2>Runtime</h2>
           <p class="muted">
-            Runtime is inspected on demand. Status output is a snapshot.
+            Docker state updates automatically. Status output is a snapshot.
           </p>
           <div class="action-group">
             {["status", "start", "pull", "recreate"].map((kind) => (
