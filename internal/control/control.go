@@ -21,6 +21,7 @@ import (
 type RuntimeController interface {
 	Validate(context.Context, portycompose.Request) error
 	Status(context.Context, portycompose.Request) ([]api.ContainerSummary, error)
+	ContainerAction(context.Context, portycompose.Request, string, string) error
 	Digest(context.Context, portycompose.Request) (string, error)
 	Start(context.Context, portycompose.Request) error
 	Stop(context.Context, portycompose.Request) error

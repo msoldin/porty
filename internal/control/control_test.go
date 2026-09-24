@@ -93,6 +93,100 @@ func TestStackStateReportsPriorSuccessfulDeploymentAfterLatestFailure(t *testing
 	}
 }
 
+func TestContainersIncludeStoppedAndSeparateReplicas(t *testing.T) {
+	runtime := &controlRuntime{status: []api.ContainerSummary{
+		{ID: "id-b", Name: "app-2", Project: "porty-gateway", Service: "app", State: "exited"},
+		{ID: "id-c", Name: "other-1", Project: "other", Service: "app", State: "running"},
+		{ID: "id-a", Name: "app-1", Project: "porty-gateway", Service: "app", State: "running", Health: "unhealthy"},
+	}}
+	control, _ := newContainerControl(runtime, controlLookup{}, portyop.NewCoordinator())
+	items, err := control.Containers(context.Background(), "stk_gateway")
+	if err != nil || len(items) != 2 {
+		t.Fatalf("containers = %#v, %v", items, err)
+	}
+	if items[0].ID != "id-a" || items[0].Health != "unhealthy" || items[1].ID != "id-b" || items[1].State != "exited" {
+		t.Fatalf("containers = %#v", items)
+	}
+}
+
+func TestContainerActionRejectsWrongProjectAndMissingID(t *testing.T) {
+	runtime := &controlRuntime{status: []api.ContainerSummary{
+		{ID: "id-a", Project: "porty-gateway", State: "running"},
+		{ID: "id-b", Project: "other", State: "running"},
+	}}
+	control, store := newContainerControl(runtime, controlLookup{}, portyop.NewCoordinator())
+	for _, id := range []string{"id-b", "missing"} {
+		if _, err := control.StartContainerAction(context.Background(), "stk_gateway", id, "stop"); !errors.Is(err, portycontrol.ErrContainerNotFound) {
+			t.Fatalf("action for %s = %v", id, err)
+		}
+	}
+	if store.created != 0 {
+		t.Fatalf("invalid actions created %d operations", store.created)
+	}
+}
+
+func TestContainerActionRejectsIncompatibleStateAndArchivedStack(t *testing.T) {
+	runtime := &controlRuntime{status: []api.ContainerSummary{
+		{ID: "id-a", Project: "porty-gateway", State: "running", Health: "unhealthy"},
+		{ID: "id-b", Project: "porty-gateway", State: "exited"},
+		{ID: "id-c", Project: "porty-gateway", State: "paused"},
+	}}
+	control, store := newContainerControl(runtime, controlLookup{}, portyop.NewCoordinator())
+	for _, tc := range []struct{ id, action string }{{"id-a", "start"}, {"id-b", "stop"}, {"id-c", "restart"}} {
+		if _, err := control.StartContainerAction(context.Background(), "stk_gateway", tc.id, tc.action); !errors.Is(err, portycontrol.ErrContainerStateConflict) {
+			t.Fatalf("%s %s = %v", tc.action, tc.id, err)
+		}
+	}
+	if _, err := control.StartContainerAction(context.Background(), "stk_gateway", "id-a", "pull"); !errors.Is(err, portycontrol.ErrUnsupportedContainerAction) {
+		t.Fatalf("unsupported action = %v", err)
+	}
+	if store.created != 0 {
+		t.Fatalf("rejected actions created %d operations", store.created)
+	}
+	now := time.Now()
+	archived, _ := newContainerControl(runtime, controlLookup{archivedAt: &now}, portyop.NewCoordinator())
+	if _, err := archived.StartContainerAction(context.Background(), "stk_gateway", "id-a", "stop"); !errors.Is(err, portycontrol.ErrContainerArchived) {
+		t.Fatalf("archived action = %v", err)
+	}
+}
+
+func TestContainerActionTargetsOnlySelectedReplicaAndRespectsLock(t *testing.T) {
+	runtime := &controlRuntime{status: []api.ContainerSummary{
+		{ID: "id-a", Project: "porty-gateway", Service: "app", State: "running"},
+		{ID: "id-b", Project: "porty-gateway", Service: "app", State: "exited"},
+	}, called: make(chan string, 1)}
+	coordinator := portyop.NewCoordinator()
+	control, store := newContainerControl(runtime, controlLookup{}, coordinator)
+	release, err := coordinator.Try(false, "stk_gateway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := control.StartContainerAction(context.Background(), "stk_gateway", "id-b", "start"); !errors.Is(err, portyop.ErrOperationConflict) {
+		t.Fatalf("locked action = %v", err)
+	}
+	release()
+	if _, err := control.StartContainerAction(context.Background(), "stk_gateway", "id-b", "start"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-runtime.called:
+		if got != "start:id-b" {
+			t.Fatalf("SDK action = %s", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("container action did not run")
+	}
+	if store.created != 1 {
+		t.Fatalf("created operations = %d", store.created)
+	}
+}
+
+func newContainerControl(runtime *controlRuntime, lookup controlLookup, coordinator *portyop.Coordinator) (*portycontrol.ControlPlane, *countingOperationStore) {
+	store := &countingOperationStore{}
+	control := portycontrol.NewControlPlane("/srv/repository", lookup, portystack.NewEnvironmentService(controlEnvironmentStore{}), nil, runtime, portyop.NewOperationService(store, nil, time.Second, 1024), nil, coordinator, nil, nil)
+	return control, store
+}
+
 type deploymentStateStore struct {
 	latest        portyop.Deployment
 	hasSuccessful bool
@@ -106,10 +200,10 @@ func (s deploymentStateStore) HasSuccessfulDeployment(context.Context, portystac
 	return s.hasSuccessful, nil
 }
 
-type controlLookup struct{}
+type controlLookup struct{ archivedAt *time.Time }
 
-func (controlLookup) ByID(context.Context, portystack.StackID) (portystack.Stack, error) {
-	return portystack.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway"}, nil
+func (l controlLookup) ByID(context.Context, portystack.StackID) (portystack.Stack, error) {
+	return portystack.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway", ArchivedAt: l.archivedAt}, nil
 }
 
 type controlEnvironmentStore struct{}
@@ -143,14 +237,24 @@ func (controlGit) Fetch(context.Context) error                                 {
 func (controlGit) PullFastForward(context.Context) error                       { return nil }
 func (controlGit) Push(context.Context) error                                  { return nil }
 
-type controlRuntime struct{ deployErr error }
+type controlRuntime struct {
+	deployErr error
+	status    []api.ContainerSummary
+	called    chan string
+}
 
 func (*controlRuntime) Validate(context.Context, portycompose.Request) error { return nil }
 func (*controlRuntime) Digest(context.Context, portycompose.Request) (string, error) {
 	return "sha256:compose", nil
 }
-func (*controlRuntime) Status(context.Context, portycompose.Request) ([]api.ContainerSummary, error) {
-	return []api.ContainerSummary{}, nil
+func (r *controlRuntime) Status(context.Context, portycompose.Request) ([]api.ContainerSummary, error) {
+	return r.status, nil
+}
+func (r *controlRuntime) ContainerAction(_ context.Context, _ portycompose.Request, id, action string) error {
+	if r.called != nil {
+		r.called <- action + ":" + id
+	}
+	return nil
 }
 func (*controlRuntime) Start(context.Context, portycompose.Request) error   { return nil }
 func (*controlRuntime) Stop(context.Context, portycompose.Request) error    { return nil }

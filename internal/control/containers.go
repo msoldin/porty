@@ -1,0 +1,135 @@
+package control
+
+import (
+	"context"
+	"errors"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/docker/compose/v5/pkg/api"
+	portycompose "github.com/msoldin/porty/internal/compose"
+	portyop "github.com/msoldin/porty/internal/operation"
+	portystack "github.com/msoldin/porty/internal/stack"
+)
+
+var (
+	ErrContainerNotFound          = errors.New("container not found in stack")
+	ErrContainerStateConflict     = errors.New("container action conflicts with its state")
+	ErrContainerArchived          = errors.New("archived stack cannot run container actions")
+	ErrUnsupportedContainerAction = errors.New("unsupported container action")
+)
+
+type Container struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Service string `json:"service"`
+	State   string `json:"state"`
+	Health  string `json:"health"`
+}
+
+func (c *ControlPlane) Containers(ctx context.Context, id portystack.StackID) ([]Container, error) {
+	stack, err := c.lookup.ByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	values, err := c.environment.Values(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	rows, err := c.runtime.Status(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]Container, 0, len(rows))
+	for _, row := range rows {
+		if row.Project == stack.ComposeProjectName {
+			items = append(items, containerFromSummary(row))
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Service != items[j].Service {
+			return items[i].Service < items[j].Service
+		}
+		if items[i].Name != items[j].Name {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].ID < items[j].ID
+	})
+	return items, nil
+}
+
+func containerFromSummary(row api.ContainerSummary) Container {
+	return Container{
+		ID: row.ID, Name: row.Name, Service: row.Service,
+		State: strings.ToLower(string(row.State)), Health: strings.ToLower(string(row.Health)),
+	}
+}
+
+func containerActionAllowed(state, action string) bool {
+	switch action {
+	case "start":
+		return state == "created" || state == "exited"
+	case "stop", "restart":
+		return state == "running"
+	default:
+		return false
+	}
+}
+
+func (c *ControlPlane) StartContainerAction(ctx context.Context, id portystack.StackID, containerID, action string) (portyop.Operation, error) {
+	if action != "start" && action != "stop" && action != "restart" {
+		return portyop.Operation{}, ErrUnsupportedContainerAction
+	}
+	release, err := c.coordinator.Try(false, string(id))
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	handoff := false
+	defer func() {
+		if !handoff {
+			release()
+		}
+	}()
+	stack, err := c.lookup.ByID(ctx, id)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	if stack.ArchivedAt != nil {
+		return portyop.Operation{}, ErrContainerArchived
+	}
+	values, err := c.environment.Values(ctx, id)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	rows, err := c.runtime.Status(ctx, request)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	var selected *api.ContainerSummary
+	for i := range rows {
+		if rows[i].ID == containerID && rows[i].Project == stack.ComposeProjectName {
+			selected = &rows[i]
+			break
+		}
+	}
+	if selected == nil {
+		return portyop.Operation{}, ErrContainerNotFound
+	}
+	if !containerActionAllowed(strings.ToLower(string(selected.State)), action) {
+		return portyop.Operation{}, ErrContainerStateConflict
+	}
+	operation, err := c.operations.Start(ctx, portyop.OperationRequest{
+		Kind: "container_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values),
+	}, func(jobCtx context.Context) (string, error) {
+		defer release()
+		return "", c.runtime.ContainerAction(jobCtx, request, containerID, action)
+	})
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	handoff = true
+	return operation, nil
+}
