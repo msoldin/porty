@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	portyop "github.com/msoldin/porty/internal/operation"
@@ -40,6 +41,22 @@ func (s *DeploymentStore) LatestDeployment(ctx context.Context, stackID portysta
 		return portyop.Deployment{}, err
 	}
 	return deploymentFromRow(row), nil
+}
+
+func (s *DeploymentStore) LatestDeploymentTimes(ctx context.Context) (map[portystack.StackID]time.Time, error) {
+	rows, err := s.queries.ListLatestDeploymentTimes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[portystack.StackID]time.Time, len(rows))
+	for _, row := range rows {
+		at, err := time.Parse(time.RFC3339Nano, row.StartedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse deployment time for stack %s: %w", row.StackID, err)
+		}
+		result[portystack.StackID(row.StackID)] = at
+	}
+	return result, nil
 }
 
 func (s *DeploymentStore) HasSuccessfulDeployment(ctx context.Context, stackID portystack.StackID) (bool, error) {

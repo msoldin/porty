@@ -100,3 +100,44 @@ func (q *Queries) ListDeployments(ctx context.Context, arg ListDeploymentsParams
 	}
 	return items, nil
 }
+
+const listLatestDeploymentTimes = `-- name: ListLatestDeploymentTimes :many
+SELECT s.id AS stack_id, d.started_at
+FROM stacks AS s
+JOIN deployments AS d ON d.id = (
+    SELECT latest.id
+    FROM deployments AS latest
+    WHERE latest.stack_id = s.id
+    ORDER BY latest.started_at DESC, latest.id DESC
+    LIMIT 1
+)
+WHERE s.archived_at IS NULL
+`
+
+type ListLatestDeploymentTimesRow struct {
+	StackID   string
+	StartedAt string
+}
+
+func (q *Queries) ListLatestDeploymentTimes(ctx context.Context) ([]ListLatestDeploymentTimesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestDeploymentTimes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLatestDeploymentTimesRow
+	for rows.Next() {
+		var i ListLatestDeploymentTimesRow
+		if err := rows.Scan(&i.StackID, &i.StartedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

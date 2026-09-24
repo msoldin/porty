@@ -25,7 +25,27 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 	if options.Stacks != nil {
 		mux.HandleFunc("GET /api/v1/stacks", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			items, err := options.Stacks.ListStacks(r.Context())
-			writeResult(w, r, items, err, stdhttp.StatusOK)
+			if err != nil {
+				writeAPIError(w, r, err)
+				return
+			}
+			times := map[portystack.StackID]time.Time{}
+			if options.StackDeploymentTimes != nil {
+				times, err = options.StackDeploymentTimes.LatestDeploymentTimes(r.Context())
+				if err != nil {
+					writeAPIError(w, r, err)
+					return
+				}
+			}
+			result := make([]stackListItem, 0, len(items))
+			for _, item := range items {
+				entry := stackListItem{Stack: item}
+				if at, ok := times[item.ID]; ok {
+					entry.LastDeploymentAt = &at
+				}
+				result = append(result, entry)
+			}
+			writeJSON(w, stdhttp.StatusOK, result)
 		}))
 		mux.HandleFunc("POST /api/v1/stacks", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			var input struct {
@@ -208,6 +228,11 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 			options.Stream.ServeHTTP(w, r.WithContext(ctx))
 		}))
 	}
+}
+
+type stackListItem struct {
+	portystack.Stack
+	LastDeploymentAt *time.Time `json:"lastDeploymentAt,omitempty"`
 }
 
 func readRoute(options RouterOptions, next stdhttp.HandlerFunc) stdhttp.HandlerFunc {

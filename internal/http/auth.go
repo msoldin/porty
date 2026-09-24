@@ -29,23 +29,24 @@ const (
 )
 
 type RouterOptions struct {
-	AccessLogger    *slog.Logger
-	Readiness       func(context.Context) error
-	Auth            *portyauth.AuthService
-	PublicURL       string
-	SecureHTTP      bool
-	Stacks          StackAPI
-	Files           FileAPI
-	Environment     EnvironmentAPI
-	Repository      RepositoryAPI
-	Actions         ActionAPI
-	Operations      OperationQueryAPI
-	Deployments     DeploymentQueryAPI
-	RepositorySetup RepositorySetupAPI
-	Audit           AuditAPI
-	State           StackStateAPI
-	Containers      ContainerAPI
-	Stream          stdhttp.Handler
+	AccessLogger         *slog.Logger
+	Readiness            func(context.Context) error
+	Auth                 *portyauth.AuthService
+	PublicURL            string
+	SecureHTTP           bool
+	Stacks               StackAPI
+	Files                FileAPI
+	Environment          EnvironmentAPI
+	Repository           RepositoryAPI
+	Actions              ActionAPI
+	Operations           OperationQueryAPI
+	Deployments          DeploymentQueryAPI
+	StackDeploymentTimes StackDeploymentTimesAPI
+	RepositorySetup      RepositorySetupAPI
+	Audit                AuditAPI
+	State                StackStateAPI
+	Containers           ContainerAPI
+	Stream               stdhttp.Handler
 }
 
 type StackAPI interface {
@@ -96,6 +97,10 @@ type OperationQueryAPI interface {
 
 type DeploymentQueryAPI interface {
 	Deployments(context.Context, portystack.StackID, int) ([]portyop.Deployment, error)
+}
+
+type StackDeploymentTimesAPI interface {
+	LatestDeploymentTimes(context.Context) (map[portystack.StackID]time.Time, error)
 }
 
 type RepositorySetupAPI interface {

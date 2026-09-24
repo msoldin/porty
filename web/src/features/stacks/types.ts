@@ -5,6 +5,7 @@ export type Stack = {
   archivedAt?: string;
   createdAt: string;
   updatedAt: string;
+  lastDeploymentAt?: string;
   state?: StackState;
 };
 

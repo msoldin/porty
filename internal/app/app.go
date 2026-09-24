@@ -71,6 +71,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 	deploymentStore := portysqlite.NewDeploymentStore(db)
 	options.Operations = operationStore
 	options.Deployments = deploymentStore
+	options.StackDeploymentTimes = deploymentStore
 	if stackStore := portysqlite.NewStackStore(db); options.Stacks != nil {
 		repositoryStore := portysqlite.NewRepositoryStore(db)
 		configuration, _, loadErr := repositoryStore.Load(ctx)

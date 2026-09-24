@@ -415,6 +415,50 @@ type fakeStackAPI struct {
 	err     error
 }
 
+type fakeStackDeploymentTimes struct {
+	values map[portystack.StackID]time.Time
+	err    error
+}
+
+func (f *fakeStackDeploymentTimes) LatestDeploymentTimes(context.Context) (map[portystack.StackID]time.Time, error) {
+	return f.values, f.err
+}
+
+func TestStackListIncludesLastDeploymentWithoutDocker(t *testing.T) {
+	at := time.Date(2026, 9, 24, 12, 30, 0, 0, time.UTC)
+	times := &fakeStackDeploymentTimes{values: map[portystack.StackID]time.Time{"active": at}}
+	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{
+		Stacks: &fakeStackAPI{items: []portystack.Stack{
+			{ID: "active", DirectoryName: "active"},
+			{ID: "never", DirectoryName: "never"},
+		}},
+		StackDeploymentTimes: times,
+	})
+	request := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local/api/v1/stacks", nil)
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != stdhttp.StatusOK {
+		t.Fatalf("GET stacks = %d: %s", response.Code, response.Body.String())
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &rows); err != nil {
+		t.Fatal(err)
+	}
+	if got := rows[0]["lastDeploymentAt"]; got != at.Format(time.RFC3339) {
+		t.Fatalf("active last deployment = %v", got)
+	}
+	if _, ok := rows[1]["lastDeploymentAt"]; ok {
+		t.Fatal("never-deployed stack has a timestamp")
+	}
+	times.err = errors.New("database unavailable")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != stdhttp.StatusInternalServerError {
+		t.Fatalf("deployment read error = %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func (f *fakeStackAPI) ListStacks(context.Context) ([]portystack.Stack, error) { return f.items, f.err }
 func (f *fakeStackAPI) CreateStack(_ context.Context, name string) (portystack.Stack, error) {
 	f.created = name

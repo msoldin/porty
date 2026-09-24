@@ -120,3 +120,64 @@ func TestDeploymentStoreKeepsUnfinishedTimestampNull(t *testing.T) {
 		t.Fatalf("missing latest: %v", err)
 	}
 }
+
+func TestLatestDeploymentTimesUsesLatestAttemptForActiveStacks(t *testing.T) {
+	ctx := context.Background()
+	db, err := portysqlite.Open(ctx, filepath.Join(t.TempDir(), "porty.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	stacks := portysqlite.NewStackStore(db)
+	operations := portysqlite.NewOperationStore(db)
+	store := portysqlite.NewDeploymentStore(db)
+	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	for _, id := range []portystack.StackID{"active", "never", "archived"} {
+		if err := stacks.Create(ctx, portystack.Stack{
+			ID: id, DirectoryName: string(id), ComposeProjectName: string(id),
+			CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, item := range []struct {
+		id     string
+		stack  portystack.StackID
+		at     time.Time
+		status portyop.DeploymentStatus
+	}{
+		{"earlier", "active", now.Add(-time.Hour), portyop.DeploymentSucceeded},
+		{"later", "active", now, portyop.DeploymentFailed},
+		{"old", "archived", now, portyop.DeploymentSucceeded},
+	} {
+		operationID := "op_" + item.id
+		if err := operations.CreateOperation(ctx, portyop.Operation{
+			ID: operationID, Kind: "deploy", ScopeType: "stack",
+			ScopeID: string(item.stack), Status: portyop.OperationSucceeded,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SaveDeployment(ctx, portyop.Deployment{
+			ID: "dep_" + item.id, StackID: item.stack, OperationID: operationID,
+			StartedAt: item.at, Status: item.status,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := stacks.Archive(ctx, "archived", now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.LatestDeploymentTimes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got["active"].Equal(now) {
+		t.Fatalf("active latest = %v, want %v", got["active"], now)
+	}
+	if _, ok := got["never"]; ok {
+		t.Fatal("invented deployment time for never-deployed stack")
+	}
+	if _, ok := got["archived"]; ok {
+		t.Fatal("archived stack included")
+	}
+}

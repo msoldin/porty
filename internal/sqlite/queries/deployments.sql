@@ -17,3 +17,15 @@ FROM deployments
 WHERE stack_id = sqlc.arg(stack_id)
 ORDER BY started_at DESC
 LIMIT sqlc.arg(limit) OFFSET sqlc.arg(offset);
+
+-- name: ListLatestDeploymentTimes :many
+SELECT s.id AS stack_id, d.started_at
+FROM stacks AS s
+JOIN deployments AS d ON d.id = (
+    SELECT latest.id
+    FROM deployments AS latest
+    WHERE latest.stack_id = s.id
+    ORDER BY latest.started_at DESC, latest.id DESC
+    LIMIT 1
+)
+WHERE s.archived_at IS NULL;
