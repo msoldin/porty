@@ -34,7 +34,8 @@ export function StackSettings({
     <div class="settings-content">
       <h2>Environment</h2>
       <p class="muted">
-        Values are write-only. Existing values are never sent to your browser.
+        Saved Stack values are hidden until you select Show. Enter a replacement
+        below to update one.
       </p>
       {error && <Notice>{error}</Notice>}
       {keys.map((key) => (

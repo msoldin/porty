@@ -7,6 +7,7 @@ import {
 } from "@testing-library/preact";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { EnvironmentRow } from "../features/stacks/EnvironmentRow";
 
 const stack = {
   id: "s1",
@@ -27,6 +28,10 @@ let repositoryRequired: boolean | undefined;
 let hasManagedRemote = true;
 let sockets = 0;
 let repositoryStatus: Record<string, unknown>;
+let environmentReads: string[];
+let environmentValue = "saved-secret";
+let environmentReadResponse: (() => Promise<Response>) | undefined;
+let environmentUpdateFails = false;
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
@@ -50,6 +55,10 @@ beforeEach(() => {
     behind: 0,
     paths: ["paperless/docker-compose.yml", "other/config.yml"],
   };
+  environmentReads = [];
+  environmentValue = "saved-secret";
+  environmentReadResponse = undefined;
+  environmentUpdateFails = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -115,7 +124,20 @@ beforeEach(() => {
       }
       if (path.endsWith("/commit"))
         return Response.json({ sha: "abc123" }, { status: 201 });
+      if (path.includes("/environment/") && method === "GET") {
+        environmentReads.push(path);
+        return environmentReadResponse
+          ? environmentReadResponse()
+          : Response.json({ value: environmentValue });
+      }
       if (path.includes("/environment/") && method === "PUT")
+        return environmentUpdateFails
+          ? Response.json(
+              { error: { message: "Update failed" } },
+              { status: 500 },
+            )
+          : new Response(null, { status: 204 });
+      if (path.includes("/environment/") && method === "DELETE")
         return new Response(null, { status: 204 });
       const data: Record<string, unknown> = {
         "/session": { username: "admin", csrfToken: "csrf" },
@@ -470,6 +492,145 @@ describe("Porty administration interface", () => {
     await waitFor(() => expect(input).toHaveValue(""));
     expect(writes[0].path).toBe("/stacks/s1/environment/DATABASE_PASSWORD");
     expect(document.body).not.toHaveTextContent("replacement-secret");
+  });
+  it("reveals a saved value only on Show and refetches after Hide", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    const replacement = await screen.findByLabelText(
+      "New value for DATABASE_PASSWORD",
+    );
+    const current = screen.getByLabelText("Saved value for DATABASE_PASSWORD");
+    expect(replacement).toHaveValue("");
+    expect(current).toHaveAttribute("type", "password");
+    expect(current).toHaveValue("");
+    expect(environmentReads).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
+    );
+    await waitFor(() => expect(current).toHaveValue("saved-secret"));
+    expect(current).toHaveAttribute("readonly");
+    expect(replacement).toHaveValue("");
+    expect(writes).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide DATABASE_PASSWORD" }),
+    );
+    expect(current).toHaveValue("");
+    expect(current).toHaveAttribute("type", "password");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
+    );
+    await waitFor(() => expect(environmentReads).toHaveLength(2));
+    expect(writes).toHaveLength(0);
+  });
+  it("distinguishes an empty saved value from a failed reveal", async () => {
+    environmentValue = "";
+    render(<App />);
+    fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    await screen.findByLabelText("New value for DATABASE_PASSWORD");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
+    );
+    expect(await screen.findByText("Empty value")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide DATABASE_PASSWORD" }),
+    );
+    environmentReadResponse = async () =>
+      Response.json({ error: { message: "Value missing" } }, { status: 404 });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
+    );
+    expect(await screen.findByText("Value missing")).toBeInTheDocument();
+    expect(screen.queryByText("Empty value")).not.toBeInTheDocument();
+  });
+  it.each(["Hide", "Update", "Delete", "Leave"])(
+    "discards a late reveal after %s",
+    async (end) => {
+      let resolveRead: ((response: Response) => void) | undefined;
+      environmentReadResponse = () =>
+        new Promise<Response>((resolve) => {
+          resolveRead = resolve;
+        });
+      render(<App />);
+      fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+      const current = await screen.findByLabelText(
+        "Saved value for DATABASE_PASSWORD",
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
+      );
+      await waitFor(() => expect(resolveRead).toBeDefined());
+      if (end === "Hide")
+        fireEvent.click(
+          screen.getByRole("button", { name: "Hide DATABASE_PASSWORD" }),
+        );
+      if (end === "Update")
+        fireEvent.click(
+          screen.getByRole("button", { name: "Update DATABASE_PASSWORD" }),
+        );
+      if (end === "Delete") {
+        vi.stubGlobal("confirm", () => true);
+        fireEvent.click(
+          screen.getByRole("button", { name: "Delete DATABASE_PASSWORD" }),
+        );
+      }
+      if (end === "Leave")
+        fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
+      resolveRead!(Response.json({ value: "late-secret" }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (end !== "Leave") expect(current).toHaveValue("");
+      expect(document.body).not.toHaveTextContent("late-secret");
+    },
+  );
+  it("clears a reveal when its row changes Stack and ignores the old response", async () => {
+    let resolveRead: ((response: Response) => void) | undefined;
+    environmentReadResponse = () =>
+      new Promise<Response>((resolve) => {
+        resolveRead = resolve;
+      });
+    const view = render(
+      <EnvironmentRow
+        name="DATABASE_PASSWORD"
+        stackId="s1"
+        reload={() => {}}
+      />,
+    );
+    const current = screen.getByLabelText("Saved value for DATABASE_PASSWORD");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
+    );
+    await waitFor(() => expect(resolveRead).toBeDefined());
+    view.rerender(
+      <EnvironmentRow
+        name="DATABASE_PASSWORD"
+        stackId="s2"
+        reload={() => {}}
+      />,
+    );
+    resolveRead!(Response.json({ value: "old-stack-secret" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(current).toHaveValue("");
+    expect(document.body).not.toHaveTextContent("old-stack-secret");
+  });
+  it("clears a revealed value when replacement update fails", async () => {
+    environmentUpdateFails = true;
+    render(<App />);
+    fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    const current = await screen.findByLabelText(
+      "Saved value for DATABASE_PASSWORD",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
+    );
+    await waitFor(() => expect(current).toHaveValue("saved-secret"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Update DATABASE_PASSWORD" }),
+    );
+    expect(await screen.findByText("Update failed")).toBeInTheDocument();
+    expect(current).toHaveValue("");
   });
   it("commits only the current stack through the stack-scoped endpoint", async () => {
     await openEditor();

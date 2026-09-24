@@ -103,6 +103,16 @@ export async function listEnvironmentKeys(id: string): Promise<string[]> {
   return value.keys || [];
 }
 
+export async function getEnvironmentValue(
+  id: string,
+  key: string,
+): Promise<string> {
+  const response = await api<{ value: string }>(
+    `${stackPath(id)}/environment/${encodeURIComponent(key)}`,
+  );
+  return response.value;
+}
+
 export function setEnvironmentValue(
   id: string,
   key: string,

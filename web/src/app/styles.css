@@ -757,6 +757,15 @@ td > a {
   gap: 12px;
   align-items: flex-end;
 }
+.environment-current {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+.environment-current label {
+  flex: 1;
+}
 .environment-row label {
   flex: 1;
 }
@@ -1233,6 +1242,12 @@ td > a {
   }
   .environment-row form {
     flex-wrap: wrap;
+  }
+  .environment-current {
+    flex-wrap: wrap;
+  }
+  .environment-current label {
+    flex-basis: 100%;
   }
   .environment-row label {
     flex-basis: 100%;
