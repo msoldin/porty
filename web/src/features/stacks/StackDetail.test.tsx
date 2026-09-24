@@ -1,15 +1,24 @@
-import { act, fireEvent, render, screen } from "@testing-library/preact";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/preact";
 import { afterEach, expect, it, vi } from "vitest";
 import { StackDetail } from "./StackDetail";
-import { getStackState } from "./api";
+import { getStackState, listStackContainers, runContainerAction } from "./api";
 import { useStackLogs } from "./useStackLogs";
 import type { Stack } from "./types";
+import type { Operation } from "../operations/types";
 
 vi.mock("./useStackLogs", () => ({ useStackLogs: vi.fn() }));
 vi.mock("./api", () => ({
   getStackState: vi.fn(),
+  listStackContainers: vi.fn(),
   listDeployments: vi.fn().mockResolvedValue([]),
   runStackAction: vi.fn(),
+  runContainerAction: vi.fn(),
 }));
 
 const stack: Stack = {
@@ -20,17 +29,24 @@ const stack: Stack = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
-function showStack(value: Stack = stack) {
+function showStack(
+  value: Stack = stack,
+  options: {
+    dirty?: boolean;
+    operations?: Operation[];
+    onAction?: (operation: Operation) => void;
+  } = {},
+) {
   return render(
     <StackDetail
       stack={value}
       repo={null}
-      operations={[]}
-      dirty={false}
+      operations={options.operations || []}
+      dirty={options.dirty || false}
       setDirty={vi.fn()}
       navigate={vi.fn()}
       refresh={vi.fn()}
-      onAction={vi.fn()}
+      onAction={options.onAction || vi.fn()}
     />,
   );
 }
@@ -38,6 +54,92 @@ function showStack(value: Stack = stack) {
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
+});
+
+it("lists each container in Overview while keeping whole-stack header actions", async () => {
+  vi.mocked(getStackState).mockResolvedValue({
+    runtime: "running",
+    freshness: "current",
+    hasDeployed: true,
+  });
+  vi.mocked(listStackContainers).mockResolvedValue([
+    {
+      id: "id-a",
+      name: "app-1",
+      service: "app",
+      state: "running",
+      health: "healthy",
+    },
+    {
+      id: "id-b",
+      name: "app-2",
+      service: "app",
+      state: "running",
+      health: "healthy",
+    },
+  ]);
+  vi.mocked(runContainerAction).mockResolvedValue({
+    id: "op-b",
+    kind: "container_stop",
+    scopeType: "stack",
+    scopeId: "one",
+    status: "queued",
+    outputTruncated: false,
+  });
+  const onAction = vi.fn();
+  showStack(stack, { onAction });
+  expect(
+    await screen.findByRole("button", { name: "Stop app-2" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Restart" })).toBeInTheDocument();
+  for (const name of [
+    "Refresh status",
+    "Start stack",
+    "Pull images",
+    "Recreate containers",
+  ])
+    expect(screen.queryByRole("button", { name })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Stop app-2" }));
+  await waitFor(() =>
+    expect(runContainerAction).toHaveBeenCalledWith("one", "id-b", "stop"),
+  );
+  expect(onAction).toHaveBeenCalledWith(
+    expect.objectContaining({ id: "op-b" }),
+  );
+});
+
+it("blocks container actions with unsaved editor changes", async () => {
+  vi.mocked(listStackContainers).mockResolvedValue([
+    { id: "id-a", name: "app-1", service: "app", state: "running", health: "" },
+  ]);
+  showStack(stack, { dirty: true });
+  fireEvent.click(await screen.findByRole("button", { name: "Stop app-1" }));
+  expect(runContainerAction).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Save or discard your editor changes",
+  );
+});
+
+it("disables container actions while a stack operation is active", async () => {
+  vi.mocked(listStackContainers).mockResolvedValue([
+    { id: "id-a", name: "app-1", service: "app", state: "running", health: "" },
+  ]);
+  showStack(stack, {
+    operations: [
+      {
+        id: "busy",
+        kind: "deploy",
+        scopeType: "stack",
+        scopeId: "one",
+        status: "running",
+        outputTruncated: false,
+      },
+    ],
+  });
+  expect(
+    await screen.findByRole("button", { name: "Stop app-1" }),
+  ).toBeDisabled();
 });
 
 it("shows Stop and Restart for a running stack with an earlier successful deployment", async () => {

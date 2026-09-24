@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
-import { listDeployments, runStackAction } from "./api";
-import { type Stack, type Deployment } from "./types";
+import { listDeployments, runContainerAction, runStackAction } from "./api";
+import { type Stack, type Deployment, type ContainerAction } from "./types";
 import { type Repository } from "../repository/types";
 import { type Operation } from "../operations/types";
 import { Icon } from "../../components/Icon";
@@ -11,6 +11,8 @@ import { Editor } from "./Editor";
 import { StackSettings } from "./StackSettings";
 import { useStackLogs } from "./useStackLogs";
 import { useStackState } from "./useStackState";
+import { useStackContainers } from "./useStackContainers";
+import { ContainerList } from "./ContainerList";
 
 export function StackDetail({
   stack,
@@ -37,16 +39,26 @@ export function StackDetail({
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const stackLogs = useStackLogs(stack.id, tab === "Logs");
   const state = useStackState(stack.id);
+  const containerRefreshKey = operations
+    .filter(
+      (item) =>
+        item.scopeId === stack.id &&
+        item.kind.startsWith("container_") &&
+        ["succeeded", "failed"].includes(item.status),
+    )
+    .map((item) => `${item.id}:${item.status}`)
+    .join("|");
+  const containerState = useStackContainers(
+    stack.id,
+    tab === "Overview",
+    containerRefreshKey,
+  );
   const showRuntimeActions =
     state?.hasDeployed && state.runtime === "running" && !stack.archivedAt;
   const active = operations.find(
     (operation) =>
       operation.scopeId === stack.id &&
       ["running", "queued"].includes(operation.status),
-  );
-  const status = operations.find(
-    (operation) =>
-      operation.scopeId === stack.id && operation.kind === "status",
   );
   useEffect(() => {
     if (tab === "History" || tab === "Overview")
@@ -74,6 +86,24 @@ export function StackDetail({
       onAction(await runStackAction(stack.id, kind));
     } catch (error) {
       setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function containerAction(containerId: string, kind: ContainerAction) {
+    if (busy || active || stack.archivedAt) return;
+    if (dirty) {
+      setError(
+        "Save or discard your editor changes before running a stack action.",
+      );
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      onAction(await runContainerAction(stack.id, containerId, kind));
+    } catch (cause) {
+      setError(message(cause));
     } finally {
       setBusy(false);
     }
@@ -189,23 +219,14 @@ export function StackDetail({
       {tab === "Overview" && (
         <div class="detail-content">
           <h2>Runtime</h2>
-          <p class="muted">
-            Docker state updates automatically. Status output is a snapshot.
-          </p>
-          <div class="action-group">
-            {["status", "start", "pull", "recreate"].map((kind) => (
-              <button disabled={busy || !!active} onClick={() => action(kind)}>
-                {kind === "status"
-                  ? "Refresh status"
-                  : kind === "pull"
-                    ? "Pull images"
-                    : kind === "recreate"
-                      ? "Recreate containers"
-                      : "Start stack"}
-              </button>
-            ))}
-          </div>
-          {status && <pre class="output">{status.output || status.status}</pre>}
+          <p class="muted">Docker container state updates automatically.</p>
+          <ContainerList
+            containers={containerState.containers}
+            error={containerState.error}
+            busy={busy || !!active}
+            archived={!!stack.archivedAt}
+            onAction={containerAction}
+          />
           <h2>Last deployment</h2>
           {deployments.length ? (
             <p>

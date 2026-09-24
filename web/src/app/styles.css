@@ -984,6 +984,55 @@ td > a {
 .tabs button[aria-selected="true"] {
   background: transparent;
 }
+.container-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.container-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  min-width: 0;
+}
+.container-row + .container-row {
+  border-top: 1px solid var(--border);
+}
+.container-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.container-identity strong,
+.container-identity small {
+  overflow-wrap: anywhere;
+}
+.container-status,
+.container-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.container-actions {
+  justify-content: flex-end;
+}
+@media (max-width: 650px) {
+  .container-row {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .container-identity {
+    flex-basis: 100%;
+  }
+  .container-actions {
+    margin-left: auto;
+  }
+}
 @media (min-width: 1600px) {
   .editor-layout {
     grid-template-columns: 260px minmax(350px, 1.1fr) minmax(350px, 1fr);

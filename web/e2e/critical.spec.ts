@@ -98,9 +98,49 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
 }, testInfo) => {
   await page.route("**/api/v1/stacks/*/state", async (route) => {
     await route.fulfill({
-      json: { runtime: "stopped", freshness: "never_deployed" },
+      json: { runtime: "running", freshness: "current", hasDeployed: true },
     });
   });
+  await page.route("**/api/v1/stacks/*/containers", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "full-id-a",
+          name: "web-1",
+          service: "web",
+          state: "running",
+          health: "healthy",
+        },
+        {
+          id: "full-id-b",
+          name: "web-2",
+          service: "web",
+          state: "running",
+          health: "healthy",
+        },
+        {
+          id: "full-id-c",
+          name: "worker-1",
+          service: "worker",
+          state: "exited",
+          health: "",
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/v1/stacks/*/containers/*/actions/stop", (route) =>
+    route.fulfill({
+      status: 202,
+      json: {
+        id: "opr_e2e_container",
+        kind: "container_stop",
+        scopeType: "stack",
+        scopeId: "paperless",
+        status: "queued",
+        outputTruncated: false,
+      },
+    }),
+  );
   await page.route("**/api/v1/stacks/*/actions/deploy", async (route) => {
     await route.fulfill({
       status: 202,
@@ -119,7 +159,41 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await page.getByRole("button", { name: "New stack" }).click();
   await page.getByLabel("Stack name").fill("paperless");
   await page.getByRole("button", { name: "Create stack", exact: true }).click();
+  const browserProblems: string[] = [];
+  page.on("console", (entry) => {
+    if (entry.type() === "error" || entry.type() === "warning")
+      browserProblems.push(entry.text());
+  });
+  page.on("pageerror", (error) => browserProblems.push(error.message));
   await expect(page.getByRole("heading", { name: "paperless" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop web-2" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start worker-1" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Stop", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Restart", exact: true }),
+  ).toBeVisible();
+  for (const label of [
+    "Refresh status",
+    "Start stack",
+    "Pull images",
+    "Recreate containers",
+  ])
+    await expect(page.getByRole("button", { name: label })).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("stack-containers.png"),
+    fullPage: true,
+  });
+  const containerRequest = page.waitForRequest(
+    "**/api/v1/stacks/*/containers/full-id-b/actions/stop",
+  );
+  await page.getByRole("button", { name: "Stop web-2" }).click();
+  await containerRequest;
+  await expect(page.getByLabel("Operation details")).toBeVisible();
+  await page.getByRole("button", { name: "Close operation" }).click();
   await page.route("**/api/v1/stacks/*/actions/logs", (route) =>
     route.fulfill({
       status: 202,
@@ -185,4 +259,5 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  expect(browserProblems).toEqual([]);
 });
