@@ -97,6 +97,21 @@ func (s *StackStore) SetEnvironment(ctx context.Context, id portystack.StackID, 
 	return err
 }
 
+func (s *StackStore) SetEnvironmentWithSecret(ctx context.Context, id portystack.StackID, key, value string, secret bool) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO stack_environment(stack_id,key,value,secret,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(stack_id,key) DO UPDATE SET value=excluded.value, secret=excluded.secret, updated_at=excluded.updated_at`, id, key, []byte(value), secret, encodeTime(time.Now()))
+	return err
+}
+
+func (s *StackStore) EnvironmentValue(ctx context.Context, id portystack.StackID, key string) (portystack.EnvironmentValue, error) {
+	var value []byte
+	var secret bool
+	err := s.db.QueryRowContext(ctx, `SELECT e.value, e.secret FROM stack_environment e JOIN stacks s ON s.id=e.stack_id WHERE e.stack_id=? AND e.key=?`, id, key).Scan(&value, &secret)
+	if err != nil {
+		return portystack.EnvironmentValue{}, err
+	}
+	return portystack.EnvironmentValue{Value: string(value), Secret: secret}, nil
+}
+
 func (s *StackStore) DeleteEnvironment(ctx context.Context, id portystack.StackID, key string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM stack_environment WHERE stack_id=? AND key=?`, id, key)
 	return err

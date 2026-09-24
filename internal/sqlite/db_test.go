@@ -108,6 +108,26 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	}
 }
 
+func TestEnvironmentSecretMigrationKeepsExistingValuesVisible(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "porty.db")
+	old, err := sql.Open("sqlite", path)
+	if err != nil { t.Fatal(err) }
+	files, err := fs.Sub(migrations, "migrations")
+	if err != nil { t.Fatal(err) }
+	provider, err := goose.NewProvider(goose.DialectSQLite3, old, files, goose.WithDisableGlobalRegistry(true))
+	if err != nil { t.Fatal(err) }
+	if _, err := provider.UpTo(ctx, 2); err != nil { t.Fatal(err) }
+	if _, err := old.ExecContext(ctx, `INSERT INTO stacks(id,directory_name,compose_project_name,created_at,updated_at) VALUES('stk_gateway','gateway','porty-gateway','2026-01-01','2026-01-01')`); err != nil { t.Fatal(err) }
+	if _, err := old.ExecContext(ctx, `INSERT INTO stack_environment(stack_id,key,value,updated_at) VALUES('stk_gateway','TOKEN','saved','2026-01-01')`); err != nil { t.Fatal(err) }
+	if err := old.Close(); err != nil { t.Fatal(err) }
+	upgraded, err := Open(ctx, path)
+	if err != nil { t.Fatal(err) }
+	defer upgraded.Close()
+	value, err := NewStackStore(upgraded).EnvironmentValue(ctx, "stk_gateway", "TOKEN")
+	if err != nil || value.Value != "saved" || value.Secret { t.Fatalf("upgraded value = %#v, %v", value, err) }
+}
+
 func TestConcurrentFirstOpenKeepsOneSigningKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "porty.db")
 	start := make(chan struct{})
@@ -187,10 +207,7 @@ func TestInitialMigrationDownRemovesDevelopmentSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
+	if _, err := provider.DownTo(ctx, 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"app_state", "repository_auth", "users", "sessions", "stacks", "stack_environment", "operations", "deployments", "audit_events"} {

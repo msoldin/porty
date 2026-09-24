@@ -44,8 +44,8 @@ func TestWorkspaceResolvesOpaqueStackIDForFileAndEnvironmentOperations(t *testin
 		t.Fatalf("keys = %#v, %v", keys, err)
 	}
 	value, err := workspace.EnvironmentValue(ctx, stack.ID, "TOKEN")
-	if err != nil || value != "secret" {
-		t.Fatalf("EnvironmentValue() = %q, %v", value, err)
+	if err != nil || value.Value != "secret" || value.Secret {
+		t.Fatalf("EnvironmentValue() = %#v, %v", value, err)
 	}
 }
 

@@ -3,7 +3,6 @@ package stack
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"regexp"
@@ -98,8 +97,15 @@ func (s *StackService) Purge(ctx context.Context, id StackID) error {
 
 type EnvironmentRepository interface {
 	SetEnvironment(context.Context, StackID, string, string) error
+	SetEnvironmentWithSecret(context.Context, StackID, string, string, bool) error
 	DeleteEnvironment(context.Context, StackID, string) error
 	Environment(context.Context, StackID) (map[string]string, error)
+	EnvironmentValue(context.Context, StackID, string) (EnvironmentValue, error)
+}
+
+type EnvironmentValue struct {
+	Value  string `json:"value"`
+	Secret bool   `json:"secret"`
 }
 
 type EnvironmentService struct{ store EnvironmentRepository }
@@ -118,6 +124,13 @@ func (s *EnvironmentService) Set(ctx context.Context, id StackID, key, value str
 		return ErrInvalidEnvironment
 	}
 	return s.store.SetEnvironment(ctx, id, key, value)
+}
+
+func (s *EnvironmentService) SetWithSecret(ctx context.Context, id StackID, key, value string, secret bool) error {
+	if !environmentKey.MatchString(key) || strings.ContainsRune(value, 0) {
+		return ErrInvalidEnvironment
+	}
+	return s.store.SetEnvironmentWithSecret(ctx, id, key, value, secret)
 }
 
 func (s *EnvironmentService) Delete(ctx context.Context, id StackID, key string) error {
@@ -140,19 +153,11 @@ func (s *EnvironmentService) Keys(ctx context.Context, id StackID) ([]string, er
 	return keys, nil
 }
 
-func (s *EnvironmentService) Value(ctx context.Context, id StackID, key string) (string, error) {
+func (s *EnvironmentService) Value(ctx context.Context, id StackID, key string) (EnvironmentValue, error) {
 	if !environmentKey.MatchString(key) {
-		return "", ErrInvalidEnvironment
+		return EnvironmentValue{}, ErrInvalidEnvironment
 	}
-	values, err := s.store.Environment(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	value, ok := values[key]
-	if !ok {
-		return "", sql.ErrNoRows
-	}
-	return value, nil
+	return s.store.EnvironmentValue(ctx, id, key)
 }
 
 // Values is for trusted deployment infrastructure. HTTP handlers must expose Keys instead.

@@ -103,23 +103,26 @@ export async function listEnvironmentKeys(id: string): Promise<string[]> {
   return value.keys || [];
 }
 
+export type EnvironmentValue = { value: string; secret: boolean };
+
 export async function getEnvironmentValue(
   id: string,
   key: string,
-): Promise<string> {
-  const response = await api<{ value: string }>(
+): Promise<EnvironmentValue> {
+  return api<EnvironmentValue>(
     `${stackPath(id)}/environment/${encodeURIComponent(key)}`,
   );
-  return response.value;
 }
 
 export function setEnvironmentValue(
   id: string,
   key: string,
   value: FormDataEntryValue | string | null,
+  secret?: boolean,
 ): Promise<void> {
   return api(`${stackPath(id)}/environment/${encodeURIComponent(key)}`, "PUT", {
     value,
+    ...(secret === undefined ? {} : { secret }),
   });
 }
 

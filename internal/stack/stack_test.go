@@ -27,8 +27,8 @@ func TestEnvironmentValueDistinguishesSavedEmptyAndMissing(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, err := environment.Value(ctx, created.ID, key)
-		if err != nil || got != value {
-			t.Fatalf("Value(%q) = %q, %v", key, got, err)
+		if err != nil || got.Value != value || got.Secret {
+			t.Fatalf("Value(%q) = %#v, %v", key, got, err)
 		}
 	}
 	for _, id := range []portystack.StackID{created.ID, "stk_absent"} {
@@ -42,6 +42,13 @@ func TestEnvironmentValueDistinguishesSavedEmptyAndMissing(t *testing.T) {
 	}
 	if _, err := environment.Value(ctx, created.ID, "BAD-KEY"); !errors.Is(err, portystack.ErrInvalidEnvironment) {
 		t.Fatalf("invalid key error = %v", err)
+	}
+	if err := environment.SetWithSecret(ctx, created.ID, "TOKEN", "new-secret", true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := environment.Value(ctx, created.ID, "TOKEN")
+	if err != nil || got.Value != "new-secret" || !got.Secret {
+		t.Fatalf("secret Value() = %#v, %v", got, err)
 	}
 }
 

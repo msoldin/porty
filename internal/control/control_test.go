@@ -87,6 +87,12 @@ type controlEnvironmentStore struct{}
 func (controlEnvironmentStore) SetEnvironment(context.Context, portystack.StackID, string, string) error {
 	return nil
 }
+func (controlEnvironmentStore) SetEnvironmentWithSecret(context.Context, portystack.StackID, string, string, bool) error {
+	return nil
+}
+func (controlEnvironmentStore) EnvironmentValue(context.Context, portystack.StackID, string) (portystack.EnvironmentValue, error) {
+	return portystack.EnvironmentValue{Value: "secret"}, nil
+}
 func (controlEnvironmentStore) DeleteEnvironment(context.Context, portystack.StackID, string) error {
 	return nil
 }

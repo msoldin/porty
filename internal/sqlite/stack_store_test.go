@@ -43,6 +43,47 @@ func TestArchivedStackRetainsEnvironmentUntilExplicitPurge(t *testing.T) {
 	}
 }
 
+func TestEnvironmentSecretFlagSurvivesValueUpdates(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, filepath.Join(t.TempDir(), "stacks.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewStackStore(db)
+	stack := portystack.Stack{ID: "stk_gateway", DirectoryName: "gateway", ComposeProjectName: "porty-gateway-a1b2", CreatedAt: time.Now().UTC()}
+	if err := store.Create(ctx, stack); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetEnvironment(ctx, stack.ID, "PLAIN", "visible"); err != nil {
+		t.Fatal(err)
+	}
+	plain, err := store.EnvironmentValue(ctx, stack.ID, "PLAIN")
+	if err != nil || plain.Value != "visible" || plain.Secret {
+		t.Fatalf("plain = %#v, %v", plain, err)
+	}
+	if err := store.SetEnvironmentWithSecret(ctx, stack.ID, "TOKEN", "hidden", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetEnvironment(ctx, stack.ID, "TOKEN", "updated"); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := store.EnvironmentValue(ctx, stack.ID, "TOKEN")
+	if err != nil || secret.Value != "updated" || !secret.Secret {
+		t.Fatalf("secret = %#v, %v", secret, err)
+	}
+	if err := store.SetEnvironmentWithSecret(ctx, stack.ID, "TOKEN", "", false); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := store.EnvironmentValue(ctx, stack.ID, "TOKEN")
+	if err != nil || cleared.Value != "" || cleared.Secret {
+		t.Fatalf("cleared = %#v, %v", cleared, err)
+	}
+	if _, err := store.EnvironmentValue(ctx, stack.ID, "MISSING"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing = %v", err)
+	}
+}
+
 func TestStackReadsPreserveOrderingArchiveAndMissingRows(t *testing.T) {
 	ctx := context.Background()
 	db, err := Open(ctx, filepath.Join(t.TempDir(), "stacks.db"))

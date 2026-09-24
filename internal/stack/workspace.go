@@ -194,8 +194,17 @@ func (s *WorkspaceService) EnvironmentKeys(ctx context.Context, id StackID) ([]s
 	return s.environment.Keys(ctx, id)
 }
 
-func (s *WorkspaceService) EnvironmentValue(ctx context.Context, id StackID, key string) (string, error) {
+func (s *WorkspaceService) EnvironmentValue(ctx context.Context, id StackID, key string) (EnvironmentValue, error) {
 	return s.environment.Value(ctx, id, key)
+}
+
+func (s *WorkspaceService) SetEnvironmentWithSecret(ctx context.Context, id StackID, key, value string, secret bool) error {
+	release, err := s.lock(false, id)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return s.environment.SetWithSecret(ctx, id, key, value, secret)
 }
 
 func (s *WorkspaceService) SetEnvironment(ctx context.Context, id StackID, key, value string) error {

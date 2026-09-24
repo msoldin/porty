@@ -16,16 +16,23 @@ func registerEnvironmentRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 	mux.HandleFunc("GET /api/v1/stacks/{id}/environment/{key}", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		value, err := options.Environment.EnvironmentValue(r.Context(), portystack.StackID(r.PathValue("id")), r.PathValue("key"))
-		writeResult(w, r, map[string]string{"value": value}, err, stdhttp.StatusOK)
+		writeResult(w, r, value, err, stdhttp.StatusOK)
 	}))
 	mux.HandleFunc("PUT /api/v1/stacks/{id}/environment/{key}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		var input struct {
-			Value string `json:"value"`
+			Value  string `json:"value"`
+			Secret *bool  `json:"secret"`
 		}
 		if decodeBody(w, r, &input) != nil {
 			return
 		}
-		if err := options.Environment.SetEnvironment(r.Context(), portystack.StackID(r.PathValue("id")), r.PathValue("key"), input.Value); err != nil {
+		var err error
+		if input.Secret == nil {
+			err = options.Environment.SetEnvironment(r.Context(), portystack.StackID(r.PathValue("id")), r.PathValue("key"), input.Value)
+		} else {
+			err = options.Environment.SetEnvironmentWithSecret(r.Context(), portystack.StackID(r.PathValue("id")), r.PathValue("key"), input.Value, *input.Secret)
+		}
+		if err != nil {
 			writeAPIError(w, r, err)
 			return
 		}

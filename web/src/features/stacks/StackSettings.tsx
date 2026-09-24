@@ -22,6 +22,7 @@ export function StackSettings({
   const [keys, setKeys] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [newSecret, setNewSecret] = useState(false);
   const [name, setName] = useState(stack.directoryName);
   const reload = () =>
     listEnvironmentKeys(stack.id)
@@ -34,8 +35,8 @@ export function StackSettings({
     <div class="settings-content">
       <h2>Environment</h2>
       <p class="muted">
-        Saved Stack values are shown when Settings opens. Use the eye button to
-        hide or show a value. Enter a replacement below to update one.
+        Saved values can be edited in place. Mark a value as secret to mask it
+        by default.
       </p>
       {error && <Notice>{error}</Notice>}
       {keys.map((key) => (
@@ -59,8 +60,10 @@ export function StackSettings({
               stack.id,
               String(data.get("key")),
               data.get("value"),
+              data.has("secret"),
             );
             form.reset();
+            setNewSecret(false);
             await reload();
           } catch (error) {
             setError(message(error));
@@ -80,12 +83,16 @@ export function StackSettings({
         </label>
         <label>
           New value
+          <input name="value" type={newSecret ? "password" : "text"} />
+        </label>
+        <label class="confirmation environment-secret-choice">
           <input
-            name="value"
-            type="password"
-            autoComplete="new-password"
-            required
+            name="secret"
+            type="checkbox"
+            checked={newSecret}
+            onChange={(event) => setNewSecret(event.currentTarget.checked)}
           />
+          Secret value for new key
         </label>
         <button disabled={busy}>Add value</button>
       </form>

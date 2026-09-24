@@ -757,17 +757,13 @@ td > a {
   gap: 12px;
   align-items: flex-end;
 }
-.environment-current {
-  display: flex;
-  gap: 12px;
-  align-items: flex-end;
-  margin-bottom: 12px;
-}
-.environment-current label {
+.environment-row form > label:first-child {
   flex: 1;
 }
-.environment-row label {
-  flex: 1;
+.environment-secret-choice,
+.environment-row .environment-secret-choice {
+  flex: 0 0 auto;
+  align-self: center;
 }
 .settings-content {
   max-width: 860px;
@@ -1243,13 +1239,7 @@ td > a {
   .environment-row form {
     flex-wrap: wrap;
   }
-  .environment-current {
-    flex-wrap: wrap;
-  }
-  .environment-current label {
-    flex-basis: 100%;
-  }
-  .environment-row label {
+  .environment-row form > label:first-child {
     flex-basis: 100%;
   }
   .inline-form {

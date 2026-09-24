@@ -24,7 +24,7 @@ import (
 
 func TestEnvironmentReadRequiresSessionAndReturnsOnlyRequestedValue(t *testing.T) {
 	audit := &fakeAuditAPI{}
-	environment := &fakeEnvironmentAPI{values: map[string]string{"TOKEN": "secret", "EMPTY": ""}}
+	environment := &fakeEnvironmentAPI{values: map[string]string{"TOKEN": "secret", "EMPTY": ""}, secrets: map[string]bool{"TOKEN": true}}
 	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{Environment: environment, Audit: audit})
 	get := func(path string, authenticated bool) *httptest.ResponseRecorder {
 		t.Helper()
@@ -45,8 +45,8 @@ func TestEnvironmentReadRequiresSessionAndReturnsOnlyRequestedValue(t *testing.T
 		status int
 		body   string
 	}{
-		{base + "/TOKEN", 200, `{"value":"secret"}` + "\n"},
-		{base + "/EMPTY", 200, `{"value":""}` + "\n"},
+		{base + "/TOKEN", 200, `{"value":"secret","secret":true}` + "\n"},
+		{base + "/EMPTY", 200, `{"value":"","secret":false}` + "\n"},
 		{base + "/MISSING", 404, ""},
 		{"/api/v1/stacks/stk_missing/environment/TOKEN", 404, ""},
 		{base + "/BAD-KEY", 400, ""},
@@ -73,7 +73,26 @@ func TestEnvironmentReadRequiresSessionAndReturnsOnlyRequestedValue(t *testing.T
 	}
 }
 
-type fakeEnvironmentAPI struct{ values map[string]string }
+func TestEnvironmentWritePersistsExplicitSecretFlag(t *testing.T) {
+	environment := &fakeEnvironmentAPI{}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{Environment: environment})
+	request := httptest.NewRequest(stdhttp.MethodPut, "http://porty.local/api/v1/stacks/stk_gateway/environment/TOKEN", bytes.NewBufferString(`{"value":"secret","secret":true}`))
+	request.Header.Set("Origin", "http://porty.local")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != stdhttp.StatusNoContent || environment.savedSecret == nil || !*environment.savedSecret {
+		t.Fatalf("write response = %d, secret = %v", response.Code, environment.savedSecret)
+	}
+}
+
+type fakeEnvironmentAPI struct {
+	values      map[string]string
+	secrets     map[string]bool
+	savedSecret *bool
+}
 
 func (f *fakeEnvironmentAPI) EnvironmentKeys(_ context.Context, id portystack.StackID) ([]string, error) {
 	if id != "stk_gateway" {
@@ -81,18 +100,22 @@ func (f *fakeEnvironmentAPI) EnvironmentKeys(_ context.Context, id portystack.St
 	}
 	return []string{"EMPTY", "TOKEN"}, nil
 }
-func (f *fakeEnvironmentAPI) EnvironmentValue(_ context.Context, id portystack.StackID, key string) (string, error) {
+func (f *fakeEnvironmentAPI) EnvironmentValue(_ context.Context, id portystack.StackID, key string) (portystack.EnvironmentValue, error) {
 	if strings.Contains(key, "-") {
-		return "", portystack.ErrInvalidEnvironment
+		return portystack.EnvironmentValue{}, portystack.ErrInvalidEnvironment
 	}
 	if id != "stk_gateway" {
-		return "", sql.ErrNoRows
+		return portystack.EnvironmentValue{}, sql.ErrNoRows
 	}
 	value, ok := f.values[key]
 	if !ok {
-		return "", sql.ErrNoRows
+		return portystack.EnvironmentValue{}, sql.ErrNoRows
 	}
-	return value, nil
+	return portystack.EnvironmentValue{Value: value, Secret: f.secrets[key]}, nil
+}
+func (f *fakeEnvironmentAPI) SetEnvironmentWithSecret(_ context.Context, _ portystack.StackID, _, _ string, secret bool) error {
+	f.savedSecret = &secret
+	return nil
 }
 func (f *fakeEnvironmentAPI) SetEnvironment(context.Context, portystack.StackID, string, string) error {
 	return nil

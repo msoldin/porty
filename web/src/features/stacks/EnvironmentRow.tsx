@@ -17,128 +17,127 @@ export function EnvironmentRow({
   reload: () => void;
 }) {
   const [value, setValue] = useState("");
-  const [revealed, setRevealed] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const generation = useRef(0);
-  const [error, setError] = useState("");
+  const [secret, setSecret] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const conceal = () => {
-    generation.current++;
-    setRevealed(null);
-    setLoading(false);
-  };
+  const [error, setError] = useState("");
+  const generation = useRef(0);
+
   useLayoutEffect(() => {
-    conceal();
-    void show();
+    const request = ++generation.current;
+    setValue("");
+    setSecret(false);
+    setRevealed(false);
+    setLoading(true);
+    setError("");
+    getEnvironmentValue(stackId, name)
+      .then((current) => {
+        if (request !== generation.current) return;
+        setValue(current.value);
+        setSecret(current.secret);
+      })
+      .catch((error) => {
+        if (request === generation.current) setError(message(error));
+      })
+      .finally(() => {
+        if (request === generation.current) setLoading(false);
+      });
     return () => {
       generation.current++;
     };
   }, [name, stackId]);
-  const show = async () => {
-    const request = ++generation.current;
-    setRevealed(null);
-    setError("");
-    setLoading(true);
-    try {
-      const current = await getEnvironmentValue(stackId, name);
-      if (request === generation.current) setRevealed(current);
-    } catch (error) {
-      if (request === generation.current) setError(message(error));
-    } finally {
-      if (request === generation.current) setLoading(false);
-    }
-  };
+
   return (
     <div class="environment-row">
-      <div class="environment-current">
-        <label>
-          Saved Stack value · {name}
-          <input
-            aria-label={`Saved value for ${name}`}
-            type={revealed === null ? "password" : "text"}
-            readOnly
-            value={revealed ?? ""}
-          />
-        </label>
-        <button
-          type="button"
-          disabled={busy}
-          aria-label={`${revealed !== null || loading ? "Hide" : "Show"} ${name}`}
-          onClick={() => {
-            if (revealed !== null || loading) conceal();
-            else void show();
-          }}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
-            <circle cx="12" cy="12" r="3" />
-            {(revealed !== null || loading) && <path d="m4 20 16-16" />}
-          </svg>{" "}
-          {revealed !== null || loading ? "Hide" : "Show"}
-        </button>
-        {loading && <span class="muted">Loading…</span>}
-        {revealed === "" && <span class="muted">Empty value</span>}
-      </div>
       <form
         onSubmit={async (event) => {
           event.preventDefault();
-          conceal();
+          const request = ++generation.current;
           setBusy(true);
           setError("");
           try {
-            await setEnvironmentValue(stackId, name, value);
-            setValue("");
+            await setEnvironmentValue(stackId, name, value, secret);
           } catch (error) {
-            setError(message(error));
+            if (request === generation.current) setError(message(error));
           } finally {
-            setBusy(false);
+            if (request === generation.current) setBusy(false);
           }
         }}
       >
         <label>
           {name}
           <input
-            type="password"
-            aria-label={`New value for ${name}`}
-            placeholder="Value stored · enter replacement"
-            autoComplete="new-password"
+            aria-label={`Value for ${name}`}
+            type={secret && !revealed ? "password" : "text"}
+            autoComplete={secret ? "off" : undefined}
             value={value}
+            disabled={loading || busy}
             onInput={(event) => setValue(event.currentTarget.value)}
           />
         </label>
-        <button disabled={busy} aria-label={`Update ${name}`}>
+        {secret && !loading && (
+          <button
+            type="button"
+            disabled={busy}
+            aria-label={`${revealed ? "Hide" : "Show"} ${name}`}
+            onClick={() => setRevealed((shown) => !shown)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+              <circle cx="12" cy="12" r="3" />
+              {revealed && <path d="m4 20 16-16" />}
+            </svg>{" "}
+            {revealed ? "Hide" : "Show"}
+          </button>
+        )}
+        <label class="confirmation environment-secret-choice">
+          <input
+            type="checkbox"
+            checked={secret}
+            disabled={loading || busy}
+            onChange={(event) => {
+              const next = event.currentTarget.checked;
+              setSecret(next);
+              if (next) setRevealed(false);
+            }}
+          />
+          Secret value for {name}
+        </label>
+        <button disabled={loading || busy} aria-label={`Update ${name}`}>
           Update
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={loading || busy}
           aria-label={`Delete ${name}`}
           onClick={async () => {
             if (!confirm(`Delete environment value ${name}?`)) return;
-            conceal();
+            const request = ++generation.current;
             setBusy(true);
             setError("");
             try {
               await deleteEnvironmentValue(stackId, name);
-              reload();
+              if (request === generation.current) reload();
             } catch (error) {
-              setError(message(error));
+              if (request === generation.current) setError(message(error));
             } finally {
-              setBusy(false);
+              if (request === generation.current) setBusy(false);
             }
           }}
         >
           Delete
         </button>
       </form>
+      {loading && <span class="muted">Loading value…</span>}
       {error && <Notice>{error}</Notice>}
     </div>
   );
