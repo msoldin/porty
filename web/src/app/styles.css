@@ -1301,6 +1301,28 @@ td > a {
   }
 }
 @media (max-width: 650px) {
+  .stack-table tr > :first-child,
+  .services-table tr > :first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface);
+  }
+  .stack-table tr > :nth-child(2),
+  .services-table tr > :nth-child(2) {
+    position: sticky;
+    left: 48px;
+    z-index: 1;
+    background: var(--surface);
+  }
+  .stack-table thead th:nth-child(-n + 2),
+  .services-table thead th:nth-child(-n + 2) {
+    z-index: 3;
+  }
+  .stack-table .selected-row td:nth-child(-n + 2),
+  .services-table .selected-row td:nth-child(-n + 2) {
+    background: light-dark(#eff5ff, #243757);
+  }
   .dashboard > .page-heading {
     flex-wrap: wrap;
   }

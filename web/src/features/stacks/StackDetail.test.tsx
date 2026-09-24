@@ -208,6 +208,30 @@ it("enables Stop and Restart for a running stack with an earlier successful depl
   );
 });
 
+it("shows an active deployment with its matching blue status badge", async () => {
+  vi.mocked(getStackState).mockResolvedValue({
+    runtime: "running",
+    freshness: "current",
+    hasDeployed: true,
+  });
+  showStack(stack, {
+    operations: [
+      {
+        id: "deploying",
+        kind: "deploy",
+        scopeType: "stack",
+        scopeId: "one",
+        status: "running",
+        outputTruncated: false,
+      },
+    ],
+  });
+  const badge = await screen.findByText("Deploying", {
+    selector: ".state-strip .badge",
+  });
+  expect(badge).toHaveClass("blue");
+});
+
 it("disables Stop and Restart for a running stack without a successful deployment", async () => {
   vi.mocked(getStackState).mockResolvedValue({
     runtime: "running",

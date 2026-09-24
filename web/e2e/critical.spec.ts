@@ -96,9 +96,23 @@ test("appearance follows the operating system and a saved override", async ({
 test("administrator creates, edits, commits, and deploys a stack", async ({
   page,
 }, testInfo) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  const initialViewport = page.viewportSize()!;
+  let stoppedStackId = "";
+  let rejectDeployId = "";
   await page.route("**/api/v1/stacks/*/state", async (route) => {
+    const stopped =
+      stoppedStackId &&
+      route
+        .request()
+        .url()
+        .includes("/stacks/" + stoppedStackId + "/state");
     await route.fulfill({
-      json: { runtime: "running", freshness: "current", hasDeployed: true },
+      json: {
+        runtime: stopped ? "stopped" : "running",
+        freshness: "current",
+        hasDeployed: true,
+      },
     });
   });
   await page.route("**/api/v1/stacks/*/containers", (route) =>
@@ -165,13 +179,31 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     }),
   );
   await page.route("**/api/v1/stacks/*/actions/deploy", async (route) => {
+    const scopeId = route
+      .request()
+      .url()
+      .split("/actions/")[0]
+      .split("/")
+      .pop()!;
+    if (scopeId === rejectDeployId) {
+      await route.fulfill({
+        status: 409,
+        json: {
+          error: {
+            code: "OperationConflict",
+            message: "A conflicting operation is in progress",
+          },
+        },
+      });
+      return;
+    }
     await route.fulfill({
       status: 202,
       json: {
-        id: "opr_e2e_deploy",
+        id: "opr_e2e_deploy_" + scopeId,
         kind: "deploy",
         scopeType: "stack",
-        scopeId: "paperless",
+        scopeId,
         status: "succeeded",
         output: "deployment completed",
         outputTruncated: false,
@@ -214,10 +246,41 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     path: testInfo.outputPath("stack-services.png"),
     fullPage: true,
   });
+  await page.route("**/api/v1/stacks/*/containers/actions/restart", (route) =>
+    route.fulfill({
+      status: 202,
+      json: {
+        id: "opr_e2e_restart",
+        kind: "container_batch_restart",
+        scopeType: "stack",
+        scopeId: "paperless",
+        status: "succeeded",
+        outputTruncated: false,
+      },
+    }),
+  );
+  const restartRequest = page.waitForRequest(
+    "**/api/v1/stacks/*/containers/actions/restart",
+  );
+  await page.getByRole("checkbox", { name: "Select web-1" }).check();
+  await page.getByRole("checkbox", { name: "Select web-2" }).check();
+  await page.getByRole("button", { name: "Restart selected" }).click();
+  expect((await restartRequest).postDataJSON()).toEqual({
+    containerIds: ["full-id-a", "full-id-b"],
+  });
+  await expect(page.getByLabel("Operation details")).toBeVisible();
+  await page.getByRole("button", { name: "Close operation" }).click();
+  await page.getByRole("checkbox", { name: "Select web-1" }).uncheck();
   const containerRequest = page.waitForRequest(
     "**/api/v1/stacks/*/containers/actions/stop",
   );
   await page.getByRole("checkbox", { name: "Select web-2" }).check();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await page.screenshot({
+    path: testInfo.outputPath("services-selected-light.png"),
+    fullPage: true,
+  });
+  await page.getByRole("menu").press("Escape");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Stop selected" }).click();
   expect((await containerRequest).postDataJSON()).toEqual({
@@ -252,12 +315,99 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await page.getByLabel("Commit message").fill("Add paperless stack");
   await page.getByRole("button", { name: "Commit stack" }).click();
   await expect(page.getByRole("status")).toContainText("Committed paperless");
-  await page.getByRole("button", { name: "Deploy" }).click();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await page.getByRole("menuitem", { name: "Deploy" }).click();
   await expect(page.getByLabel("Operation details")).toBeVisible();
   await expect(page.getByLabel("Operation details")).toContainText(
     /succeeded|running/,
   );
   await page.getByRole("button", { name: "Close operation" }).click();
+  await page.getByRole("link", { name: "All stacks" }).click();
+  await page.getByRole("button", { name: "New stack" }).click();
+  await page.getByLabel("Stack name").fill("monitoring");
+  await page.getByRole("button", { name: "Create stack", exact: true }).click();
+  await page.getByRole("link", { name: "All stacks" }).click();
+  stoppedStackId = (await page
+    .getByRole("link", { name: "monitoring" })
+    .getAttribute("href"))!
+    .split("/")
+    .pop()!;
+  rejectDeployId = stoppedStackId;
+  await page.reload();
+  await expect(
+    page.getByRole("link", { name: "monitoring" }).locator("xpath=../.."),
+  ).toContainText("STOPPED");
+  await page.getByRole("checkbox", { name: "Select paperless" }).check();
+  await page.getByRole("checkbox", { name: "Select monitoring" }).check();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await expect(page.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await page.getByRole("menuitem", { name: "Deploy" }).click();
+  await expect(page.getByRole("status")).toContainText("paperless: accepted");
+  await expect(page.getByRole("status")).toContainText(
+    "monitoring: A conflicting operation is in progress",
+  );
+  await page.getByRole("checkbox", { name: "Select paperless" }).check();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await page.screenshot({
+    path: testInfo.outputPath("stacks-selected-light.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(0);
+  await page.screenshot({
+    path: testInfo.outputPath("stacks-selected-light-320.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("region", { name: "Stacks table" })
+    .evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+  await expect(page.getByRole("link", { name: "paperless" })).toBeInViewport();
+  await page.getByRole("menu").press("Escape");
+  await page.getByRole("link", { name: "paperless" }).click();
+  await page.getByRole("checkbox", { name: "Select web-2" }).check();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(0);
+  await page.screenshot({
+    path: testInfo.outputPath("services-selected-light-320.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("region", { name: "Services table" })
+    .scrollIntoViewIfNeeded();
+  await page
+    .getByRole("region", { name: "Services table" })
+    .evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+  await expect(
+    page
+      .getByRole("checkbox", { name: "Select web-2" })
+      .locator("xpath=../..")
+      .locator(".service-identity"),
+  ).toBeInViewport();
+  await page.getByRole("menu").press("Escape");
+  await page.setViewportSize(initialViewport);
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("button", { name: "Add remote" })).toBeVisible();
   await page.getByLabel("Theme").selectOption("dark");
@@ -273,7 +423,41 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     fullPage: false,
   });
   await page.getByRole("link", { name: "Stacks" }).click();
+  await page.getByRole("checkbox", { name: "Select paperless" }).check();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await page.screenshot({
+    path: testInfo.outputPath("stacks-selected-dark.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(0);
+  await page.screenshot({
+    path: testInfo.outputPath("stacks-selected-dark-320.png"),
+    fullPage: true,
+  });
+  await page.getByRole("menu").press("Escape");
   await page.getByRole("link", { name: "paperless" }).click();
+  await page.getByRole("checkbox", { name: "Select web-2" }).check();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(0);
+  await page.screenshot({
+    path: testInfo.outputPath("services-selected-dark-320.png"),
+    fullPage: true,
+  });
+  await page.getByRole("menu").press("Escape");
+  await page.setViewportSize(initialViewport);
   await page.getByRole("tab", { name: "Editor" }).click();
   await expect(page.locator(".cm-editor")).toBeVisible();
   expect(
@@ -290,5 +474,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  expect(browserProblems).toEqual([]);
+  expect(
+    browserProblems.filter((problem) => !problem.includes("409 (Conflict)")),
+  ).toEqual([]);
 });

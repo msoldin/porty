@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   containerStatePresentation,
+  deploymentLabel,
   deploymentTone,
   remoteTone,
   stackRuntimePresentation,
@@ -59,4 +60,8 @@ it("maps remote and deployment information onto the same badge palette", () => {
   expect(deploymentTone("deploying")).toBe("blue");
   expect(deploymentTone("never_deployed")).toBe("neutral");
   expect(deploymentTone("unverifiable")).toBe("neutral");
+  expect(deploymentLabel("current")).toBe("Current");
+  expect(deploymentLabel("changes_pending")).toBe("Changes pending");
+  expect(deploymentLabel("never_deployed")).toBe("Never deployed");
+  expect(deploymentLabel()).toBe("Unverified");
 });

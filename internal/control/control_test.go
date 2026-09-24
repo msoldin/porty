@@ -353,6 +353,48 @@ finished:
 	}
 }
 
+func TestContainerBatchStartsAndRestartsCompatibleReplicas(t *testing.T) {
+	for _, tc := range []struct {
+		action string
+	}{
+		{"start"},
+		{"restart"},
+	} {
+		t.Run(tc.action, func(t *testing.T) {
+			rows := []api.ContainerSummary{
+				{ID: "full-id-a", Project: "porty-gateway", State: "running"},
+				{ID: "full-id-b", Project: "porty-gateway", State: "running"},
+			}
+			if tc.action == "start" {
+				rows[0].State, rows[1].State = "created", "exited"
+			}
+			runtime := &controlRuntime{status: rows, called: make(chan string, 2)}
+			control, store := newContainerControl(runtime, controlLookup{}, portyop.NewCoordinator())
+			store.updated = make(chan portyop.Operation, 4)
+			accepted, err := control.StartContainerBatchAction(context.Background(), "stk_gateway", []string{"full-id-a", "full-id-b"}, tc.action)
+			if err != nil || accepted.Kind != "container_batch_"+tc.action {
+				t.Fatalf("accepted=%#v err=%v", accepted, err)
+			}
+			for {
+				select {
+				case updated := <-store.updated:
+					if updated.Status == portyop.OperationSucceeded {
+						if got := <-runtime.called; got != tc.action+":full-id-a" {
+							t.Fatalf("first action=%q", got)
+						}
+						if got := <-runtime.called; got != tc.action+":full-id-b" {
+							t.Fatalf("second action=%q", got)
+						}
+						return
+					}
+				case <-time.After(time.Second):
+					t.Fatal("batch did not complete")
+				}
+			}
+		})
+	}
+}
+
 func newContainerControl(runtime *controlRuntime, lookup controlLookup, coordinator *portyop.Coordinator) (*portycontrol.ControlPlane, *countingOperationStore) {
 	store := &countingOperationStore{}
 	control := portycontrol.NewControlPlane("/srv/repository", lookup, portystack.NewEnvironmentService(controlEnvironmentStore{}), nil, runtime, portyop.NewOperationService(store, nil, time.Second, 1024), nil, coordinator, nil, nil)

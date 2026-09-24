@@ -61,3 +61,20 @@ export function deploymentTone(freshness?: string): StatusTone {
       return "neutral";
   }
 }
+
+export function deploymentLabel(freshness?: string): string {
+  switch (freshness) {
+    case "current":
+      return "Current";
+    case "changes_pending":
+      return "Changes pending";
+    case "deploying":
+      return "Deploying";
+    case "never_deployed":
+      return "Never deployed";
+    case "unverifiable":
+      return "Unverifiable";
+    default:
+      return "Unverified";
+  }
+}

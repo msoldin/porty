@@ -73,7 +73,7 @@ it("shows the six Stacks columns, readable states, and recorded deployment time"
     screen.getByRole("link", { name: "alpha" }).closest("tr")!,
   );
   expect(await alpha.findByText("RUNNING")).toBeInTheDocument();
-  expect(alpha.getByText("current")).toBeInTheDocument();
+  expect(alpha.getByText("Current")).toBeInTheDocument();
   expect(alpha.getByText("Unknown")).toBeInTheDocument();
   expect(alpha.getByText(/2026/)).toBeInTheDocument();
   expect(alpha.getByText(/2026/).closest("time")).toHaveAttribute(

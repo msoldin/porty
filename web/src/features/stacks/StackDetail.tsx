@@ -13,6 +13,7 @@ import { ActionMenu } from "../../components/ActionMenu";
 import { Badge, Empty, Notice } from "../../components/Feedback";
 import { isModified, remoteState } from "./stackStatus";
 import {
+  deploymentLabel,
   deploymentTone,
   remoteTone,
   stackRuntimePresentation,
@@ -70,6 +71,10 @@ export function StackDetail({
       operation.scopeId === stack.id &&
       ["running", "queued"].includes(operation.status),
   );
+  const freshness =
+    active?.kind === "deploy" || active?.kind === "recreate"
+      ? "deploying"
+      : state?.freshness;
   useEffect(() => {
     if (tab === "History" || tab === "Overview")
       listDeployments(stack.id)
@@ -195,9 +200,8 @@ export function StackDetail({
             <small>Repository remote</small>
           </div>
           <div>
-            <Badge tone={deploymentTone(state?.freshness)}>
-              {state?.freshness?.replaceAll("_", " ") ||
-                (active ? `${active.kind}…` : "Unverified")}
+            <Badge tone={deploymentTone(freshness)}>
+              {deploymentLabel(freshness)}
             </Badge>
             <small>Deployment freshness</small>
           </div>

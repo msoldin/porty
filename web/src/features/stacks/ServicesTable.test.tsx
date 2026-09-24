@@ -95,6 +95,35 @@ it("sends only selected full IDs and prevents actions for mixed states", () => {
   expect(screen.getByRole("button", { name: "Stop selected" })).toBeDisabled();
 });
 
+it("starts a stopped selection and restarts two compatible replicas", () => {
+  const onBatchAction = vi.fn();
+  const view = render(
+    <ServicesTable
+      {...props}
+      containers={containers}
+      onBatchAction={onBatchAction}
+    />,
+  );
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select worker-1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Start selected" }));
+  expect(onBatchAction).toHaveBeenCalledWith(["full-id-c"], "start");
+  view.rerender(
+    <ServicesTable
+      {...props}
+      containers={containers}
+      onBatchAction={onBatchAction}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select web-1" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select web-2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Restart selected" }));
+  expect(onBatchAction).toHaveBeenCalledWith(
+    ["full-id-a", "full-id-b"],
+    "restart",
+  );
+});
+
 it("searches service metadata, clears selection on search, and prunes disappeared IDs", () => {
   const view = render(
     <ServicesTable

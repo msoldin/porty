@@ -9,6 +9,7 @@ import { Badge, Empty, Notice } from "../../components/Feedback";
 import { ActionMenu } from "../../components/ActionMenu";
 import { isModified, remoteState } from "./stackStatus";
 import {
+  deploymentLabel,
   deploymentTone,
   remoteTone,
   stackRuntimePresentation,
@@ -214,7 +215,7 @@ export function Dashboard({
             <input
               name="name"
               required
-              pattern="[a-z0-9][a-z0-9_-]*"
+              pattern="[a-z0-9](?:[a-z0-9_]|-)*"
               placeholder="my-stack"
               autoFocus
             />
@@ -424,7 +425,7 @@ function StackRow({
       </td>
       <td>
         <Badge tone={deploymentTone(freshness)}>
-          {freshness ? freshness.replaceAll("_", " ") : "Unverified"}
+          {deploymentLabel(freshness)}
         </Badge>
       </td>
       <td>
