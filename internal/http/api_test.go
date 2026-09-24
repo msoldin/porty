@@ -88,10 +88,24 @@ func TestEnvironmentWritePersistsExplicitSecretFlag(t *testing.T) {
 	}
 }
 
+func TestEnvironmentWriteRejectsSecretSettingChange(t *testing.T) {
+	environment := &fakeEnvironmentAPI{setErr: portystack.ErrEnvironmentSecretImmutable}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{Environment: environment})
+	request := httptest.NewRequest(stdhttp.MethodPut, "http://porty.local/api/v1/stacks/stk_gateway/environment/TOKEN", bytes.NewBufferString(`{"value":"replacement","secret":false}`))
+	request.Header.Set("Origin", "http://porty.local")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assertAPIError(t, response, stdhttp.StatusConflict, "EnvironmentSecretImmutable")
+}
+
 type fakeEnvironmentAPI struct {
 	values      map[string]string
 	secrets     map[string]bool
 	savedSecret *bool
+	setErr      error
 }
 
 func (f *fakeEnvironmentAPI) EnvironmentKeys(_ context.Context, id portystack.StackID) ([]string, error) {
@@ -115,7 +129,7 @@ func (f *fakeEnvironmentAPI) EnvironmentValue(_ context.Context, id portystack.S
 }
 func (f *fakeEnvironmentAPI) SetEnvironmentWithSecret(_ context.Context, _ portystack.StackID, _, _ string, secret bool) error {
 	f.savedSecret = &secret
-	return nil
+	return f.setErr
 }
 func (f *fakeEnvironmentAPI) SetEnvironment(context.Context, portystack.StackID, string, string) error {
 	return nil

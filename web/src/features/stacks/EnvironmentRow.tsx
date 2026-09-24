@@ -57,7 +57,7 @@ export function EnvironmentRow({
           setBusy(true);
           setError("");
           try {
-            await setEnvironmentValue(stackId, name, value, secret);
+            await setEnvironmentValue(stackId, name, value);
           } catch (error) {
             if (request === generation.current) setError(message(error));
           } finally {
@@ -99,19 +99,6 @@ export function EnvironmentRow({
             {revealed ? "Hide" : "Show"}
           </button>
         )}
-        <label class="confirmation environment-secret-choice">
-          <input
-            type="checkbox"
-            checked={secret}
-            disabled={loading || busy}
-            onChange={(event) => {
-              const next = event.currentTarget.checked;
-              setSecret(next);
-              if (next) setRevealed(false);
-            }}
-          />
-          Secret value for {name}
-        </label>
         <button disabled={loading || busy} aria-label={`Update ${name}`}>
           Update
         </button>

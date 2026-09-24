@@ -111,8 +111,9 @@ type EnvironmentValue struct {
 type EnvironmentService struct{ store EnvironmentRepository }
 
 var (
-	ErrInvalidEnvironment = errors.New("invalid environment value")
-	environmentKey        = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	ErrInvalidEnvironment         = errors.New("invalid environment value")
+	ErrEnvironmentSecretImmutable = errors.New("environment secret setting cannot be changed")
+	environmentKey                = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 func NewEnvironmentService(store EnvironmentRepository) *EnvironmentService {

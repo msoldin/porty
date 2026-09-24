@@ -43,10 +43,10 @@ func TestEnvironmentValueDistinguishesSavedEmptyAndMissing(t *testing.T) {
 	if _, err := environment.Value(ctx, created.ID, "BAD-KEY"); !errors.Is(err, portystack.ErrInvalidEnvironment) {
 		t.Fatalf("invalid key error = %v", err)
 	}
-	if err := environment.SetWithSecret(ctx, created.ID, "TOKEN", "new-secret", true); err != nil {
+	if err := environment.SetWithSecret(ctx, created.ID, "PRIVATE", "new-secret", true); err != nil {
 		t.Fatal(err)
 	}
-	got, err := environment.Value(ctx, created.ID, "TOKEN")
+	got, err := environment.Value(ctx, created.ID, "PRIVATE")
 	if err != nil || got.Value != "new-secret" || !got.Secret {
 		t.Fatalf("secret Value() = %#v, %v", got, err)
 	}

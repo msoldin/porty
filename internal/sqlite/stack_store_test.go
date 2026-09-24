@@ -72,12 +72,19 @@ func TestEnvironmentSecretFlagSurvivesValueUpdates(t *testing.T) {
 	if err != nil || secret.Value != "updated" || !secret.Secret {
 		t.Fatalf("secret = %#v, %v", secret, err)
 	}
-	if err := store.SetEnvironmentWithSecret(ctx, stack.ID, "TOKEN", "", false); err != nil {
-		t.Fatal(err)
+	if err := store.SetEnvironmentWithSecret(ctx, stack.ID, "TOKEN", "changed", false); !errors.Is(err, portystack.ErrEnvironmentSecretImmutable) {
+		t.Fatalf("changing secret flag error = %v", err)
 	}
-	cleared, err := store.EnvironmentValue(ctx, stack.ID, "TOKEN")
-	if err != nil || cleared.Value != "" || cleared.Secret {
-		t.Fatalf("cleared = %#v, %v", cleared, err)
+	unchanged, err := store.EnvironmentValue(ctx, stack.ID, "TOKEN")
+	if err != nil || unchanged.Value != "updated" || !unchanged.Secret {
+		t.Fatalf("unchanged = %#v, %v", unchanged, err)
+	}
+	if err := store.SetEnvironmentWithSecret(ctx, stack.ID, "PLAIN", "changed", true); !errors.Is(err, portystack.ErrEnvironmentSecretImmutable) {
+		t.Fatalf("changing plain flag error = %v", err)
+	}
+	plain, err = store.EnvironmentValue(ctx, stack.ID, "PLAIN")
+	if err != nil || plain.Value != "visible" || plain.Secret {
+		t.Fatalf("unchanged plain = %#v, %v", plain, err)
 	}
 	if _, err := store.EnvironmentValue(ctx, stack.ID, "MISSING"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("missing = %v", err)

@@ -35,8 +35,9 @@ export function StackSettings({
     <div class="settings-content">
       <h2>Environment</h2>
       <p class="muted">
-        Saved values can be edited in place. Mark a value as secret to mask it
-        by default.
+        Saved values can be edited in place. Choose Secret value when adding a
+        key to mask it by default. To change that choice, delete and recreate
+        the key.
       </p>
       {error && <Notice>{error}</Notice>}
       {keys.map((key) => (

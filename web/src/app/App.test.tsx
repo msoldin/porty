@@ -510,7 +510,6 @@ describe("Porty administration interface", () => {
     expect(writes[0].path).toBe("/stacks/s1/environment/DATABASE_PASSWORD");
     expect(JSON.parse(String(writes[0].init?.body))).toEqual({
       value: "replacement-secret",
-      secret: false,
     });
   });
   it("shows ordinary saved values without eye buttons", async () => {
@@ -543,6 +542,11 @@ describe("Porty administration interface", () => {
     await waitFor(() => expect(input).toHaveValue("saved-secret"));
     expect(input).toHaveAttribute("type", "password");
     expect(
+      screen.queryByRole("checkbox", {
+        name: "Secret value for DATABASE_PASSWORD",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.getAllByLabelText("Value for DATABASE_PASSWORD"),
     ).toHaveLength(1);
     const show = screen.getByRole("button", { name: "Show DATABASE_PASSWORD" });
@@ -556,31 +560,28 @@ describe("Porty administration interface", () => {
     expect(input).toHaveValue("saved-secret");
     expect(environmentReads).toHaveLength(1);
   });
-  it("can mark an existing value secret without adding another value field", async () => {
+  it("keeps the secret setting fixed when editing an existing value", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
     fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
     const input = await screen.findByLabelText("Value for DATABASE_PASSWORD");
     await waitFor(() => expect(input).toHaveValue("saved-secret"));
-    fireEvent.click(
-      screen.getByRole("checkbox", {
+    expect(
+      screen.queryByRole("checkbox", {
         name: "Secret value for DATABASE_PASSWORD",
       }),
-    );
-    expect(input).toHaveAttribute("type", "password");
+    ).not.toBeInTheDocument();
+    expect(input).toHaveAttribute("type", "text");
     expect(
       screen.getAllByLabelText("Value for DATABASE_PASSWORD"),
     ).toHaveLength(1);
-    expect(
-      screen.getByRole("button", { name: "Show DATABASE_PASSWORD" }),
-    ).toBeInTheDocument();
+    fireEvent.input(input, { target: { value: "changed" } });
     fireEvent.click(
       screen.getByRole("button", { name: "Update DATABASE_PASSWORD" }),
     );
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(JSON.parse(String(writes[0].init?.body))).toEqual({
-      value: "saved-secret",
-      secret: true,
+      value: "changed",
     });
   });
   it("marks a new environment value secret when added", async () => {

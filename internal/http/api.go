@@ -350,6 +350,8 @@ func writeAPIError(w stdhttp.ResponseWriter, r *stdhttp.Request, err error) {
 		WriteError(w, r, stdhttp.StatusNotFound, "NotFound", "Resource not found", nil)
 	case errors.Is(err, portyfs.ErrInvalidPath), errors.Is(err, portystack.ErrInvalidEnvironment):
 		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidRequest", "The request is invalid", nil)
+	case errors.Is(err, portystack.ErrEnvironmentSecretImmutable):
+		WriteError(w, r, stdhttp.StatusConflict, "EnvironmentSecretImmutable", "Delete and recreate the value to change its secret setting", nil)
 	case errors.Is(err, portyfs.ErrStaleFile):
 		WriteError(w, r, stdhttp.StatusPreconditionFailed, "StaleFile", "The file changed since it was opened", nil)
 	case errors.Is(err, portyfs.ErrTooLarge):

@@ -98,8 +98,18 @@ func (s *StackStore) SetEnvironment(ctx context.Context, id portystack.StackID, 
 }
 
 func (s *StackStore) SetEnvironmentWithSecret(ctx context.Context, id portystack.StackID, key, value string, secret bool) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO stack_environment(stack_id,key,value,secret,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(stack_id,key) DO UPDATE SET value=excluded.value, secret=excluded.secret, updated_at=excluded.updated_at`, id, key, []byte(value), secret, encodeTime(time.Now()))
-	return err
+	result, err := s.db.ExecContext(ctx, `INSERT INTO stack_environment(stack_id,key,value,secret,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(stack_id,key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at WHERE stack_environment.secret=excluded.secret`, id, key, []byte(value), secret, encodeTime(time.Now()))
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return portystack.ErrEnvironmentSecretImmutable
+	}
+	return nil
 }
 
 func (s *StackStore) EnvironmentValue(ctx context.Context, id portystack.StackID, key string) (portystack.EnvironmentValue, error) {
