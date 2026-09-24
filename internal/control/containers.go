@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,6 +19,7 @@ var (
 	ErrContainerStateConflict     = errors.New("container action conflicts with its state")
 	ErrContainerArchived          = errors.New("archived stack cannot run container actions")
 	ErrUnsupportedContainerAction = errors.New("unsupported container action")
+	ErrInvalidContainerSelection  = errors.New("invalid container selection")
 )
 
 type Container struct {
@@ -159,6 +161,93 @@ func (c *ControlPlane) StartContainerAction(ctx context.Context, id portystack.S
 	}, func(jobCtx context.Context) (string, error) {
 		defer release()
 		return "", c.runtime.ContainerAction(jobCtx, request, containerID, action)
+	})
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	handoff = true
+	return operation, nil
+}
+
+func (c *ControlPlane) StartContainerBatchAction(ctx context.Context, id portystack.StackID, containerIDs []string, action string) (portyop.Operation, error) {
+	if action != "start" && action != "stop" && action != "restart" {
+		return portyop.Operation{}, ErrUnsupportedContainerAction
+	}
+	if len(containerIDs) == 0 || len(containerIDs) > 20 {
+		return portyop.Operation{}, ErrInvalidContainerSelection
+	}
+	ids := append([]string(nil), containerIDs...)
+	seen := make(map[string]bool, len(ids))
+	for _, containerID := range ids {
+		if containerID == "" || len(containerID) > 128 || seen[containerID] {
+			return portyop.Operation{}, ErrInvalidContainerSelection
+		}
+		for _, ch := range containerID {
+			if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_') {
+				return portyop.Operation{}, ErrInvalidContainerSelection
+			}
+		}
+		seen[containerID] = true
+	}
+	release, err := c.coordinator.Try(false, string(id))
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	handoff := false
+	defer func() {
+		if !handoff {
+			release()
+		}
+	}()
+	stack, err := c.lookup.ByID(ctx, id)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	if stack.ArchivedAt != nil {
+		return portyop.Operation{}, ErrContainerArchived
+	}
+	values, err := c.environment.Values(ctx, id)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	rows, err := c.runtime.Status(ctx, request)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	owned := make(map[string]api.ContainerSummary, len(rows))
+	for _, row := range rows {
+		if row.Project == stack.ComposeProjectName {
+			owned[row.ID] = row
+		}
+	}
+	for _, containerID := range ids {
+		row, ok := owned[containerID]
+		if !ok {
+			return portyop.Operation{}, ErrContainerNotFound
+		}
+		if !containerActionAllowed(strings.ToLower(string(row.State)), action) {
+			return portyop.Operation{}, ErrContainerStateConflict
+		}
+	}
+	operation, err := c.operations.Start(ctx, portyop.OperationRequest{
+		Kind: "container_batch_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values),
+	}, func(jobCtx context.Context) (string, error) {
+		defer release()
+		var output strings.Builder
+		failed := false
+		for _, containerID := range ids {
+			if err := c.runtime.ContainerAction(jobCtx, request, containerID, action); err != nil {
+				failed = true
+				fmt.Fprintf(&output, "%s: failed\n", containerID)
+			} else {
+				fmt.Fprintf(&output, "%s: succeeded\n", containerID)
+			}
+		}
+		if failed {
+			return output.String(), errors.New("one or more container actions failed")
+		}
+		return output.String(), nil
 	})
 	if err != nil {
 		return portyop.Operation{}, err

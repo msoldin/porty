@@ -3,6 +3,8 @@ package control_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,6 +218,108 @@ func TestContainerActionTargetsOnlySelectedReplicaAndRespectsLock(t *testing.T) 
 	}
 }
 
+func TestContainerBatchRejectsInvalidSelectionBeforeMutation(t *testing.T) {
+	rows := []api.ContainerSummary{
+		{ID: "full-id-a", Project: "porty-gateway", Service: "web", Name: "web-1", State: "running"},
+		{ID: "full-id-b", Project: "porty-gateway", Service: "web", Name: "web-2", State: "exited"},
+		{ID: "foreign-id", Project: "other", Service: "web", State: "running"},
+	}
+	many := make([]string, 21)
+	for i := range many {
+		many[i] = fmt.Sprintf("full-id-%d", i)
+	}
+	for _, tc := range []struct {
+		name     string
+		ids      []string
+		action   string
+		archived bool
+		want     error
+	}{
+		{"empty", nil, "stop", false, portycontrol.ErrInvalidContainerSelection},
+		{"duplicate", []string{"full-id-a", "full-id-a"}, "stop", false, portycontrol.ErrInvalidContainerSelection},
+		{"too many", many, "stop", false, portycontrol.ErrInvalidContainerSelection},
+		{"blank", []string{""}, "stop", false, portycontrol.ErrInvalidContainerSelection},
+		{"unsupported", []string{"full-id-a"}, "pull", false, portycontrol.ErrUnsupportedContainerAction},
+		{"foreign", []string{"full-id-a", "foreign-id"}, "stop", false, portycontrol.ErrContainerNotFound},
+		{"missing", []string{"full-id-a", "missing"}, "stop", false, portycontrol.ErrContainerNotFound},
+		{"mixed state", []string{"full-id-a", "full-id-b"}, "stop", false, portycontrol.ErrContainerStateConflict},
+		{"archived", []string{"full-id-a"}, "stop", true, portycontrol.ErrContainerArchived},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := &controlRuntime{status: rows, called: make(chan string, 2)}
+			lookup := controlLookup{}
+			if tc.archived {
+				now := time.Now()
+				lookup.archivedAt = &now
+			}
+			control, store := newContainerControl(runtime, lookup, portyop.NewCoordinator())
+			_, err := control.StartContainerBatchAction(context.Background(), "stk_gateway", tc.ids, tc.action)
+			if !errors.Is(err, tc.want) || store.created != 0 || len(runtime.called) != 0 {
+				t.Fatalf("err=%v created=%d SDK calls=%d", err, store.created, len(runtime.called))
+			}
+		})
+	}
+}
+
+func TestContainerBatchTargetsSelectedReplicasAndReportsPartialFailureSafely(t *testing.T) {
+	runtime := &controlRuntime{
+		status: []api.ContainerSummary{
+			{ID: "full-id-a", Project: "porty-gateway", Service: "web", Name: "web-1", State: "running"},
+			{ID: "full-id-b", Project: "porty-gateway", Service: "web", Name: "web-2", State: "running"},
+			{ID: "full-id-c", Project: "porty-gateway", Service: "web", Name: "web-3", State: "running"},
+		},
+		called:       make(chan string, 3),
+		actionErrors: map[string]error{"full-id-b": errors.New("secret " + strings.Repeat("x", 256<<10))},
+	}
+	coordinator := portyop.NewCoordinator()
+	control, store := newContainerControl(runtime, controlLookup{}, coordinator)
+	store.updated = make(chan portyop.Operation, 4)
+	release, err := coordinator.Try(false, "stk_gateway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := control.StartContainerBatchAction(context.Background(), "stk_gateway", []string{"full-id-a"}, "stop"); !errors.Is(err, portyop.ErrOperationConflict) {
+		t.Fatalf("conflicting action = %v", err)
+	}
+	release()
+	accepted, err := control.StartContainerBatchAction(context.Background(), "stk_gateway", []string{"full-id-a", "full-id-b"}, "stop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Kind != "container_batch_stop" || store.created != 1 {
+		t.Fatalf("accepted=%#v created=%d", accepted, store.created)
+	}
+	var completed portyop.Operation
+	for {
+		select {
+		case updated := <-store.updated:
+			if updated.Status == portyop.OperationFailed {
+				completed = updated
+				goto finished
+			}
+		case <-time.After(time.Second):
+			t.Fatal("batch did not complete")
+		}
+	}
+finished:
+	if got := <-runtime.called; got != "stop:full-id-a" {
+		t.Fatalf("first SDK action = %q", got)
+	}
+	if got := <-runtime.called; got != "stop:full-id-b" {
+		t.Fatalf("second SDK action = %q", got)
+	}
+	if len(runtime.called) != 0 {
+		t.Fatalf("unexpected SDK actions = %d", len(runtime.called))
+	}
+	if !strings.Contains(completed.Output, "full-id-a: succeeded") || !strings.Contains(completed.Output, "full-id-b: failed") ||
+		strings.Contains(completed.Output, "secret") || strings.Contains(completed.Output, strings.Repeat("x", 100)) || len(completed.Output) > 1024 {
+		t.Fatalf("unsafe batch output = %q", completed.Output)
+	}
+	if _, err := control.StartContainerBatchAction(context.Background(), "stk_gateway", []string{"full-id-c"}, "stop"); err != nil {
+		t.Fatalf("lock remained held: %v", err)
+	}
+}
+
 func newContainerControl(runtime *controlRuntime, lookup controlLookup, coordinator *portyop.Coordinator) (*portycontrol.ControlPlane, *countingOperationStore) {
 	store := &countingOperationStore{}
 	control := portycontrol.NewControlPlane("/srv/repository", lookup, portystack.NewEnvironmentService(controlEnvironmentStore{}), nil, runtime, portyop.NewOperationService(store, nil, time.Second, 1024), nil, coordinator, nil, nil)
@@ -273,9 +377,10 @@ func (controlGit) PullFastForward(context.Context) error                       {
 func (controlGit) Push(context.Context) error                                  { return nil }
 
 type controlRuntime struct {
-	deployErr error
-	status    []api.ContainerSummary
-	called    chan string
+	deployErr    error
+	status       []api.ContainerSummary
+	called       chan string
+	actionErrors map[string]error
 }
 
 func (*controlRuntime) Validate(context.Context, portycompose.Request) error { return nil }
@@ -289,7 +394,7 @@ func (r *controlRuntime) ContainerAction(_ context.Context, _ portycompose.Reque
 	if r.called != nil {
 		r.called <- action + ":" + id
 	}
-	return nil
+	return r.actionErrors[id]
 }
 func (*controlRuntime) Start(context.Context, portycompose.Request) error   { return nil }
 func (*controlRuntime) Stop(context.Context, portycompose.Request) error    { return nil }

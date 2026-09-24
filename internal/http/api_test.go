@@ -232,7 +232,7 @@ func TestLongRunningActionReturnsAcceptedOperationResource(t *testing.T) {
 	}
 }
 
-func TestContainerListRequiresSessionAndReturnsMinimalRows(t *testing.T) {
+func TestContainerListRequiresSessionAndReturnsMetadataRows(t *testing.T) {
 	containers := &fakeContainerAPI{items: []portycontrol.Container{
 		{ID: "id-a", Name: "app-1", Service: "app", State: "running", Health: "healthy"},
 		{ID: "id-b", Name: "app-2", Service: "app", State: "exited"},
@@ -255,7 +255,7 @@ func TestContainerListRequiresSessionAndReturnsMinimalRows(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &rows); err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 || len(rows[0]) != 5 || rows[0]["id"] != "id-a" || rows[1]["state"] != "exited" {
+	if len(rows) != 2 || len(rows[0]) != 8 || rows[0]["id"] != "id-a" || rows[1]["state"] != "exited" {
 		t.Fatalf("container list = %#v", rows)
 	}
 }
@@ -332,6 +332,7 @@ func TestContainerActionErrorsUseSafeHTTPStatuses(t *testing.T) {
 type fakeContainerAPI struct {
 	items                  []portycontrol.Container
 	calledID, calledAction string
+	batchIDs               []string
 	err                    error
 }
 
@@ -342,6 +343,86 @@ func (f *fakeContainerAPI) Containers(context.Context, portystack.StackID) ([]po
 func (f *fakeContainerAPI) StartContainerAction(_ context.Context, _ portystack.StackID, id, action string) (portyop.Operation, error) {
 	f.calledID, f.calledAction = id, action
 	return portyop.Operation{ID: "op_container", Kind: "container_" + action}, f.err
+}
+
+func (f *fakeContainerAPI) StartContainerBatchAction(_ context.Context, _ portystack.StackID, ids []string, action string) (portyop.Operation, error) {
+	f.batchIDs, f.calledAction = ids, action
+	return portyop.Operation{ID: "op_batch", Kind: "container_batch_" + action}, f.err
+}
+
+func TestContainerBatchRouteRequiresSessionOriginAndCSRF(t *testing.T) {
+	containers := &fakeContainerAPI{}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{Containers: containers})
+	path := "http://porty.local/api/v1/stacks/stk_gateway/containers/actions/stop"
+	for _, tc := range []struct {
+		name, origin  string
+		session, csrf bool
+		want          int
+	}{
+		{"no session", "http://porty.local", false, true, stdhttp.StatusUnauthorized},
+		{"wrong origin", "http://evil.local", true, true, stdhttp.StatusForbidden},
+		{"no csrf", "http://porty.local", true, false, stdhttp.StatusForbidden},
+		{"valid", "http://porty.local", true, true, stdhttp.StatusAccepted},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			containers.batchIDs = nil
+			request := httptest.NewRequest(stdhttp.MethodPost, path, bytes.NewBufferString(`{"containerIds":["full-id-b"]}`))
+			request.Header.Set("Origin", tc.origin)
+			if tc.session {
+				request.AddCookie(session)
+			}
+			if tc.csrf {
+				request.Header.Set("X-CSRF-Token", csrf)
+				request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != tc.want {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if tc.want == stdhttp.StatusAccepted {
+				if len(containers.batchIDs) != 1 || containers.batchIDs[0] != "full-id-b" || containers.calledAction != "stop" ||
+					!bytes.Contains(response.Body.Bytes(), []byte(`"id":"op_batch"`)) {
+					t.Fatalf("dispatch=%#v %s response=%s", containers.batchIDs, containers.calledAction, response.Body.String())
+				}
+			} else if containers.batchIDs != nil {
+				t.Fatalf("unauthorized batch reached control: %#v", containers.batchIDs)
+			}
+		})
+	}
+}
+
+func TestContainerBatchRouteValidatesBodyAndMapsErrors(t *testing.T) {
+	containers := &fakeContainerAPI{}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{Containers: containers})
+	for _, tc := range []struct {
+		name, body string
+		err        error
+		status     int
+		code       string
+	}{
+		{"malformed", "{", nil, stdhttp.StatusBadRequest, "InvalidRequest"},
+		{"selection", `{"containerIds":[]}`, portycontrol.ErrInvalidContainerSelection, stdhttp.StatusBadRequest, "InvalidContainerSelection"},
+		{"foreign", `{"containerIds":["foreign"]}`, portycontrol.ErrContainerNotFound, stdhttp.StatusNotFound, "ContainerNotFound"},
+		{"state", `{"containerIds":["full-id-b"]}`, portycontrol.ErrContainerStateConflict, stdhttp.StatusConflict, "ContainerStateConflict"},
+		{"conflict", `{"containerIds":["full-id-b"]}`, portyop.ErrOperationConflict, stdhttp.StatusConflict, "OperationConflict"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			containers.err = tc.err
+			containers.batchIDs = nil
+			request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/stacks/stk_gateway/containers/actions/stop", bytes.NewBufferString(tc.body))
+			request.Header.Set("Origin", "http://porty.local")
+			request.Header.Set("X-CSRF-Token", csrf)
+			request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
+			request.AddCookie(session)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			assertAPIError(t, response, tc.status, tc.code)
+			if tc.name == "malformed" && containers.batchIDs != nil {
+				t.Fatal("malformed body reached control")
+			}
+		})
+	}
 }
 
 func TestRepositorySetupAuditStateAndPaginationContracts(t *testing.T) {

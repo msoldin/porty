@@ -18,4 +18,14 @@ func registerContainerRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 		operation, err := options.Containers.StartContainerAction(r.Context(), portystack.StackID(r.PathValue("id")), r.PathValue("containerId"), r.PathValue("action"))
 		writeResult(w, r, operation, err, stdhttp.StatusAccepted)
 	}))
+	mux.HandleFunc("POST /api/v1/stacks/{id}/containers/actions/{action}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		var input struct {
+			ContainerIDs []string `json:"containerIds"`
+		}
+		if decodeBody(w, r, &input) != nil {
+			return
+		}
+		operation, err := options.Containers.StartContainerBatchAction(r.Context(), portystack.StackID(r.PathValue("id")), input.ContainerIDs, r.PathValue("action"))
+		writeResult(w, r, operation, err, stdhttp.StatusAccepted)
+	}))
 }

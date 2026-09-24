@@ -48,6 +48,16 @@ export function runContainerAction(
   );
 }
 
+export function runContainerBatchAction(
+  id: string,
+  containerIds: string[],
+  action: ContainerAction,
+): Promise<Operation> {
+  return api(`${stackPath(id)}/containers/actions/${action}`, "POST", {
+    containerIds,
+  });
+}
+
 export function createStack(name: FormDataEntryValue | null): Promise<Stack> {
   return api("/stacks", "POST", { name });
 }

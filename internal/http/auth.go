@@ -124,6 +124,7 @@ type StackStateAPI interface {
 type ContainerAPI interface {
 	Containers(context.Context, portystack.StackID) ([]portycontrol.Container, error)
 	StartContainerAction(context.Context, portystack.StackID, string, string) (portyop.Operation, error)
+	StartContainerBatchAction(context.Context, portystack.StackID, []string, string) (portyop.Operation, error)
 }
 
 type SetupStatusResponse struct {
