@@ -1,6 +1,8 @@
 import { api } from "../../lib/http";
 import type { Operation } from "../operations/types";
 import type {
+  Container,
+  ContainerAction,
   Deployment,
   FileContent,
   FileEntry,
@@ -29,6 +31,21 @@ export async function listStacksWithState(): Promise<Stack[]> {
 
 export function getStackState(id: string): Promise<StackState> {
   return api<StackState>(`${stackPath(id)}/state`);
+}
+
+export async function listStackContainers(id: string): Promise<Container[]> {
+  return (await api<Container[] | null>(`${stackPath(id)}/containers`)) || [];
+}
+
+export function runContainerAction(
+  id: string,
+  containerId: string,
+  action: ContainerAction,
+): Promise<Operation> {
+  return api(
+    `${stackPath(id)}/containers/${encodeURIComponent(containerId)}/actions/${action}`,
+    "POST",
+  );
 }
 
 export function createStack(name: FormDataEntryValue | null): Promise<Stack> {

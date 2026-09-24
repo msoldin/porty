@@ -14,6 +14,16 @@ export type StackState = {
   hasDeployed: boolean;
 };
 
+export type Container = {
+  id: string;
+  name: string;
+  service: string;
+  state: string;
+  health: string;
+};
+
+export type ContainerAction = "start" | "stop" | "restart";
+
 export type FileEntry = {
   path: string;
   isDirectory: boolean;
