@@ -374,10 +374,13 @@ describe("Porty administration interface", () => {
     render(<App />);
     const link = await screen.findByRole("link", { name: "paperless" });
     const row = within(link.closest("tr")!);
-    expect(row.getByText("Modified")).toBeInTheDocument();
     expect(row.getByText("Ahead 1")).toBeInTheDocument();
-    expect(row.getByText("Unknown")).toBeInTheDocument();
-    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+    expect(row.getByText("UNKNOWN")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter stacks" }), {
+      target: { value: "modified" },
+    });
+    expect(screen.getByRole("link", { name: "paperless" })).toBeInTheDocument();
+    expect(screen.queryByText("RUNNING")).not.toBeInTheDocument();
   });
   it("navigates from the dashboard to a stack and back", async () => {
     render(<App />);

@@ -31,6 +31,8 @@ type RuntimeController interface {
 	Logs(context.Context, portycompose.Request, int) (string, error)
 }
 
+var ErrStackRuntimeActionUnavailable = errors.New("stack runtime action is unavailable")
+
 type ControlPlane struct {
 	root        string
 	lookup      portystack.StackLookup
@@ -215,6 +217,32 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 		release, err := c.coordinator.Try(false, string(id))
 		if err != nil {
 			return portyop.Operation{}, err
+		}
+		if action == "stop" || action == "restart" {
+			if stack.ArchivedAt != nil || c.stateStore == nil {
+				release()
+				return portyop.Operation{}, ErrStackRuntimeActionUnavailable
+			}
+			rows, statusErr := c.runtime.Status(ctx, request)
+			if statusErr != nil {
+				release()
+				return portyop.Operation{}, statusErr
+			}
+			owned := make([]api.ContainerSummary, 0, len(rows))
+			for _, row := range rows {
+				if row.Project == stack.ComposeProjectName {
+					owned = append(owned, row)
+				}
+			}
+			hasDeployed, deploymentErr := c.stateStore.HasSuccessfulDeployment(ctx, id)
+			if deploymentErr != nil {
+				release()
+				return portyop.Operation{}, deploymentErr
+			}
+			if !hasDeployed || AggregateRuntime(parseContainerStates(owned)) != RuntimeRunning {
+				release()
+				return portyop.Operation{}, ErrStackRuntimeActionUnavailable
+			}
 		}
 		operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), DiscardOutput: action == "logs"}, func(jobCtx context.Context) (string, error) {
 			defer release()

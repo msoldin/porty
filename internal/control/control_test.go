@@ -95,6 +95,39 @@ func TestStackStateReportsPriorSuccessfulDeploymentAfterLatestFailure(t *testing
 	}
 }
 
+func TestStackRuntimeActionRejectsStaleOrNeverDeployedState(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		rows        []api.ContainerSummary
+		hasDeployed bool
+		allowed     bool
+	}{
+		{"stopped", []api.ContainerSummary{{Project: "porty-gateway", State: "exited"}}, true, false},
+		{"unhealthy", []api.ContainerSummary{{Project: "porty-gateway", State: "running", Health: "unhealthy"}}, true, false},
+		{"never deployed", []api.ContainerSummary{{Project: "porty-gateway", State: "running"}}, false, false},
+		{"running and deployed", []api.ContainerSummary{{Project: "porty-gateway", State: "running"}}, true, true},
+	} {
+		for _, action := range []string{"stop", "restart"} {
+			t.Run(tc.name+"/"+action, func(t *testing.T) {
+				operations := &countingOperationStore{}
+				runtime := &controlRuntime{status: tc.rows}
+				control := portycontrol.NewControlPlane("/srv/repository", controlLookup{},
+					portystack.NewEnvironmentService(controlEnvironmentStore{}), nil, runtime,
+					portyop.NewOperationService(operations, nil, time.Second, 1024), nil,
+					portyop.NewCoordinator(), deploymentStateStore{hasSuccessful: tc.hasDeployed}, nil)
+				_, err := control.StartAction(context.Background(), "stk_gateway", action)
+				if tc.allowed {
+					if err != nil || operations.created != 1 {
+						t.Fatalf("allowed action err=%v created=%d", err, operations.created)
+					}
+				} else if !errors.Is(err, portycontrol.ErrStackRuntimeActionUnavailable) || operations.created != 0 {
+					t.Fatalf("rejected action err=%v created=%d", err, operations.created)
+				}
+			})
+		}
+	}
+}
+
 func TestContainersIncludeStoppedAndSeparateReplicas(t *testing.T) {
 	runtime := &controlRuntime{status: []api.ContainerSummary{
 		{ID: "id-b", Name: "app-2", Project: "porty-gateway", Service: "app", State: "exited"},

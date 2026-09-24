@@ -378,6 +378,8 @@ func writeAPIError(w stdhttp.ResponseWriter, r *stdhttp.Request, err error) {
 		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidContainerAction", "Container action is invalid", nil)
 	case errors.Is(err, portycontrol.ErrInvalidContainerSelection):
 		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidContainerSelection", "Select between one and twenty unique containers", nil)
+	case errors.Is(err, portycontrol.ErrStackRuntimeActionUnavailable):
+		WriteError(w, r, stdhttp.StatusConflict, "StackRuntimeActionUnavailable", "Stack action is unavailable for its current state", nil)
 	case errors.Is(err, portycontrol.ErrContainerStateConflict), errors.Is(err, portycontrol.ErrContainerArchived):
 		WriteError(w, r, stdhttp.StatusConflict, "ContainerStateConflict", "Container action is unavailable", nil)
 	case errors.Is(err, sql.ErrNoRows):

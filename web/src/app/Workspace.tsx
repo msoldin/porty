@@ -42,6 +42,7 @@ export function Workspace({
     refresh,
     stream,
     addOperation,
+    addOperations,
   } = useWorkspaceData(logout);
   const [selectedOperation, setSelectedOperation] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -147,6 +148,7 @@ export function Workspace({
             operations={operations}
             navigate={navigate}
             refresh={refresh}
+            onOperationsAccepted={addOperations}
           />
         ) : route === "/repository" ? (
           <RepositoryHistory repo={configuredRepo} commits={commits} />

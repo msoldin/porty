@@ -64,11 +64,18 @@ export function useWorkspaceData(logout: () => void) {
       refresh();
   }, refresh);
 
+  function addOperations(accepted: Operation[]): void {
+    const ids = new Set(accepted.map((operation) => operation.id));
+    setOperations((values) =>
+      [...accepted, ...values.filter((value) => !ids.has(value.id))].slice(
+        0,
+        50,
+      ),
+    );
+  }
+
   function addOperation(operation: Operation): void {
-    setOperations((values) => [
-      operation,
-      ...values.filter((value) => value.id !== operation.id),
-    ]);
+    addOperations([operation]);
   }
 
   return {
@@ -83,5 +90,6 @@ export function useWorkspaceData(logout: () => void) {
     refresh,
     stream,
     addOperation,
+    addOperations,
   };
 }

@@ -454,6 +454,11 @@ pre {
 }
 .table-scroll {
   overflow: auto;
+  max-width: 100%;
+}
+.table-scroll:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 table {
   width: 100%;
@@ -478,7 +483,67 @@ td > a {
 }
 .stack-table th:first-child,
 .stack-table td:first-child {
-  padding-left: 18px;
+  padding-left: 14px;
+}
+.stack-table {
+  min-width: 850px;
+}
+.stack-table td {
+  height: 67px;
+}
+.select-column {
+  width: 48px;
+}
+.select-column input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+.stack-name-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 245px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.stack-name-link svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.stack-table .selected-row td {
+  background: light-dark(#eff5ff, #243757);
+}
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 9px 14px;
+  border: 1px solid light-dark(#c9dcff, #4268a1);
+  border-radius: 5px;
+  background: light-dark(#f2f7ff, #213554);
+  font-size: 13px;
+}
+.selection-feedback {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+.deployment-time {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.deployment-time small {
+  color: var(--muted);
 }
 .stack-table tr:hover td {
   background: light-dark(#f5f8ff, #22324e);

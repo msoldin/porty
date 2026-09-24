@@ -232,6 +232,19 @@ func TestLongRunningActionReturnsAcceptedOperationResource(t *testing.T) {
 	}
 }
 
+func TestStackRuntimeActionConflictUsesSafeHTTPStatus(t *testing.T) {
+	actions := &fakeActionAPI{err: portycontrol.ErrStackRuntimeActionUnavailable}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{Actions: actions})
+	request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/stacks/stk_gateway/actions/stop", nil)
+	request.Header.Set("Origin", "http://porty.local")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assertAPIError(t, response, stdhttp.StatusConflict, "StackRuntimeActionUnavailable")
+}
+
 func TestContainerListRequiresSessionAndReturnsMetadataRows(t *testing.T) {
 	containers := &fakeContainerAPI{items: []portycontrol.Container{
 		{ID: "id-a", Name: "app-1", Service: "app", State: "running", Health: "healthy"},
@@ -556,10 +569,10 @@ type fakeFileAPI struct {
 	expectedHash string
 }
 
-type fakeActionAPI struct{}
+type fakeActionAPI struct{ err error }
 
-func (*fakeActionAPI) StartAction(context.Context, portystack.StackID, string) (portyop.Operation, error) {
-	return portyop.Operation{ID: "op_1", Status: portyop.OperationQueued}, nil
+func (f *fakeActionAPI) StartAction(context.Context, portystack.StackID, string) (portyop.Operation, error) {
+	return portyop.Operation{ID: "op_1", Status: portyop.OperationQueued}, f.err
 }
 
 type fakeRepositorySetup struct {
