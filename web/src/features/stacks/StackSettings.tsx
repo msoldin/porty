@@ -34,8 +34,8 @@ export function StackSettings({
     <div class="settings-content">
       <h2>Environment</h2>
       <p class="muted">
-        Saved Stack values are hidden until you select Show. Enter a replacement
-        below to update one.
+        Saved Stack values are shown when Settings opens. Use the eye button to
+        hide or show a value. Enter a replacement below to update one.
       </p>
       {error && <Notice>{error}</Notice>}
       {keys.map((key) => (

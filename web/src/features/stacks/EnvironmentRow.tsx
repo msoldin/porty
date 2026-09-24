@@ -29,13 +29,14 @@ export function EnvironmentRow({
   };
   useLayoutEffect(() => {
     conceal();
-    setError("");
+    void show();
     return () => {
       generation.current++;
     };
   }, [name, stackId]);
   const show = async () => {
     const request = ++generation.current;
+    setRevealed(null);
     setError("");
     setLoading(true);
     try {
@@ -68,6 +69,19 @@ export function EnvironmentRow({
             else void show();
           }}
         >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+            <circle cx="12" cy="12" r="3" />
+            {(revealed !== null || loading) && <path d="m4 20 16-16" />}
+          </svg>{" "}
           {revealed !== null || loading ? "Hide" : "Show"}
         </button>
         {loading && <span class="muted">Loading…</span>}
