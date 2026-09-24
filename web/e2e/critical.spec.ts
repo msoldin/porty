@@ -110,6 +110,16 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
           service: "web",
           state: "running",
           health: "healthy",
+          image: "ghcr.io/example/web:1.4",
+          networks: ["front", "back"],
+          ports: [
+            {
+              host: "127.0.0.1",
+              publishedPort: 8080,
+              targetPort: 80,
+              protocol: "tcp",
+            },
+          ],
         },
         {
           id: "full-id-b",
@@ -117,6 +127,16 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
           service: "web",
           state: "running",
           health: "healthy",
+          image: "ghcr.io/example/web:1.4",
+          networks: ["front"],
+          ports: [
+            {
+              host: "::1",
+              publishedPort: 8443,
+              targetPort: 443,
+              protocol: "tcp",
+            },
+          ],
         },
         {
           id: "full-id-c",
@@ -124,16 +144,19 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
           service: "worker",
           state: "exited",
           health: "",
+          image: "worker:2.0",
+          networks: [],
+          ports: [],
         },
       ],
     }),
   );
-  await page.route("**/api/v1/stacks/*/containers/*/actions/stop", (route) =>
+  await page.route("**/api/v1/stacks/*/containers/actions/stop", (route) =>
     route.fulfill({
       status: 202,
       json: {
         id: "opr_e2e_container",
-        kind: "container_stop",
+        kind: "container_batch_stop",
         scopeType: "stack",
         scopeId: "paperless",
         status: "queued",
@@ -166,16 +189,20 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   });
   page.on("pageerror", (error) => browserProblems.push(error.message));
   await expect(page.getByRole("heading", { name: "paperless" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Stop web-2" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Start worker-1" }),
+    page.getByRole("checkbox", { name: "Select web-2" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Stop", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Restart", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
+  await expect(page.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
+  await page.getByRole("menu").press("Escape");
   for (const label of [
     "Refresh status",
     "Start stack",
@@ -184,14 +211,18 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   ])
     await expect(page.getByRole("button", { name: label })).toHaveCount(0);
   await page.screenshot({
-    path: testInfo.outputPath("stack-containers.png"),
+    path: testInfo.outputPath("stack-services.png"),
     fullPage: true,
   });
   const containerRequest = page.waitForRequest(
-    "**/api/v1/stacks/*/containers/full-id-b/actions/stop",
+    "**/api/v1/stacks/*/containers/actions/stop",
   );
-  await page.getByRole("button", { name: "Stop web-2" }).click();
-  await containerRequest;
+  await page.getByRole("checkbox", { name: "Select web-2" }).check();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Stop selected" }).click();
+  expect((await containerRequest).postDataJSON()).toEqual({
+    containerIds: ["full-id-b"],
+  });
   await expect(page.getByLabel("Operation details")).toBeVisible();
   await page.getByRole("button", { name: "Close operation" }).click();
   await page.route("**/api/v1/stacks/*/actions/logs", (route) =>

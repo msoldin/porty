@@ -1,18 +1,28 @@
 import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
-import { listDeployments, runContainerAction, runStackAction } from "./api";
+import {
+  listDeployments,
+  runContainerBatchAction,
+  runStackAction,
+} from "./api";
 import { type Stack, type Deployment, type ContainerAction } from "./types";
 import { type Repository } from "../repository/types";
 import { type Operation } from "../operations/types";
 import { Icon } from "../../components/Icon";
+import { ActionMenu } from "../../components/ActionMenu";
 import { Badge, Empty, Notice } from "../../components/Feedback";
 import { isModified, remoteState } from "./stackStatus";
+import {
+  deploymentTone,
+  remoteTone,
+  stackRuntimePresentation,
+} from "./statusPresentation";
 import { Editor } from "./Editor";
 import { StackSettings } from "./StackSettings";
 import { useStackLogs } from "./useStackLogs";
 import { useStackState } from "./useStackState";
 import { useStackContainers } from "./useStackContainers";
-import { ContainerList } from "./ContainerList";
+import { ServicesTable } from "./ServicesTable";
 
 export function StackDetail({
   stack,
@@ -90,7 +100,10 @@ export function StackDetail({
       setBusy(false);
     }
   }
-  async function containerAction(containerId: string, kind: ContainerAction) {
+  async function containerAction(
+    containerIds: string[],
+    kind: ContainerAction,
+  ) {
     if (busy || active || stack.archivedAt) return;
     if (dirty) {
       setError(
@@ -101,7 +114,7 @@ export function StackDetail({
     setBusy(true);
     setError("");
     try {
-      onAction(await runContainerAction(stack.id, containerId, kind));
+      onAction(await runContainerBatchAction(stack.id, containerIds, kind));
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -125,44 +138,46 @@ export function StackDetail({
         <div class="page-heading">
           <h1>{stack.directoryName}</h1>
           <div class="action-group">
-            {[
-              ...(showRuntimeActions ? ["stop", "restart"] : []),
-              "validate",
-              "deploy",
-            ].map((kind) => (
-              <button
-                disabled={busy || !!active || !!stack.archivedAt}
-                class={
-                  kind === "deploy"
-                    ? "primary"
-                    : kind === "stop"
-                      ? "danger"
-                      : "accent"
-                }
-                onClick={() => action(kind)}
-              >
-                <Icon
-                  name={
-                    kind === "stop"
-                      ? "Stop"
-                      : kind === "restart"
-                        ? "Refresh"
-                        : kind === "validate"
-                          ? "Check"
-                          : "Play"
-                  }
-                />
-                {kind[0].toUpperCase() + kind.slice(1)}
-              </button>
-            ))}
+            <button
+              class="accent"
+              disabled={busy || !!active || !!stack.archivedAt || dirty}
+              onClick={() => action("validate")}
+            >
+              <Icon name="Check" />
+              Validate
+            </button>
+            <ActionMenu
+              label="Actions"
+              disabled={busy || !!active || !!stack.archivedAt}
+              items={[
+                {
+                  id: "deploy",
+                  label: "Deploy",
+                  disabled: dirty,
+                  reason: "Save or discard editor changes",
+                },
+                {
+                  id: "restart",
+                  label: "Restart",
+                  disabled: dirty || !showRuntimeActions,
+                  reason: "Requires a running, previously deployed stack",
+                },
+                {
+                  id: "stop",
+                  label: "Stop",
+                  disabled: dirty || !showRuntimeActions,
+                  reason: "Requires a running, previously deployed stack",
+                },
+              ]}
+              onSelect={(kind) => void action(kind)}
+            />
           </div>
         </div>
         <div class="state-strip">
           <div>
-            <span class="runtime">
-              <i />
-              {state?.runtime || "Unknown"}
-            </span>
+            <Badge tone={stackRuntimePresentation(state?.runtime).tone} dot>
+              {stackRuntimePresentation(state?.runtime).label}
+            </Badge>
             <small>Docker state updates automatically</small>
           </div>
           <div>
@@ -176,11 +191,11 @@ export function StackDetail({
             <small>Working tree</small>
           </div>
           <div>
-            <Badge tone="blue">{remoteState(repo)}</Badge>
+            <Badge tone={remoteTone(repo)}>{remoteState(repo)}</Badge>
             <small>Repository remote</small>
           </div>
           <div>
-            <Badge>
+            <Badge tone={deploymentTone(state?.freshness)}>
               {state?.freshness?.replaceAll("_", " ") ||
                 (active ? `${active.kind}…` : "Unverified")}
             </Badge>
@@ -218,14 +233,13 @@ export function StackDetail({
       )}
       {tab === "Overview" && (
         <div class="detail-content">
-          <h2>Runtime</h2>
-          <p class="muted">Docker container state updates automatically.</p>
-          <ContainerList
+          <ServicesTable
             containers={containerState.containers}
             error={containerState.error}
             busy={busy || !!active}
             archived={!!stack.archivedAt}
-            onAction={containerAction}
+            dirty={dirty}
+            onBatchAction={containerAction}
           />
           <h2>Last deployment</h2>
           {deployments.length ? (

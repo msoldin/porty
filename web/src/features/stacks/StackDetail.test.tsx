@@ -7,7 +7,12 @@ import {
 } from "@testing-library/preact";
 import { afterEach, expect, it, vi } from "vitest";
 import { StackDetail } from "./StackDetail";
-import { getStackState, listStackContainers, runContainerAction } from "./api";
+import {
+  getStackState,
+  listStackContainers,
+  runContainerBatchAction,
+  runStackAction,
+} from "./api";
 import { useStackLogs } from "./useStackLogs";
 import type { Stack } from "./types";
 import type { Operation } from "../operations/types";
@@ -18,7 +23,7 @@ vi.mock("./api", () => ({
   listStackContainers: vi.fn(),
   listDeployments: vi.fn().mockResolvedValue([]),
   runStackAction: vi.fn(),
-  runContainerAction: vi.fn(),
+  runContainerBatchAction: vi.fn(),
 }));
 
 const stack: Stack = {
@@ -56,7 +61,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("lists each container in Overview while keeping whole-stack header actions", async () => {
+it("keeps whole-stack Actions separate from selected Services actions", async () => {
   vi.mocked(getStackState).mockResolvedValue({
     runtime: "running",
     freshness: "current",
@@ -84,9 +89,9 @@ it("lists each container in Overview while keeping whole-stack header actions", 
       ports: [],
     },
   ]);
-  vi.mocked(runContainerAction).mockResolvedValue({
+  vi.mocked(runContainerBatchAction).mockResolvedValue({
     id: "op-b",
-    kind: "container_stop",
+    kind: "container_batch_restart",
     scopeType: "stack",
     scopeId: "one",
     status: "queued",
@@ -95,10 +100,20 @@ it("lists each container in Overview while keeping whole-stack header actions", 
   const onAction = vi.fn();
   showStack(stack, { onAction });
   expect(
-    await screen.findByRole("button", { name: "Stop app-2" }),
+    await screen.findByRole("checkbox", { name: "Select app-2" }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Restart" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Services" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Validate" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+  expect(screen.getByRole("menuitem", { name: "Deploy" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
+  expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
   for (const name of [
     "Refresh status",
     "Start stack",
@@ -106,16 +121,22 @@ it("lists each container in Overview while keeping whole-stack header actions", 
     "Recreate containers",
   ])
     expect(screen.queryByRole("button", { name })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Stop app-2" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select app-2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Restart selected" }));
   await waitFor(() =>
-    expect(runContainerAction).toHaveBeenCalledWith("one", "id-b", "stop"),
+    expect(runContainerBatchAction).toHaveBeenCalledWith(
+      "one",
+      ["id-b"],
+      "restart",
+    ),
   );
+  expect(runStackAction).not.toHaveBeenCalled();
   expect(onAction).toHaveBeenCalledWith(
     expect.objectContaining({ id: "op-b" }),
   );
 });
 
-it("blocks container actions with unsaved editor changes", async () => {
+it("blocks selected container actions with unsaved editor changes", async () => {
   vi.mocked(listStackContainers).mockResolvedValue([
     {
       id: "id-a",
@@ -129,11 +150,11 @@ it("blocks container actions with unsaved editor changes", async () => {
     },
   ]);
   showStack(stack, { dirty: true });
-  fireEvent.click(await screen.findByRole("button", { name: "Stop app-1" }));
-  expect(runContainerAction).not.toHaveBeenCalled();
-  expect(screen.getByRole("alert")).toHaveTextContent(
-    "Save or discard your editor changes",
+  fireEvent.click(
+    await screen.findByRole("checkbox", { name: "Select app-1" }),
   );
+  expect(screen.getByRole("button", { name: "Stop selected" })).toBeDisabled();
+  expect(runContainerBatchAction).not.toHaveBeenCalled();
 });
 
 it("disables container actions while a stack operation is active", async () => {
@@ -162,11 +183,11 @@ it("disables container actions while a stack operation is active", async () => {
     ],
   });
   expect(
-    await screen.findByRole("button", { name: "Stop app-1" }),
+    await screen.findByRole("checkbox", { name: "Select app-1" }),
   ).toBeDisabled();
 });
 
-it("shows Stop and Restart for a running stack with an earlier successful deployment", async () => {
+it("enables Stop and Restart for a running stack with an earlier successful deployment", async () => {
   vi.mocked(getStackState).mockResolvedValue({
     runtime: "running",
     freshness: "unverifiable",
@@ -174,13 +195,20 @@ it("shows Stop and Restart for a running stack with an earlier successful deploy
   });
   showStack();
   expect(
-    await screen.findByText("running", { selector: ".runtime" }),
+    await screen.findByText("RUNNING", { selector: ".state-strip .badge" }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Restart" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+  expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
+  expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
 });
 
-it("hides Stop and Restart for a running stack without a successful deployment", async () => {
+it("disables Stop and Restart for a running stack without a successful deployment", async () => {
   vi.mocked(getStackState).mockResolvedValue({
     runtime: "running",
     freshness: "never_deployed",
@@ -188,10 +216,17 @@ it("hides Stop and Restart for a running stack without a successful deployment",
   });
   showStack();
   expect(
-    await screen.findByText("running", { selector: ".runtime" }),
+    await screen.findByText("RUNNING", { selector: ".state-strip .badge" }),
   ).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Restart" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+  expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
 });
 
 it("updates the runtime and hides actions after a manual Docker stop", async () => {
@@ -211,13 +246,25 @@ it("updates the runtime and hides actions after a manual Docker stop", async () 
   await act(async () => {
     await Promise.resolve();
   });
-  expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+  expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });
-  expect(screen.getByText("stopped")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Restart" })).toBeNull();
+  expect(
+    screen.getByText("STOPPED", { selector: ".state-strip .badge" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
 });
 
 it("shows Unknown and hides actions when the state refresh fails", async () => {
@@ -233,15 +280,25 @@ it("shows Unknown and hides actions when the state refresh fails", async () => {
   await act(async () => {
     await Promise.resolve();
   });
-  expect(screen.getByRole("button", { name: "Restart" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+  expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });
   expect(
-    screen.getByText("Unknown", { selector: ".runtime" }),
+    screen.getByText("UNKNOWN", { selector: ".state-strip .badge" }),
   ).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Restart" })).toBeNull();
+  expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
 });
 
 it("loads logs on tab entry without a manual load or refresh button", () => {
