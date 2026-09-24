@@ -202,13 +202,63 @@ pre {
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 7px;
   white-space: nowrap;
-  padding: 4px 7px;
+  min-height: 27px;
+  padding: 4px 9px;
   border-radius: 4px;
   background: light-dark(#f4f6fa, #29354a);
   font-size: 12px;
   font-weight: 500;
   color: light-dark(#263852, #e2eafa);
+}
+.badge-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+.action-menu {
+  position: relative;
+  display: inline-flex;
+}
+.action-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.action-menu-trigger svg {
+  width: 14px;
+  height: 14px;
+  transform: rotate(90deg);
+}
+.action-menu-popover {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 20;
+  min-width: 155px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px #07152b24;
+}
+.action-menu-popover button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+}
+.action-menu-popover button:hover,
+.action-menu-popover button:focus-visible {
+  background: light-dark(#eff4ff, #2a3a58);
+}
+.action-menu-popover button[aria-disabled="true"] {
+  opacity: 0.48;
+  cursor: not-allowed;
 }
 .badge.success {
   background: light-dark(#e0f7e8, #1d3f32);
