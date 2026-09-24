@@ -16,11 +16,11 @@ import (
 
 // NewDockerClient constructs the Compose service backed by the Docker SDK.
 func NewDockerClient(ctx context.Context, timeout time.Duration) (*Client, io.Closer, error) {
-	service, closer, err := newDockerService(ctx)
+	service, sdk, err := newDockerService(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	return New(service, timeout), closer, nil
+	return newWithContainerActions(service, sdk, timeout), sdk, nil
 }
 
 // dockerBridge supplies Compose with the SDK daemon client while retaining
@@ -40,7 +40,7 @@ func (b dockerBridge) ConfigFile() *configfile.ConfigFile { return b.config }
 // makes Compose invoke an external Buildx plugin.
 func (dockerBridge) BuildKitEnabled() (bool, error) { return false, nil }
 
-func newDockerService(ctx context.Context) (api.Compose, io.Closer, error) {
+func newDockerService(ctx context.Context) (api.Compose, sdkclient.SDKClient, error) {
 	sdk, err := sdkclient.New(ctx, sdkclient.WithHealthCheck(
 		func(context.Context) func(sdkclient.SDKClient) error {
 			return func(sdkclient.SDKClient) error { return nil }

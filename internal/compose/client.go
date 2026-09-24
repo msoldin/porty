@@ -9,11 +9,19 @@ import (
 	"time"
 
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/client"
 )
 
 type Client struct {
-	service api.Compose
-	timeout time.Duration
+	service    api.Compose
+	containers containerActions
+	timeout    time.Duration
+}
+
+type containerActions interface {
+	ContainerStart(context.Context, string, client.ContainerStartOptions) (client.ContainerStartResult, error)
+	ContainerStop(context.Context, string, client.ContainerStopOptions) (client.ContainerStopResult, error)
+	ContainerRestart(context.Context, string, client.ContainerRestartOptions) (client.ContainerRestartResult, error)
 }
 
 const maxCommandOutput = 1 << 20
@@ -23,6 +31,12 @@ func New(service api.Compose, timeout time.Duration) *Client {
 		timeout = 2 * time.Minute
 	}
 	return &Client{service: service, timeout: timeout}
+}
+
+func newWithContainerActions(service api.Compose, docker containerActions, timeout time.Duration) *Client {
+	result := New(service, timeout)
+	result.containers = docker
+	return result
 }
 
 func (c *Client) Validate(ctx context.Context, request Request) error {
@@ -50,6 +64,26 @@ func (c *Client) Status(parent context.Context, request Request) ([]api.Containe
 		return nil, c.safeError(err, request)
 	}
 	return status, nil
+}
+
+func (c *Client) ContainerAction(parent context.Context, request Request, id, action string) error {
+	if c.containers == nil {
+		return errors.New("Docker client unavailable")
+	}
+	ctx, cancel := context.WithTimeout(parent, c.timeout)
+	defer cancel()
+	var err error
+	switch action {
+	case "start":
+		_, err = c.containers.ContainerStart(ctx, id, client.ContainerStartOptions{})
+	case "stop":
+		_, err = c.containers.ContainerStop(ctx, id, client.ContainerStopOptions{})
+	case "restart":
+		_, err = c.containers.ContainerRestart(ctx, id, client.ContainerRestartOptions{})
+	default:
+		return errors.New("unsupported container action")
+	}
+	return c.safeError(err, request)
 }
 
 func (c *Client) Start(parent context.Context, request Request) error {

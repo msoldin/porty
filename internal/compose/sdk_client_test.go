@@ -11,6 +11,7 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/client"
 )
 
 type recordingCompose struct {
@@ -127,5 +128,51 @@ func TestComposeLogsAndErrorsAreBoundedAndRedacted(t *testing.T) {
 	logs, err := client.Logs(context.Background(), Request{StackDir: dir, ProjectName: "sample", Environment: map[string]string{"TOKEN": "secret"}}, 1)
 	if err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(logs, "secret") || len(logs) > maxCommandOutput {
 		t.Fatalf("logs length = %d, error = %v", len(logs), err)
+	}
+}
+
+type recordingContainers struct {
+	client.APIClient
+	calls []string
+	err   error
+}
+
+func (r *recordingContainers) ContainerStart(_ context.Context, id string, _ client.ContainerStartOptions) (client.ContainerStartResult, error) {
+	r.calls = append(r.calls, "start:"+id)
+	return client.ContainerStartResult{}, r.err
+}
+
+func (r *recordingContainers) ContainerStop(_ context.Context, id string, _ client.ContainerStopOptions) (client.ContainerStopResult, error) {
+	r.calls = append(r.calls, "stop:"+id)
+	return client.ContainerStopResult{}, r.err
+}
+
+func (r *recordingContainers) ContainerRestart(_ context.Context, id string, _ client.ContainerRestartOptions) (client.ContainerRestartResult, error) {
+	r.calls = append(r.calls, "restart:"+id)
+	return client.ContainerRestartResult{}, r.err
+}
+
+func TestContainerActionTargetsOnlySelectedID(t *testing.T) {
+	docker := &recordingContainers{}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	for _, action := range []string{"start", "stop", "restart"} {
+		if err := runtime.ContainerAction(context.Background(), Request{}, "full-id-b", action); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := strings.Join(docker.calls, ","); got != "start:full-id-b,stop:full-id-b,restart:full-id-b" {
+		t.Fatalf("container actions = %s", got)
+	}
+}
+
+func TestContainerActionRedactsAndBoundsDockerError(t *testing.T) {
+	docker := &recordingContainers{err: errors.New("TOKEN=secret" + strings.Repeat("x", maxCommandOutput))}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	err := runtime.ContainerAction(context.Background(), Request{Environment: map[string]string{"TOKEN": "secret"}}, "full-id-b", "stop")
+	if err == nil {
+		t.Fatal("expected Docker error")
+	}
+	if strings.Contains(err.Error(), "secret") || len(err.Error()) > maxCommandOutput+len("Compose: ") {
+		t.Fatalf("unsafe Docker error: length = %d, contains secret = %t", len(err.Error()), strings.Contains(err.Error(), "secret"))
 	}
 }
