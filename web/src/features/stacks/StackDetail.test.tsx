@@ -69,6 +69,9 @@ it("lists each container in Overview while keeping whole-stack header actions", 
       service: "app",
       state: "running",
       health: "healthy",
+      image: "app:latest",
+      networks: [],
+      ports: [],
     },
     {
       id: "id-b",
@@ -76,6 +79,9 @@ it("lists each container in Overview while keeping whole-stack header actions", 
       service: "app",
       state: "running",
       health: "healthy",
+      image: "app:latest",
+      networks: [],
+      ports: [],
     },
   ]);
   vi.mocked(runContainerAction).mockResolvedValue({
@@ -111,7 +117,16 @@ it("lists each container in Overview while keeping whole-stack header actions", 
 
 it("blocks container actions with unsaved editor changes", async () => {
   vi.mocked(listStackContainers).mockResolvedValue([
-    { id: "id-a", name: "app-1", service: "app", state: "running", health: "" },
+    {
+      id: "id-a",
+      name: "app-1",
+      service: "app",
+      state: "running",
+      health: "",
+      image: "app:latest",
+      networks: [],
+      ports: [],
+    },
   ]);
   showStack(stack, { dirty: true });
   fireEvent.click(await screen.findByRole("button", { name: "Stop app-1" }));
@@ -123,7 +138,16 @@ it("blocks container actions with unsaved editor changes", async () => {
 
 it("disables container actions while a stack operation is active", async () => {
   vi.mocked(listStackContainers).mockResolvedValue([
-    { id: "id-a", name: "app-1", service: "app", state: "running", health: "" },
+    {
+      id: "id-a",
+      name: "app-1",
+      service: "app",
+      state: "running",
+      health: "",
+      image: "app:latest",
+      networks: [],
+      ports: [],
+    },
   ]);
   showStack(stack, {
     operations: [

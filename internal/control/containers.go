@@ -21,11 +21,21 @@ var (
 )
 
 type Container struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Service string `json:"service"`
-	State   string `json:"state"`
-	Health  string `json:"health"`
+	ID       string          `json:"id"`
+	Name     string          `json:"name"`
+	Service  string          `json:"service"`
+	State    string          `json:"state"`
+	Health   string          `json:"health"`
+	Image    string          `json:"image"`
+	Networks []string        `json:"networks"`
+	Ports    []ContainerPort `json:"ports"`
+}
+
+type ContainerPort struct {
+	Host          string `json:"host"`
+	TargetPort    int    `json:"targetPort"`
+	PublishedPort int    `json:"publishedPort"`
+	Protocol      string `json:"protocol"`
 }
 
 func (c *ControlPlane) Containers(ctx context.Context, id portystack.StackID) ([]Container, error) {
@@ -61,9 +71,32 @@ func (c *ControlPlane) Containers(ctx context.Context, id portystack.StackID) ([
 }
 
 func containerFromSummary(row api.ContainerSummary) Container {
+	networks := append([]string{}, row.Networks...)
+	sort.Strings(networks)
+	ports := make([]ContainerPort, 0, len(row.Publishers))
+	for _, publisher := range row.Publishers {
+		ports = append(ports, ContainerPort{
+			Host: publisher.URL, TargetPort: publisher.TargetPort,
+			PublishedPort: publisher.PublishedPort, Protocol: publisher.Protocol,
+		})
+	}
+	sort.Slice(ports, func(i, j int) bool {
+		a, b := ports[i], ports[j]
+		if a.TargetPort != b.TargetPort {
+			return a.TargetPort < b.TargetPort
+		}
+		if a.PublishedPort != b.PublishedPort {
+			return a.PublishedPort < b.PublishedPort
+		}
+		if a.Protocol != b.Protocol {
+			return a.Protocol < b.Protocol
+		}
+		return a.Host < b.Host
+	})
 	return Container{
 		ID: row.ID, Name: row.Name, Service: row.Service,
 		State: strings.ToLower(string(row.State)), Health: strings.ToLower(string(row.Health)),
+		Image: row.Image, Networks: networks, Ports: ports,
 	}
 }
 

@@ -10,6 +10,9 @@ const containers: Container[] = [
     service: "app",
     state: "running",
     health: "healthy",
+    image: "app:latest",
+    networks: [],
+    ports: [],
   },
   {
     id: "id-b",
@@ -17,6 +20,9 @@ const containers: Container[] = [
     service: "app",
     state: "running",
     health: "healthy",
+    image: "app:latest",
+    networks: [],
+    ports: [],
   },
   {
     id: "id-c",
@@ -24,6 +30,9 @@ const containers: Container[] = [
     service: "worker",
     state: "exited",
     health: "",
+    image: "worker:latest",
+    networks: [],
+    ports: [],
   },
 ];
 

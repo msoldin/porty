@@ -109,6 +109,41 @@ func TestContainersIncludeStoppedAndSeparateReplicas(t *testing.T) {
 	}
 }
 
+func TestContainersIncludeMetadataForEachReplica(t *testing.T) {
+	runtime := &controlRuntime{status: []api.ContainerSummary{
+		{
+			ID: "id-b", Name: "web-2", Project: "porty-gateway", Service: "web",
+			Image: "example/web:2.1", Networks: []string{"front", "back"},
+			Publishers: api.PortPublishers{
+				{URL: "::1", TargetPort: 443, PublishedPort: 8443, Protocol: "tcp"},
+				{URL: "127.0.0.1", TargetPort: 80, PublishedPort: 8080, Protocol: "tcp"},
+			},
+		},
+		{ID: "id-a", Name: "web-1", Project: "porty-gateway", Service: "web", Image: "example/web:2.0"},
+		{ID: "foreign", Name: "web-3", Project: "other", Service: "web", Image: "secret"},
+	}}
+	control, _ := newContainerControl(runtime, controlLookup{}, portyop.NewCoordinator())
+	items, err := control.Containers(context.Background(), "stk_gateway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].ID != "id-a" || items[1].ID != "id-b" {
+		t.Fatalf("replicas = %#v", items)
+	}
+	if items[0].Image != "example/web:2.0" || items[0].Networks == nil || items[0].Ports == nil {
+		t.Fatalf("first replica metadata = %#v", items[0])
+	}
+	second := items[1]
+	if second.Image != "example/web:2.1" || len(second.Networks) != 2 || second.Networks[0] != "back" || second.Networks[1] != "front" {
+		t.Fatalf("second replica metadata = %#v", second)
+	}
+	if len(second.Ports) != 2 ||
+		second.Ports[0].Host != "127.0.0.1" || second.Ports[0].TargetPort != 80 ||
+		second.Ports[1].Host != "::1" || second.Ports[1].PublishedPort != 8443 {
+		t.Fatalf("second replica ports = %#v", second.Ports)
+	}
+}
+
 func TestContainerActionRejectsWrongProjectAndMissingID(t *testing.T) {
 	runtime := &controlRuntime{status: []api.ContainerSummary{
 		{ID: "id-a", Project: "porty-gateway", State: "running"},

@@ -21,6 +21,16 @@ export type Container = {
   service: string;
   state: string;
   health: string;
+  image: string;
+  networks: string[];
+  ports: ContainerPort[];
+};
+
+export type ContainerPort = {
+  host: string;
+  targetPort: number;
+  publishedPort: number;
+  protocol: string;
 };
 
 export type ContainerAction = "start" | "stop" | "restart";

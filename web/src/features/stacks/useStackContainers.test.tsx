@@ -11,6 +11,9 @@ const app = {
   service: "app",
   state: "running",
   health: "",
+  image: "app:latest",
+  networks: [],
+  ports: [],
 };
 
 afterEach(() => {
