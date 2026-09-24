@@ -44,6 +44,7 @@ type RouterOptions struct {
 	RepositorySetup RepositorySetupAPI
 	Audit           AuditAPI
 	State           StackStateAPI
+	Containers      ContainerAPI
 	Stream          stdhttp.Handler
 }
 
@@ -113,6 +114,11 @@ type AuditAPI interface {
 
 type StackStateAPI interface {
 	StackState(context.Context, portystack.StackID) (portycontrol.StackState, error)
+}
+
+type ContainerAPI interface {
+	Containers(context.Context, portystack.StackID) ([]portycontrol.Container, error)
+	StartContainerAction(context.Context, portystack.StackID, string, string) (portyop.Operation, error)
 }
 
 type SetupStatusResponse struct {

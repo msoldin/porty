@@ -103,6 +103,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			options.Repository = control
 			options.Actions = control
 			options.State = control
+			options.Containers = control
 			if setupService != nil {
 				options.RepositorySetup = setupService
 			}

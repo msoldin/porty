@@ -142,6 +142,7 @@ func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 	registerEnvironmentRoutes(mux, options)
 	registerRepositoryRoutes(mux, options)
 	registerOperationRoutes(mux, options)
+	registerContainerRoutes(mux, options)
 	if options.RepositorySetup != nil {
 		mux.HandleFunc("GET /api/v1/repository/setup/status", setupReadRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			status, err := options.RepositorySetup.Status(r.Context())
@@ -346,6 +347,12 @@ func writeResult(w stdhttp.ResponseWriter, r *stdhttp.Request, value any, err er
 
 func writeAPIError(w stdhttp.ResponseWriter, r *stdhttp.Request, err error) {
 	switch {
+	case errors.Is(err, portycontrol.ErrContainerNotFound):
+		WriteError(w, r, stdhttp.StatusNotFound, "ContainerNotFound", "Container not found in this stack", nil)
+	case errors.Is(err, portycontrol.ErrUnsupportedContainerAction):
+		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidContainerAction", "Container action is invalid", nil)
+	case errors.Is(err, portycontrol.ErrContainerStateConflict), errors.Is(err, portycontrol.ErrContainerArchived):
+		WriteError(w, r, stdhttp.StatusConflict, "ContainerStateConflict", "Container action is unavailable", nil)
 	case errors.Is(err, sql.ErrNoRows):
 		WriteError(w, r, stdhttp.StatusNotFound, "NotFound", "Resource not found", nil)
 	case errors.Is(err, portyfs.ErrInvalidPath), errors.Is(err, portystack.ErrInvalidEnvironment):

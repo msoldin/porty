@@ -232,6 +232,118 @@ func TestLongRunningActionReturnsAcceptedOperationResource(t *testing.T) {
 	}
 }
 
+func TestContainerListRequiresSessionAndReturnsMinimalRows(t *testing.T) {
+	containers := &fakeContainerAPI{items: []portycontrol.Container{
+		{ID: "id-a", Name: "app-1", Service: "app", State: "running", Health: "healthy"},
+		{ID: "id-b", Name: "app-2", Service: "app", State: "exited"},
+	}}
+	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{Containers: containers})
+	path := "http://porty.local/api/v1/stacks/stk_gateway/containers"
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(stdhttp.MethodGet, path, nil))
+	if unauthorized.Code != stdhttp.StatusUnauthorized {
+		t.Fatalf("unauthenticated list = %d", unauthorized.Code)
+	}
+	request := httptest.NewRequest(stdhttp.MethodGet, path, nil)
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != stdhttp.StatusOK {
+		t.Fatalf("container list = %d: %s", response.Code, response.Body.String())
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || len(rows[0]) != 5 || rows[0]["id"] != "id-a" || rows[1]["state"] != "exited" {
+		t.Fatalf("container list = %#v", rows)
+	}
+}
+
+func TestContainerMutationRequiresOriginAndCSRF(t *testing.T) {
+	containers := &fakeContainerAPI{}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{Containers: containers})
+	path := "http://porty.local/api/v1/stacks/stk_gateway/containers/full-id-b/actions/stop"
+	for _, tc := range []struct {
+		name, origin          string
+		withSession, withCSRF bool
+		want                  int
+	}{
+		{name: "no session", origin: "http://porty.local", withCSRF: true, want: stdhttp.StatusUnauthorized},
+		{name: "foreign origin", origin: "http://evil.local", withSession: true, withCSRF: true, want: stdhttp.StatusForbidden},
+		{name: "missing csrf", origin: "http://porty.local", withSession: true, want: stdhttp.StatusForbidden},
+		{name: "valid", origin: "http://porty.local", withSession: true, withCSRF: true, want: stdhttp.StatusAccepted},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			containers.calledID, containers.calledAction = "", ""
+			request := httptest.NewRequest(stdhttp.MethodPost, path, nil)
+			request.Header.Set("Origin", tc.origin)
+			if tc.withSession {
+				request.AddCookie(session)
+			}
+			if tc.withCSRF {
+				request.Header.Set("X-CSRF-Token", csrf)
+				request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != tc.want {
+				t.Fatalf("action response = %d: %s", response.Code, response.Body.String())
+			}
+			if tc.want == stdhttp.StatusAccepted {
+				if containers.calledID != "full-id-b" || containers.calledAction != "stop" || !bytes.Contains(response.Body.Bytes(), []byte(`"id":"op_container"`)) {
+					t.Fatalf("accepted action = %q %q %s", containers.calledID, containers.calledAction, response.Body.String())
+				}
+			} else if containers.calledID != "" {
+				t.Fatalf("rejected action reached control: %q", containers.calledID)
+			}
+		})
+	}
+}
+
+func TestContainerActionErrorsUseSafeHTTPStatuses(t *testing.T) {
+	containers := &fakeContainerAPI{}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{Containers: containers})
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"missing", portycontrol.ErrContainerNotFound, stdhttp.StatusNotFound, "ContainerNotFound"},
+		{"state", portycontrol.ErrContainerStateConflict, stdhttp.StatusConflict, "ContainerStateConflict"},
+		{"archived", portycontrol.ErrContainerArchived, stdhttp.StatusConflict, "ContainerStateConflict"},
+		{"action", portycontrol.ErrUnsupportedContainerAction, stdhttp.StatusBadRequest, "InvalidContainerAction"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			containers.err = tc.err
+			request := httptest.NewRequest(stdhttp.MethodPost, "http://porty.local/api/v1/stacks/stk_gateway/containers/full-id-b/actions/stop", nil)
+			request.AddCookie(session)
+			request.AddCookie(&stdhttp.Cookie{Name: csrfCookieName, Value: csrf})
+			request.Header.Set("Origin", "http://porty.local")
+			request.Header.Set("X-CSRF-Token", csrf)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			assertAPIError(t, response, tc.status, tc.code)
+		})
+	}
+}
+
+type fakeContainerAPI struct {
+	items                  []portycontrol.Container
+	calledID, calledAction string
+	err                    error
+}
+
+func (f *fakeContainerAPI) Containers(context.Context, portystack.StackID) ([]portycontrol.Container, error) {
+	return f.items, f.err
+}
+
+func (f *fakeContainerAPI) StartContainerAction(_ context.Context, _ portystack.StackID, id, action string) (portyop.Operation, error) {
+	f.calledID, f.calledAction = id, action
+	return portyop.Operation{ID: "op_container", Kind: "container_" + action}, f.err
+}
+
 func TestRepositorySetupAuditStateAndPaginationContracts(t *testing.T) {
 	setup := &fakeRepositorySetup{}
 	audit := &fakeAuditAPI{events: []portycontrol.AuditEvent{{ID: "aud_1", Action: "stack.delete"}}}
