@@ -70,6 +70,7 @@ type FileMutationAPI interface {
 
 type EnvironmentAPI interface {
 	EnvironmentKeys(context.Context, portystack.StackID) ([]string, error)
+	EnvironmentValue(context.Context, portystack.StackID, string) (string, error)
 	SetEnvironment(context.Context, portystack.StackID, string, string) error
 	DeleteEnvironment(context.Context, portystack.StackID, string) error
 }

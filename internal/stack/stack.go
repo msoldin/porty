@@ -3,6 +3,7 @@ package stack
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"regexp"
@@ -137,6 +138,21 @@ func (s *EnvironmentService) Keys(ctx context.Context, id StackID) ([]string, er
 	}
 	sort.Strings(keys)
 	return keys, nil
+}
+
+func (s *EnvironmentService) Value(ctx context.Context, id StackID, key string) (string, error) {
+	if !environmentKey.MatchString(key) {
+		return "", ErrInvalidEnvironment
+	}
+	values, err := s.store.Environment(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	value, ok := values[key]
+	if !ok {
+		return "", sql.ErrNoRows
+	}
+	return value, nil
 }
 
 // Values is for trusted deployment infrastructure. HTTP handlers must expose Keys instead.

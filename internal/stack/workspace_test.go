@@ -43,6 +43,10 @@ func TestWorkspaceResolvesOpaqueStackIDForFileAndEnvironmentOperations(t *testin
 	if err != nil || len(keys) != 1 || keys[0] != "TOKEN" {
 		t.Fatalf("keys = %#v, %v", keys, err)
 	}
+	value, err := workspace.EnvironmentValue(ctx, stack.ID, "TOKEN")
+	if err != nil || value != "secret" {
+		t.Fatalf("EnvironmentValue() = %q, %v", value, err)
+	}
 }
 
 func TestWorkspaceCoordinatesMutationsAndStopsComposeBeforeDelete(t *testing.T) {

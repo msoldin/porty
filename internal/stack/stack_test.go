@@ -2,6 +2,7 @@ package stack_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"os"
@@ -11,6 +12,38 @@ import (
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 )
+
+func TestEnvironmentValueDistinguishesSavedEmptyAndMissing(t *testing.T) {
+	ctx := context.Background()
+	_, store, closeAll := stackFixture(t)
+	defer closeAll()
+	created, err := portystack.NewStackService(noopStackFiles{}, store).Create(ctx, "gateway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment := portystack.NewEnvironmentService(store)
+	for key, value := range map[string]string{"TOKEN": "secret", "EMPTY": ""} {
+		if err := environment.Set(ctx, created.ID, key, value); err != nil {
+			t.Fatal(err)
+		}
+		got, err := environment.Value(ctx, created.ID, key)
+		if err != nil || got != value {
+			t.Fatalf("Value(%q) = %q, %v", key, got, err)
+		}
+	}
+	for _, id := range []portystack.StackID{created.ID, "stk_absent"} {
+		key := "MISSING"
+		if id != created.ID {
+			key = "TOKEN"
+		}
+		if _, err := environment.Value(ctx, id, key); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("Value(%q, %q) = %v", id, key, err)
+		}
+	}
+	if _, err := environment.Value(ctx, created.ID, "BAD-KEY"); !errors.Is(err, portystack.ErrInvalidEnvironment) {
+		t.Fatalf("invalid key error = %v", err)
+	}
+}
 
 func TestDiscoveringSameDirectoryPreservesStableStackIdentity(t *testing.T) {
 	root := t.TempDir()

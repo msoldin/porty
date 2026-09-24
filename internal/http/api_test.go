@@ -3,12 +3,14 @@ package http
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	stdhttp "net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +21,85 @@ import (
 	portysqlite "github.com/msoldin/porty/internal/sqlite"
 	portystack "github.com/msoldin/porty/internal/stack"
 )
+
+func TestEnvironmentReadRequiresSessionAndReturnsOnlyRequestedValue(t *testing.T) {
+	audit := &fakeAuditAPI{}
+	environment := &fakeEnvironmentAPI{values: map[string]string{"TOKEN": "secret", "EMPTY": ""}}
+	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{Environment: environment, Audit: audit})
+	get := func(path string, authenticated bool) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(stdhttp.MethodGet, "http://porty.local"+path, nil)
+		if authenticated {
+			request.AddCookie(session)
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	base := "/api/v1/stacks/stk_gateway/environment"
+	if got := get(base+"/TOKEN", false); got.Code != stdhttp.StatusUnauthorized {
+		t.Fatalf("unauthenticated GET = %d", got.Code)
+	}
+	for _, tc := range []struct {
+		path   string
+		status int
+		body   string
+	}{
+		{base + "/TOKEN", 200, `{"value":"secret"}` + "\n"},
+		{base + "/EMPTY", 200, `{"value":""}` + "\n"},
+		{base + "/MISSING", 404, ""},
+		{"/api/v1/stacks/stk_missing/environment/TOKEN", 404, ""},
+		{base + "/BAD-KEY", 400, ""},
+	} {
+		got := get(tc.path, true)
+		if got.Code != tc.status || got.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("GET %s = %d, cache=%q, body=%s", tc.path, got.Code, got.Header().Get("Cache-Control"), got.Body.String())
+		}
+		if tc.body != "" && got.Body.String() != tc.body {
+			t.Fatalf("GET %s body = %q", tc.path, got.Body.String())
+		}
+		if tc.body == "" && strings.Contains(got.Body.String(), "secret") {
+			t.Fatalf("GET %s leaked value", tc.path)
+		}
+	}
+	listed := get(base, true)
+	if listed.Code != 200 || !bytes.Contains(listed.Body.Bytes(), []byte(`"TOKEN"`)) || bytes.Contains(listed.Body.Bytes(), []byte("secret")) {
+		t.Fatalf("unsafe list: %d %s", listed.Code, listed.Body.String())
+	}
+	for _, event := range audit.events {
+		if strings.Contains(event.Action+event.TargetID+event.Outcome, "secret") {
+			t.Fatal("audit leaked value")
+		}
+	}
+}
+
+type fakeEnvironmentAPI struct{ values map[string]string }
+
+func (f *fakeEnvironmentAPI) EnvironmentKeys(_ context.Context, id portystack.StackID) ([]string, error) {
+	if id != "stk_gateway" {
+		return nil, sql.ErrNoRows
+	}
+	return []string{"EMPTY", "TOKEN"}, nil
+}
+func (f *fakeEnvironmentAPI) EnvironmentValue(_ context.Context, id portystack.StackID, key string) (string, error) {
+	if strings.Contains(key, "-") {
+		return "", portystack.ErrInvalidEnvironment
+	}
+	if id != "stk_gateway" {
+		return "", sql.ErrNoRows
+	}
+	value, ok := f.values[key]
+	if !ok {
+		return "", sql.ErrNoRows
+	}
+	return value, nil
+}
+func (f *fakeEnvironmentAPI) SetEnvironment(context.Context, portystack.StackID, string, string) error {
+	return nil
+}
+func (f *fakeEnvironmentAPI) DeleteEnvironment(context.Context, portystack.StackID, string) error {
+	return nil
+}
 
 func TestStackEndpointsRequireSessionAndMutationsRequireCSRF(t *testing.T) {
 	stacks := &fakeStackAPI{items: []portystack.Stack{{ID: "stk_gateway", DirectoryName: "gateway"}}}
