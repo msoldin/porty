@@ -180,6 +180,7 @@ beforeEach(() => {
           },
         },
         "/stacks": [stack],
+        "/stacks/s1/containers": [],
         "/repository/status": repositoryStatus,
         "/repository/history?limit=50": [
           {

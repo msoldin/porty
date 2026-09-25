@@ -378,3 +378,38 @@ it("confirms stop and retains only selections from failed stack requests", async
   );
   confirm.mockRestore();
 });
+
+it("refreshes after a container operation completes", () => {
+  const operation: Operation = {
+    id: "op-1",
+    kind: "container_batch_restart",
+    scopeType: "stack",
+    scopeId: "one",
+    status: "running",
+    outputTruncated: false,
+  };
+  const view = show();
+  expect(vi.mocked(useOverviewContainers).mock.lastCall?.[1]).toBe("");
+  view.rerender(
+    <OverviewServices
+      stacks={stacks}
+      operations={[{ ...operation, status: "succeeded" }]}
+      navigate={vi.fn()}
+      onOperationsAccepted={vi.fn()}
+    />,
+  );
+  expect(vi.mocked(useOverviewContainers).mock.lastCall?.[1]).toBe(
+    "op-1:succeeded",
+  );
+});
+
+it("disables actions when the selected container state is unknown", () => {
+  show({
+    ...loaded,
+    rows: [{ stackId: "one", container: { ...web1, state: "unknown" } }],
+  });
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select alpha web-1" }));
+  for (const name of ["Start selected", "Stop selected", "Restart selected"]) {
+    expect(screen.getByRole("button", { name })).toBeDisabled();
+  }
+});

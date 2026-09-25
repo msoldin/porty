@@ -6,16 +6,19 @@ import {
   waitFor,
   within,
 } from "@testing-library/preact";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Dashboard } from "./Dashboard";
-import { getStackState, runStackAction } from "./api";
+import { getStackState, listStackContainers, runStackAction } from "./api";
 import type { Stack } from "./types";
 
 vi.mock("./api", () => ({
   getStackState: vi.fn(),
   createStack: vi.fn(),
   runStackAction: vi.fn(),
+  listStackContainers: vi.fn(),
 }));
+
+beforeEach(() => vi.mocked(listStackContainers).mockResolvedValue([]));
 
 const stacks: Stack[] = [
   {
@@ -63,7 +66,7 @@ it("shows the six Stacks columns, readable states, and recorded deployment time"
   });
   showDashboard();
   expect(
-    screen
+    within(screen.getByRole("region", { name: "Stacks table" }))
       .getAllByRole("columnheader")
       .map((header) => header.textContent?.trim()),
   ).toEqual(["", "Name", "Runtime", "Remote", "Deployment", "Last deployment"]);
@@ -84,6 +87,43 @@ it("shows the six Stacks columns, readable states, and recorded deployment time"
     screen.getByRole("link", { name: "beta" }).closest("tr")!,
   );
   expect(beta.getByText("Never")).toBeInTheDocument();
+});
+
+it("shows stacks and services together with independent searches", async () => {
+  vi.mocked(listStackContainers).mockImplementation(async (id) => [
+    {
+      id: id + "-full-id",
+      name: "worker-1",
+      service: "worker",
+      state: "running",
+      health: "healthy",
+      image: "worker:1",
+      networks: [],
+      ports: [],
+    },
+  ]);
+  showDashboard();
+  const stacksTable = within(
+    screen.getByRole("region", { name: "Stacks table" }),
+  );
+  const servicesTable = within(
+    screen.getByRole("region", { name: "All services table" }),
+  );
+  expect(stacksTable.getAllByRole("row")).toHaveLength(3);
+  await waitFor(() =>
+    expect(servicesTable.getAllByRole("row")).toHaveLength(3),
+  );
+  fireEvent.input(screen.getByRole("textbox", { name: "Search stacks" }), {
+    target: { value: "alpha" },
+  });
+  expect(stacksTable.getAllByRole("row")).toHaveLength(2);
+  expect(servicesTable.getAllByRole("row")).toHaveLength(3);
+  fireEvent.input(
+    screen.getByRole("textbox", { name: "Search all services" }),
+    { target: { value: "beta" } },
+  );
+  expect(stacksTable.getAllByRole("row")).toHaveLength(2);
+  expect(servicesTable.getAllByRole("row")).toHaveLength(2);
 });
 
 it("submits selected stacks separately and registers every accepted operation", async () => {
@@ -111,8 +151,9 @@ it("submits selected stacks separately and registers every accepted operation", 
     expect.objectContaining({ scopeId: "one" }),
     expect.objectContaining({ scopeId: "two" }),
   ]);
-  expect(screen.getByRole("status")).toHaveTextContent("alpha");
-  expect(screen.getByRole("status")).toHaveTextContent("beta");
+  expect(
+    screen.getByText(/alpha: accepted · beta: accepted/),
+  ).toBeInTheDocument();
 });
 
 it("clears selection on filtering and disables runtime actions for mixed or unknown states", async () => {
@@ -173,8 +214,9 @@ it("reports partial acceptance by stack name without opening an operation", asyn
       expect.objectContaining({ scopeId: "one" }),
     ]),
   );
-  expect(screen.getByRole("status")).toHaveTextContent("alpha: accepted");
-  expect(screen.getByRole("status")).toHaveTextContent("beta: conflict");
+  expect(
+    screen.getByText(/alpha: accepted · beta: conflict/),
+  ).toBeInTheDocument();
 });
 
 it("keeps the last deployment when Docker state becomes unavailable", async () => {

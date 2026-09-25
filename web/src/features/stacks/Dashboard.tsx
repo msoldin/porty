@@ -15,6 +15,7 @@ import {
   stackRuntimePresentation,
 } from "./statusPresentation";
 import { useStackState } from "./useStackState";
+import { OverviewServices } from "./OverviewServices";
 
 function deploymentTime(
   value?: string,
@@ -387,6 +388,12 @@ export function Dashboard({
             : "No stacks yet. Create your first stack to get started."}
         </Empty>
       )}
+      <OverviewServices
+        stacks={stacks}
+        operations={operations}
+        navigate={navigate}
+        onOperationsAccepted={onOperationsAccepted}
+      />
     </section>
   );
 }

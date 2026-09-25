@@ -117,52 +117,67 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   });
   await page.route("**/api/v1/stacks/*/containers", (route) =>
     route.fulfill({
-      json: [
-        {
-          id: "full-id-a",
-          name: "web-1",
-          service: "web",
-          state: "running",
-          health: "healthy",
-          image: "ghcr.io/example/web:1.4",
-          networks: ["front", "back"],
-          ports: [
-            {
-              host: "127.0.0.1",
-              publishedPort: 8080,
-              targetPort: 80,
-              protocol: "tcp",
-            },
-          ],
-        },
-        {
-          id: "full-id-b",
-          name: "web-2",
-          service: "web",
-          state: "running",
-          health: "healthy",
-          image: "ghcr.io/example/web:1.4",
-          networks: ["front"],
-          ports: [
-            {
-              host: "::1",
-              publishedPort: 8443,
-              targetPort: 443,
-              protocol: "tcp",
-            },
-          ],
-        },
-        {
-          id: "full-id-c",
-          name: "worker-1",
-          service: "worker",
-          state: "exited",
-          health: "",
-          image: "worker:2.0",
-          networks: [],
-          ports: [],
-        },
-      ],
+      json:
+        stoppedStackId &&
+        route.request().url().includes(`/stacks/${stoppedStackId}/containers`)
+          ? [
+              {
+                id: "monitoring-full-id",
+                name: "agent-1",
+                service: "agent",
+                state: "running",
+                health: "healthy",
+                image: "agent:1",
+                networks: ["monitoring"],
+                ports: [],
+              },
+            ]
+          : [
+              {
+                id: "full-id-a",
+                name: "web-1",
+                service: "web",
+                state: "running",
+                health: "healthy",
+                image: "ghcr.io/example/web:1.4",
+                networks: ["front", "back"],
+                ports: [
+                  {
+                    host: "127.0.0.1",
+                    publishedPort: 8080,
+                    targetPort: 80,
+                    protocol: "tcp",
+                  },
+                ],
+              },
+              {
+                id: "full-id-b",
+                name: "web-2",
+                service: "web",
+                state: "running",
+                health: "healthy",
+                image: "ghcr.io/example/web:1.4",
+                networks: ["front"],
+                ports: [
+                  {
+                    host: "::1",
+                    publishedPort: 8443,
+                    targetPort: 443,
+                    protocol: "tcp",
+                  },
+                ],
+              },
+              {
+                id: "full-id-c",
+                name: "worker-1",
+                service: "worker",
+                state: "exited",
+                health: "",
+                image: "worker:2.0",
+                networks: [],
+                ports: [],
+              },
+            ],
     }),
   );
   await page.route("**/api/v1/stacks/*/containers/actions/stop", (route) =>
@@ -250,10 +265,17 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     route.fulfill({
       status: 202,
       json: {
-        id: "opr_e2e_restart",
+        id:
+          "opr_e2e_restart_" +
+          route.request().url().split("/containers/")[0].split("/").pop(),
         kind: "container_batch_restart",
         scopeType: "stack",
-        scopeId: "paperless",
+        scopeId: route
+          .request()
+          .url()
+          .split("/containers/")[0]
+          .split("/")
+          .pop(),
         status: "succeeded",
         outputTruncated: false,
       },
@@ -322,23 +344,74 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     /succeeded|running/,
   );
   await page.getByRole("button", { name: "Close operation" }).click();
-  await page.getByRole("link", { name: "All stacks" }).click();
+  await page.locator("main").getByRole("link", { name: "Overview" }).click();
   await page.getByRole("button", { name: "New stack" }).click();
   await page.getByLabel("Stack name").fill("monitoring");
   await page.getByRole("button", { name: "Create stack", exact: true }).click();
-  await page.getByRole("link", { name: "All stacks" }).click();
+  await page.locator("main").getByRole("link", { name: "Overview" }).click();
   stoppedStackId = (await page
+    .getByRole("region", { name: "Stacks table" })
     .getByRole("link", { name: "monitoring" })
     .getAttribute("href"))!
     .split("/")
     .pop()!;
   rejectDeployId = stoppedStackId;
   await page.reload();
+  const stackTable = page.getByRole("region", { name: "Stacks table" });
+  const allServices = page.getByRole("region", { name: "All services table" });
   await expect(
-    page.getByRole("link", { name: "monitoring" }).locator("xpath=../.."),
+    stackTable.getByRole("link", { name: "paperless" }),
+  ).toBeVisible();
+  await expect(
+    stackTable.getByRole("link", { name: "monitoring" }),
+  ).toBeVisible();
+  await expect(
+    allServices.getByRole("checkbox", { name: "Select paperless web-1" }),
+  ).toBeVisible();
+  await expect(
+    allServices.getByRole("checkbox", { name: "Select monitoring agent-1" }),
+  ).toBeVisible();
+  const paperlessId = (await stackTable
+    .getByRole("link", { name: "paperless" })
+    .getAttribute("href"))!
+    .split("/")
+    .pop()!;
+  await page.screenshot({
+    path: testInfo.outputPath("overview-desktop.png"),
+    fullPage: true,
+  });
+  await allServices
+    .getByRole("checkbox", { name: "Select paperless web-1" })
+    .check();
+  await allServices
+    .getByRole("checkbox", { name: "Select monitoring agent-1" })
+    .check();
+  const overviewRestart = Promise.all([
+    page.waitForRequest(
+      `**/api/v1/stacks/${stoppedStackId}/containers/actions/restart`,
+    ),
+    page.waitForRequest(
+      `**/api/v1/stacks/${paperlessId}/containers/actions/restart`,
+    ),
+  ]);
+  await page.getByRole("button", { name: "Restart selected" }).click();
+  const overviewRequests = await overviewRestart;
+  expect(
+    overviewRequests.map((request) => request.postDataJSON()),
+  ).toContainEqual({ containerIds: ["monitoring-full-id"] });
+  expect(
+    overviewRequests.map((request) => request.postDataJSON()),
+  ).toContainEqual({ containerIds: ["full-id-a"] });
+  await expect(
+    page.locator(".overview-services .selection-feedback"),
+  ).toContainText("monitoring: accepted");
+  await expect(
+    stackTable
+      .getByRole("link", { name: "monitoring" })
+      .locator("xpath=ancestor::tr"),
   ).toContainText("STOPPED");
-  await page.getByRole("checkbox", { name: "Select paperless" }).check();
-  await page.getByRole("checkbox", { name: "Select monitoring" }).check();
+  await stackTable.getByRole("checkbox", { name: "Select paperless" }).check();
+  await stackTable.getByRole("checkbox", { name: "Select monitoring" }).check();
   await page.getByRole("button", { name: "Actions" }).click();
   await expect(page.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
     "aria-disabled",
@@ -349,11 +422,13 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     "true",
   );
   await page.getByRole("menuitem", { name: "Deploy" }).click();
-  await expect(page.getByRole("status")).toContainText("paperless: accepted");
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.locator(".dashboard > .selection-feedback")).toContainText(
+    "paperless: accepted",
+  );
+  await expect(page.locator(".dashboard > .selection-feedback")).toContainText(
     "monitoring: A conflicting operation is in progress",
   );
-  await page.getByRole("checkbox", { name: "Select paperless" }).check();
+  await stackTable.getByRole("checkbox", { name: "Select paperless" }).check();
   await page.getByRole("button", { name: "Actions" }).click();
   await page.screenshot({
     path: testInfo.outputPath("stacks-selected-light.png"),
@@ -376,9 +451,22 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     .evaluate((element) => {
       element.scrollLeft = element.scrollWidth;
     });
-  await expect(page.getByRole("link", { name: "paperless" })).toBeInViewport();
+  await expect(
+    stackTable.getByRole("link", { name: "paperless" }),
+  ).toBeInViewport();
+  await allServices.scrollIntoViewIfNeeded();
+  await allServices.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect(
+    allServices.getByRole("link", { name: "paperless" }).first(),
+  ).toBeInViewport();
+  await page.screenshot({
+    path: testInfo.outputPath("overview-mobile-320.png"),
+    fullPage: true,
+  });
   await page.getByRole("menu").press("Escape");
-  await page.getByRole("link", { name: "paperless" }).click();
+  await stackTable.getByRole("link", { name: "paperless" }).click();
   await page.getByRole("checkbox", { name: "Select web-2" }).check();
   await page.getByRole("button", { name: "Actions" }).click();
   await expect
@@ -422,8 +510,14 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     path: testInfo.outputPath("dark-settings.png"),
     fullPage: false,
   });
-  await page.getByRole("link", { name: "Stacks" }).click();
-  await page.getByRole("checkbox", { name: "Select paperless" }).check();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Overview" })
+    .click();
+  await page
+    .getByRole("region", { name: "Stacks table" })
+    .getByRole("checkbox", { name: "Select paperless" })
+    .check();
   await page.getByRole("button", { name: "Actions" }).click();
   await page.screenshot({
     path: testInfo.outputPath("stacks-selected-dark.png"),
@@ -442,7 +536,10 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     fullPage: true,
   });
   await page.getByRole("menu").press("Escape");
-  await page.getByRole("link", { name: "paperless" }).click();
+  await page
+    .getByRole("region", { name: "Stacks table" })
+    .getByRole("link", { name: "paperless" })
+    .click();
   await page.getByRole("checkbox", { name: "Select web-2" }).check();
   await page.getByRole("button", { name: "Actions" }).click();
   await expect

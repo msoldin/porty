@@ -158,8 +158,15 @@ export function OverviewServices({
         <div>
           <h2>Services</h2>
           <p class="muted">
-            {ordered.length} {ordered.length === 1 ? "container" : "containers"}{" "}
-            · {runningCount} running
+            {loading && ordered.length === 0 ? (
+              "Loading container inventory…"
+            ) : (
+              <>
+                {ordered.length}{" "}
+                {ordered.length === 1 ? "container" : "containers"}
+                {errors.length > 0 ? " loaded" : ""} · {runningCount} running
+              </>
+            )}
           </p>
         </div>
         <div class="overview-service-filters">
