@@ -1,13 +1,20 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, expect, it, vi } from "vitest";
 import { ContainerDetail } from "./ContainerDetail";
-import { listStackContainers, runContainerAction } from "./api";
+import {
+  getContainerInspect,
+  getContainerLogs,
+  listStackContainers,
+  runContainerAction,
+} from "./api";
 import type { Operation } from "../operations/types";
 import type { Container, Stack } from "./types";
 
 vi.mock("./api", () => ({
   listStackContainers: vi.fn(),
   runContainerAction: vi.fn(),
+  getContainerLogs: vi.fn(),
+  getContainerInspect: vi.fn(),
 }));
 
 const stack: Stack = {
@@ -152,4 +159,95 @@ it("confirms Stop and shows a request error without opening an operation", async
   expect(await screen.findByText("Docker unavailable")).toBeInTheDocument();
   expect(window.confirm).toHaveBeenCalledWith("Stop web-2?");
   expect(onAction).not.toHaveBeenCalled();
+});
+
+it("shows only this container's bounded Logs snapshot when the tab opens", async () => {
+  vi.mocked(listStackContainers).mockResolvedValue([running]);
+  vi.mocked(getContainerLogs).mockResolvedValue({
+    output: "web-2 ready\n",
+    truncated: true,
+  });
+  show();
+  await screen.findByRole("heading", { name: "web-2" });
+  expect(getContainerLogs).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("tab", { name: "Logs" }));
+  expect(await screen.findByText("web-2 ready")).toBeInTheDocument();
+  expect(
+    screen.getByText("Some log output was truncated."),
+  ).toBeInTheDocument();
+  expect(getContainerLogs).toHaveBeenCalledWith("stk-one", "full-id-b");
+});
+
+it("shows full inspect text on demand and copies the unchanged JSON", async () => {
+  vi.mocked(listStackContainers).mockResolvedValue([running]);
+  const raw = `{"Size":9007199254740993,"Config":{"Env":["TOKEN=secret"]}}`;
+  vi.mocked(getContainerInspect).mockResolvedValue(raw);
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  show();
+  await screen.findByRole("heading", { name: "web-2" });
+  expect(getContainerInspect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("tab", { name: "Inspect" }));
+  expect(await screen.findByText(raw)).toBeInTheDocument();
+  expect(getContainerInspect).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Copy JSON" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(raw));
+  fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Inspect" }));
+  expect(getContainerInspect).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh inspect" }));
+  await waitFor(() => expect(getContainerInspect).toHaveBeenCalledTimes(2));
+});
+
+it("shows an inspect read error without hiding the other tabs", async () => {
+  vi.mocked(listStackContainers).mockResolvedValue([running]);
+  vi.mocked(getContainerInspect).mockRejectedValue(
+    new Error("Inspect unavailable"),
+  );
+  show();
+  await screen.findByRole("heading", { name: "web-2" });
+  fireEvent.click(screen.getByRole("tab", { name: "Inspect" }));
+  expect(await screen.findByText("Inspect unavailable")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
+});
+
+it("does not show one container's inspect when the selected ID changes", async () => {
+  vi.mocked(listStackContainers).mockResolvedValue([
+    running,
+    { ...running, id: "full-id-a", name: "web-1" },
+  ]);
+  let finishOld!: (value: string) => void;
+  vi.mocked(getContainerInspect)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve;
+        }),
+    )
+    .mockResolvedValueOnce('{"Name":"web-1"}');
+  const view = show();
+  await screen.findByRole("heading", { name: "web-2" });
+  fireEvent.click(screen.getByRole("tab", { name: "Inspect" }));
+  await waitFor(() =>
+    expect(getContainerInspect).toHaveBeenCalledWith("stk-one", "full-id-b"),
+  );
+  view.rerender(
+    <ContainerDetail
+      stack={stack}
+      containerId="full-id-a"
+      operations={[]}
+      dirty={false}
+      navigate={vi.fn()}
+      onAction={vi.fn()}
+    />,
+  );
+  await waitFor(() =>
+    expect(getContainerInspect).toHaveBeenCalledWith("stk-one", "full-id-a"),
+  );
+  finishOld('{"Name":"web-2"}');
+  expect(await screen.findByText('{"Name":"web-1"}')).toBeInTheDocument();
+  expect(screen.queryByText('{"Name":"web-2"}')).toBeNull();
 });

@@ -261,6 +261,25 @@ func TestContainerLogsHandlesTTYAndRedactsSecrets(t *testing.T) {
 	}
 }
 
+func TestContainerLogsDoesNotExposeSecretPrefixAtOutputLimit(t *testing.T) {
+	docker := &recordingContainers{tty: true, logs: []byte(strings.Repeat("x", maxCommandOutput-3) + "secret\n")}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	got, err := runtime.ContainerLogs(context.Background(), Request{Environment: map[string]string{"TOKEN": "secret"}}, "full-id-b")
+	if err != nil || !got.Truncated || strings.Contains(got.Output, "sec") {
+		t.Fatalf("unsafe bounded logs: length = %d, truncated = %t, err = %v", len(got.Output), got.Truncated, err)
+	}
+}
+
+func TestContainerLogsOmitsOutputWhenInputLimitPreventsSafeRedaction(t *testing.T) {
+	frame := []byte{1, 0, 0, 0, 0, 0, 0, 1, 'x'}
+	docker := &recordingContainers{logs: bytes.Repeat(frame, maxContainerLogInput/len(frame)+1)}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	got, err := runtime.ContainerLogs(context.Background(), Request{Environment: map[string]string{"TOKEN": "secret"}}, "full-id-b")
+	if err != nil || !got.Truncated || got.Output != "Docker log stream exceeded read limit; output omitted." {
+		t.Fatalf("unsafe input limit result: output length = %d, truncated = %t, err = %v", len(got.Output), got.Truncated, err)
+	}
+}
+
 func TestContainerInspectReturnsFullRawJSON(t *testing.T) {
 	raw := json.RawMessage(`{"Id":"full-id-b","Config":{"Env":["TOKEN=secret"]},"Size":9007199254740993}`)
 	docker := &recordingContainers{inspectRaw: raw}

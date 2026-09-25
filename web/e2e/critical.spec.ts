@@ -193,6 +193,32 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
       },
     }),
   );
+  await page.route("**/api/v1/stacks/*/containers/*/logs", (route) =>
+    route.fulfill({ json: { output: "web-2 ready\n", truncated: false } }),
+  );
+  const inspectJSON =
+    '{"Size":9007199254740993,"Config":{"Env":["TOKEN=secret"]}}';
+  await page.route("**/api/v1/stacks/*/containers/*/inspect", (route) =>
+    route.fulfill({ contentType: "application/json", body: inspectJSON }),
+  );
+  await page.route("**/api/v1/stacks/*/containers/*/actions/restart", (route) =>
+    route.fulfill({
+      status: 202,
+      json: {
+        id: "opr_e2e_single_restart",
+        kind: "container_restart",
+        scopeType: "stack",
+        scopeId: route
+          .request()
+          .url()
+          .split("/containers/")[0]
+          .split("/")
+          .pop(),
+        status: "succeeded",
+        outputTruncated: false,
+      },
+    }),
+  );
   await page.route("**/api/v1/stacks/*/actions/deploy", async (route) => {
     const scopeId = route
       .request()
@@ -261,6 +287,47 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     path: testInfo.outputPath("stack-services.png"),
     fullPage: true,
   });
+  await page
+    .getByRole("region", { name: "Services table" })
+    .getByRole("link", { name: "Open web-2" })
+    .click();
+  await expect(page.getByRole("heading", { name: "web-2" })).toBeVisible();
+  await expect(page.getByText("full-id-b")).toBeVisible();
+  const singleRestart = page.waitForRequest(
+    "**/api/v1/stacks/*/containers/full-id-b/actions/restart",
+  );
+  await page.getByRole("button", { name: "Restart", exact: true }).click();
+  await singleRestart;
+  await expect(page.getByLabel("Operation details")).toBeVisible();
+  await page.getByRole("button", { name: "Close operation" }).click();
+  await page.getByRole("tab", { name: "Logs" }).click();
+  await expect(page.getByText("web-2 ready")).toBeVisible();
+  await page.getByRole("tab", { name: "Inspect" }).click();
+  await expect(page.locator("#container-panel-inspect pre")).toHaveText(
+    inspectJSON,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("container-inspect-desktop.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(0);
+  await page.screenshot({
+    path: testInfo.outputPath("container-inspect-mobile.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize(initialViewport);
+  await page
+    .getByRole("navigation", { name: "Breadcrumb" })
+    .getByRole("link", { name: "paperless" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
   await page.route("**/api/v1/stacks/*/containers/actions/restart", (route) =>
     route.fulfill({
       status: 202,
@@ -380,6 +447,13 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     path: testInfo.outputPath("overview-desktop.png"),
     fullPage: true,
   });
+  await allServices.getByRole("link", { name: "Open web-1" }).click();
+  await expect(page.getByRole("heading", { name: "web-1" })).toBeVisible();
+  await expect(page.getByText("full-id-a")).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Breadcrumb" })
+    .getByRole("link", { name: "Overview" })
+    .click();
   await allServices
     .getByRole("checkbox", { name: "Select paperless web-1" })
     .check();

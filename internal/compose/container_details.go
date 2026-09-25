@@ -67,6 +67,9 @@ func (c *Client) ContainerLogs(parent context.Context, request Request, id strin
 		return ContainerLogSnapshot{}, c.safeError(err, request)
 	}
 	redacted := redactComposeOutput(output.String(), request.Environment)
+	if input.N == 0 && len(redacted) <= maxCommandOutput {
+		return ContainerLogSnapshot{Output: "Docker log stream exceeded read limit; output omitted.", Truncated: true}, nil
+	}
 	if len(redacted) > maxCommandOutput {
 		redacted = redacted[:maxCommandOutput]
 		truncated = true
@@ -80,7 +83,7 @@ type boundedContainerOutput struct {
 }
 
 func (w *boundedContainerOutput) Write(p []byte) (int, error) {
-	available := maxCommandOutput - w.data.Len()
+	available := maxContainerLogInput - w.data.Len()
 	if available <= 0 {
 		if len(p) > 0 {
 			w.truncated = true

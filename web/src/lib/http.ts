@@ -49,12 +49,12 @@ export function refreshSession(): Promise<void> {
   }
   return refreshInFlight;
 }
-export async function api<T>(
+async function apiResponse(
   path: string,
   method = "GET",
   body?: unknown,
   headers: Record<string, string> = {},
-): Promise<T> {
+): Promise<Response> {
   async function request(): Promise<Response> {
     return fetch(`/api/v1${path}`, {
       method,
@@ -88,7 +88,22 @@ export async function api<T>(
       data?.error?.message || `Request failed (${response.status})`,
     );
   }
+  return response;
+}
+
+export async function api<T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
+  const response = await apiResponse(path, method, body, headers);
   return response.status === 204 ? (undefined as T) : response.json();
+}
+
+export async function apiText(path: string): Promise<string> {
+  const response = await apiResponse(path);
+  return response.text();
 }
 
 export function message(error: unknown): string {

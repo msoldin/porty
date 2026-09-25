@@ -1,8 +1,9 @@
-import { api } from "../../lib/http";
+import { api, apiText } from "../../lib/http";
 import type { Operation } from "../operations/types";
 import type {
   Container,
   ContainerAction,
+  ContainerLogs,
   Deployment,
   FileContent,
   FileEntry,
@@ -45,6 +46,24 @@ export function runContainerAction(
   return api(
     `${stackPath(id)}/containers/${encodeURIComponent(containerId)}/actions/${action}`,
     "POST",
+  );
+}
+
+export function getContainerLogs(
+  id: string,
+  containerId: string,
+): Promise<ContainerLogs> {
+  return api(
+    `${stackPath(id)}/containers/${encodeURIComponent(containerId)}/logs`,
+  );
+}
+
+export function getContainerInspect(
+  id: string,
+  containerId: string,
+): Promise<string> {
+  return apiText(
+    `${stackPath(id)}/containers/${encodeURIComponent(containerId)}/inspect`,
   );
 }
 

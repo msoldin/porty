@@ -35,6 +35,8 @@ export type ContainerPort = {
 
 export type ContainerAction = "start" | "stop" | "restart";
 
+export type ContainerLogs = { output: string; truncated: boolean };
+
 export type FileEntry = {
   path: string;
   isDirectory: boolean;

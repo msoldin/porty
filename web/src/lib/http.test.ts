@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { api, APIError, setCSRF } from "./http";
+import { api, apiText, APIError, setCSRF } from "./http";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -119,4 +119,50 @@ it("does not refresh or retry a rejected sign-in or setup request", async () => 
   ).rejects.toBeInstanceOf(APIError);
   await expect(api("/setup/status")).rejects.toBeInstanceOf(APIError);
   expect(fetcher.mock.calls).toHaveLength(2);
+});
+
+it("retries authenticated inspect text without parsing large JSON integers", async () => {
+  document.cookie = "porty_csrf=cookie-csrf; Path=/";
+  const raw = `{"Size":9007199254740993,"Config":{"Env":["TOKEN=secret"]}}`;
+  let reads = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url === "/api/v1/session/refresh")
+        return Response.json({ csrfToken: "new-csrf" });
+      reads++;
+      return reads === 1
+        ? Response.json(
+            { error: { code: "AuthenticationFailed" } },
+            { status: 401 },
+          )
+        : new Response(raw, {
+            headers: { "Content-Type": "application/json" },
+          });
+    }),
+  );
+  await expect(
+    apiText("/stacks/one/containers/full-id-b/inspect"),
+  ).resolves.toBe(raw);
+  expect(reads).toBe(2);
+});
+
+it("reports inspect text failures using the existing API error", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json(
+        {
+          error: {
+            code: "LimitExceeded",
+            message: "Container inspect exceeds the size limit",
+          },
+        },
+        { status: 413 },
+      ),
+    ),
+  );
+  await expect(
+    apiText("/stacks/one/containers/full-id-b/inspect"),
+  ).rejects.toMatchObject({ status: 413, code: "LimitExceeded" });
 });

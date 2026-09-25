@@ -1262,6 +1262,21 @@ td > a {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
+.container-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.container-section-heading h2,
+.container-section-heading p {
+  margin: 0 0 6px;
+}
+.container-output {
+  max-width: 100%;
+  user-select: text;
+}
 .stack-top {
   flex-shrink: 0;
 }

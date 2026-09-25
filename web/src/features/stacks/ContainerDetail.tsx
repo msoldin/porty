@@ -1,12 +1,13 @@
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Badge, Notice } from "../../components/Feedback";
 import { message } from "../../lib/http";
 import type { Operation } from "../operations/types";
-import { runContainerAction } from "./api";
+import { getContainerInspect, runContainerAction } from "./api";
 import { formatContainerPort } from "./serviceDisplay";
 import { containerStatePresentation } from "./statusPresentation";
 import type { ContainerAction, Stack } from "./types";
 import { useStackContainers } from "./useStackContainers";
+import { useContainerLogs } from "./useContainerLogs";
 
 export function ContainerDetail({
   stack,
@@ -25,6 +26,16 @@ export function ContainerDetail({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState<"Overview" | "Logs" | "Inspect">("Overview");
+  const [inspect, setInspect] = useState({
+    key: "",
+    requestKey: "",
+    text: "",
+    loading: false,
+    error: "",
+  });
+  const [copyMessage, setCopyMessage] = useState("");
+  const inspectGeneration = useRef(0);
   const activeOperation = operations.some(
     (operation) =>
       operation.scopeId === stack.id &&
@@ -45,6 +56,27 @@ export function ContainerDetail({
     refreshKey,
   );
   const container = containers?.find((item) => item.id === containerId);
+  const logs = useContainerLogs(
+    stack.id,
+    containerId,
+    tab === "Logs" && !!container,
+  );
+  const inspectKey = `${stack.id}:${containerId}`;
+  useEffect(
+    () => () => {
+      inspectGeneration.current++;
+    },
+    [inspectKey],
+  );
+  useEffect(() => {
+    if (
+      tab === "Inspect" &&
+      container &&
+      inspect.key !== inspectKey &&
+      inspect.requestKey !== inspectKey
+    )
+      void loadInspect();
+  }, [tab, inspectKey, inspect.key, inspect.requestKey, container?.id]);
   const state = containerStatePresentation(container?.state, container?.health);
   const available =
     !!container &&
@@ -67,6 +99,46 @@ export function ContainerDetail({
       setError(message(cause));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadInspect() {
+    const generation = ++inspectGeneration.current;
+    setInspect({
+      key: "",
+      requestKey: inspectKey,
+      text: "",
+      loading: true,
+      error: "",
+    });
+    try {
+      const text = await getContainerInspect(stack.id, containerId);
+      if (generation === inspectGeneration.current)
+        setInspect({
+          key: inspectKey,
+          requestKey: inspectKey,
+          text,
+          loading: false,
+          error: "",
+        });
+    } catch (cause) {
+      if (generation === inspectGeneration.current)
+        setInspect({
+          key: inspectKey,
+          requestKey: inspectKey,
+          text: "",
+          loading: false,
+          error: message(cause),
+        });
+    }
+  }
+
+  async function copyInspect() {
+    try {
+      await navigator.clipboard.writeText(inspect.text);
+      setCopyMessage("JSON copied.");
+    } catch {
+      setCopyMessage("Could not copy JSON.");
     }
   }
 
@@ -137,60 +209,155 @@ export function ContainerDetail({
             </div>
           </div>
           {error && <Notice>{error}</Notice>}
-          <div class="detail-content">
-            <h2>Overview</h2>
-            <dl class="container-facts">
-              <div>
-                <dt>Container ID</dt>
-                <dd>
-                  <code>{container.id}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>Name</dt>
-                <dd>{container.name || "—"}</dd>
-              </div>
-              <div>
-                <dt>Service</dt>
-                <dd>{container.service || "—"}</dd>
-              </div>
-              <div>
-                <dt>State</dt>
-                <dd>
-                  <Badge tone={state.tone} dot>
-                    {state.label}
-                  </Badge>{" "}
-                  {container.state}
-                </dd>
-              </div>
-              <div>
-                <dt>Health</dt>
-                <dd>{state.health || "—"}</dd>
-              </div>
-              <div>
-                <dt>Image</dt>
-                <dd>
-                  <code>{container.image || "—"}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>Networks</dt>
-                <dd>
-                  {container.networks.length
-                    ? container.networks.join(", ")
-                    : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>Ports</dt>
-                <dd>
-                  {container.ports.length
-                    ? container.ports.map(formatContainerPort).join(", ")
-                    : "—"}
-                </dd>
-              </div>
-            </dl>
+          <div class="tabs" role="tablist" aria-label="Container sections">
+            {(["Overview", "Logs", "Inspect"] as const).map((name) => (
+              <button
+                key={name}
+                type="button"
+                role="tab"
+                id={`container-tab-${name.toLowerCase()}`}
+                aria-controls={`container-panel-${name.toLowerCase()}`}
+                aria-selected={tab === name}
+                onClick={() => {
+                  setTab(name);
+                  setCopyMessage("");
+                }}
+              >
+                {name}
+              </button>
+            ))}
           </div>
+          {tab === "Overview" && (
+            <div
+              class="detail-content"
+              role="tabpanel"
+              id="container-panel-overview"
+              aria-labelledby="container-tab-overview"
+            >
+              <h2>Overview</h2>
+              <dl class="container-facts">
+                <div>
+                  <dt>Container ID</dt>
+                  <dd>
+                    <code>{container.id}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Name</dt>
+                  <dd>{container.name || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Service</dt>
+                  <dd>{container.service || "—"}</dd>
+                </div>
+                <div>
+                  <dt>State</dt>
+                  <dd>
+                    <Badge tone={state.tone} dot>
+                      {state.label}
+                    </Badge>{" "}
+                    {container.state}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Health</dt>
+                  <dd>{state.health || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Image</dt>
+                  <dd>
+                    <code>{container.image || "—"}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Networks</dt>
+                  <dd>
+                    {container.networks.length
+                      ? container.networks.join(", ")
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Ports</dt>
+                  <dd>
+                    {container.ports.length
+                      ? container.ports.map(formatContainerPort).join(", ")
+                      : "—"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          )}
+          {tab === "Logs" && (
+            <div
+              class="detail-content"
+              role="tabpanel"
+              id="container-panel-logs"
+              aria-labelledby="container-tab-logs"
+            >
+              <h2>Logs</h2>
+              <p class="muted">
+                Latest 500 lines. Updates every five seconds while this tab is
+                open.
+              </p>
+              {logs.loading && <p role="status">Loading logs…</p>}
+              {logs.error && <Notice>{logs.error}</Notice>}
+              {logs.truncated && (
+                <Notice>Some log output was truncated.</Notice>
+              )}
+              <pre class="output container-output">
+                {logs.output ||
+                  (!logs.loading && !logs.error
+                    ? "Waiting for container output…"
+                    : "")}
+              </pre>
+            </div>
+          )}
+          {tab === "Inspect" && (
+            <div
+              class="detail-content"
+              role="tabpanel"
+              id="container-panel-inspect"
+              aria-labelledby="container-tab-inspect"
+            >
+              <div class="container-section-heading">
+                <div>
+                  <h2>Docker inspect</h2>
+                  <p class="muted">
+                    Full Docker JSON, including environment values.
+                  </p>
+                </div>
+                <div class="action-group">
+                  <button
+                    type="button"
+                    disabled={
+                      inspect.loading && inspect.requestKey === inspectKey
+                    }
+                    onClick={() => void loadInspect()}
+                  >
+                    Refresh inspect
+                  </button>
+                  <button
+                    type="button"
+                    disabled={inspect.key !== inspectKey || !inspect.text}
+                    onClick={() => void copyInspect()}
+                  >
+                    Copy JSON
+                  </button>
+                </div>
+              </div>
+              {inspect.loading && inspect.requestKey === inspectKey && (
+                <p role="status">Loading inspect…</p>
+              )}
+              {inspect.key === inspectKey && inspect.error && (
+                <Notice>{inspect.error}</Notice>
+              )}
+              {copyMessage && <p role="status">{copyMessage}</p>}
+              {inspect.key === inspectKey && inspect.text && (
+                <pre class="output container-output">{inspect.text}</pre>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>
