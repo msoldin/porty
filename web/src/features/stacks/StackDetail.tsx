@@ -131,13 +131,13 @@ export function StackDetail({
       <div class="stack-top">
         <a
           href="#/"
-          aria-label="All stacks"
+          aria-label="Overview"
           onClick={(event) => {
             event.preventDefault();
             navigate("/");
           }}
         >
-          Stacks
+          Overview
         </a>
         <span class="muted"> / {stack.directoryName}</span>
         <div class="page-heading">

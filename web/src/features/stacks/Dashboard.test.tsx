@@ -231,6 +231,52 @@ it("limits select-all to twenty visible stacks", () => {
   expect(selectAll).toHaveAttribute("title", "Select at most 20 stacks");
 });
 
+it("shows archived stacks but never submits them for stack actions", async () => {
+  vi.mocked(getStackState).mockResolvedValue({
+    runtime: "running",
+    freshness: "current",
+    hasDeployed: true,
+  });
+  vi.mocked(runStackAction).mockResolvedValue({
+    id: "op-one",
+    kind: "deploy",
+    scopeType: "stack",
+    scopeId: "one",
+    status: "queued",
+    outputTruncated: false,
+  });
+  const archived: Stack = {
+    ...stacks[0],
+    id: "old",
+    directoryName: "old-app",
+    archivedAt: "2026-09-01T00:00:00Z",
+  };
+  render(
+    <Dashboard
+      stacks={[...stacks, archived]}
+      repo={null}
+      operations={[]}
+      navigate={vi.fn()}
+      refresh={vi.fn()}
+      onOperationsAccepted={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("link", { name: "old-app" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("checkbox", { name: "Select old-app" }),
+  ).toBeDisabled();
+  expect(
+    within(
+      screen.getByRole("link", { name: "old-app" }).closest("tr")!,
+    ).getByText("Archived"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select alpha" }));
+  fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Deploy" }));
+  await waitFor(() => expect(runStackAction).toHaveBeenCalledTimes(1));
+  expect(runStackAction).toHaveBeenCalledWith("one", "deploy");
+});
+
 it("updates each stack row after an external Docker state change", async () => {
   vi.useFakeTimers();
   const reads = new Map<string, number>();

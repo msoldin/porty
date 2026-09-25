@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { Icon } from "../components/Icon";
 
 const nav = [
-  { name: "Stacks", path: "/" },
+  { name: "Overview", icon: "Stacks", path: "/" },
   { name: "Repository", path: "/repository" },
   { name: "Operations", path: "/operations" },
   { name: "Audit", path: "/audit" },
@@ -63,7 +63,7 @@ export function WorkspaceShell({
                 navigate(item.path);
               }}
             >
-              <Icon name={item.name} />
+              <Icon name={item.icon || item.name} />
               {item.name}
             </a>
           ))}

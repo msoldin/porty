@@ -64,6 +64,7 @@ export function Dashboard({
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [archiveFilter, setArchiveFilter] = useState("all");
   const [sort, setSort] = useState("asc");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -89,7 +90,9 @@ export function Dashboard({
     });
   }, []);
   useEffect(() => {
-    const known = new Set(stacks.map((stack) => stack.id));
+    const known = new Set(
+      stacks.filter((stack) => !stack.archivedAt).map((stack) => stack.id),
+    );
     setSelected((current) => {
       if ([...current].every((id) => known.has(id))) return current;
       return new Set([...current].filter((id) => known.has(id)));
@@ -98,18 +101,24 @@ export function Dashboard({
   const visible = stacks
     .filter(
       (stack) =>
-        !stack.archivedAt &&
         stack.directoryName.toLowerCase().includes(search.toLowerCase()) &&
-        (filter !== "modified" || isModified(stack, repo)),
+        (filter !== "modified" || isModified(stack, repo)) &&
+        (archiveFilter === "all" ||
+          (archiveFilter === "active" && !stack.archivedAt) ||
+          (archiveFilter === "archived" && !!stack.archivedAt)),
     )
     .sort(
       (a, b) =>
         a.directoryName.localeCompare(b.directoryName) *
         (sort === "asc" ? 1 : -1),
     );
-  const selectedStacks = visible.filter((stack) => selected.has(stack.id));
+  const selectableVisible = visible.filter((stack) => !stack.archivedAt);
+  const selectedStacks = selectableVisible.filter((stack) =>
+    selected.has(stack.id),
+  );
   const allVisibleSelected =
-    visible.length > 0 && visible.every((stack) => selected.has(stack.id));
+    selectableVisible.length > 0 &&
+    selectableVisible.every((stack) => selected.has(stack.id));
   const activeIDs = new Set(
     operations
       .filter((operation) => ["queued", "running"].includes(operation.status))
@@ -119,6 +128,7 @@ export function Dashboard({
     !busy &&
     selectedStacks.length > 0 &&
     selectedStacks.length <= 20 &&
+    selectedStacks.every((stack) => !stack.archivedAt) &&
     selectedStacks.every((stack) => !activeIDs.has(stack.id));
   const canRun =
     canDeploy &&
@@ -158,7 +168,10 @@ export function Dashboard({
   return (
     <section class="dashboard">
       <div class="page-heading">
-        <h1>Stacks</h1>
+        <h1>Overview</h1>
+      </div>
+      <div class="services-heading">
+        <h2>Stacks</h2>
         <div class="action-group">
           <button class="primary" onClick={() => setCreating(!creating)}>
             <Icon name="Plus" />
@@ -259,6 +272,18 @@ export function Dashboard({
           <option value="modified">Modified</option>
         </select>
         <select
+          aria-label="Filter archived stacks"
+          value={archiveFilter}
+          onChange={(event) => {
+            setArchiveFilter(event.currentTarget.value);
+            setSelected(new Set());
+          }}
+        >
+          <option value="all">All stacks</option>
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select
           aria-label="Sort stacks"
           value={sort}
           onChange={(event) => setSort(event.currentTarget.value)}
@@ -301,14 +326,20 @@ export function Dashboard({
                       node.indeterminate =
                         selectedStacks.length > 0 && !allVisibleSelected;
                   }}
-                  disabled={visible.length === 0 || visible.length > 20 || busy}
+                  disabled={
+                    selectableVisible.length === 0 ||
+                    selectableVisible.length > 20 ||
+                    busy
+                  }
                   title={
-                    visible.length > 20 ? "Select at most 20 stacks" : undefined
+                    selectableVisible.length > 20
+                      ? "Select at most 20 stacks"
+                      : undefined
                   }
                   onChange={(event) =>
                     setSelected(
                       event.currentTarget.checked
-                        ? new Set(visible.map((stack) => stack.id))
+                        ? new Set(selectableVisible.map((stack) => stack.id))
                         : new Set(),
                     )
                   }
@@ -331,7 +362,9 @@ export function Dashboard({
                 navigate={navigate}
                 selected={selected.has(stack.id)}
                 selectionDisabled={
-                  busy || (selected.size >= 20 && !selected.has(stack.id))
+                  busy ||
+                  !!stack.archivedAt ||
+                  (selected.size >= 20 && !selected.has(stack.id))
                 }
                 onSelect={(checked) =>
                   setSelected((current) => {
@@ -402,18 +435,21 @@ function StackRow({
         />
       </td>
       <td>
-        <a
-          class="stack-name-link"
-          title={stack.directoryName}
-          href={"#/stacks/" + encodeURIComponent(stack.id)}
-          onClick={(event) => {
-            event.preventDefault();
-            navigate("/stacks/" + encodeURIComponent(stack.id));
-          }}
-        >
-          <Icon name="Stacks" />
-          {stack.directoryName}
-        </a>
+        <div class="stack-name-cell">
+          <a
+            class="stack-name-link"
+            title={stack.directoryName}
+            href={"#/stacks/" + encodeURIComponent(stack.id)}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("/stacks/" + encodeURIComponent(stack.id));
+            }}
+          >
+            <Icon name="Stacks" />
+            {stack.directoryName}
+          </a>
+          {stack.archivedAt && <Badge tone="neutral">Archived</Badge>}
+        </div>
       </td>
       <td>
         <Badge tone={runtime.tone} dot>

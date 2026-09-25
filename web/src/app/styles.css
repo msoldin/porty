@@ -515,6 +515,11 @@ td > a {
   height: 20px;
   flex: none;
 }
+.stack-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .stack-table .selected-row td {
   background: light-dark(#eff5ff, #243757);
 }

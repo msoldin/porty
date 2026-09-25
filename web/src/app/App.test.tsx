@@ -384,13 +384,23 @@ describe("Porty administration interface", () => {
   });
   it("navigates from the dashboard to a stack and back", async () => {
     render(<App />);
+    expect(
+      await screen.findByRole("heading", { name: "Overview" }),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Main navigation" }),
+      ).getByRole("link", { name: "Overview" }),
+    ).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
     expect(
       await screen.findByRole("heading", { name: "paperless" }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("link", { name: "All stacks" }));
+    fireEvent.click(
+      within(screen.getByRole("main")).getByRole("link", { name: "Overview" }),
+    );
     expect(
-      await screen.findByRole("heading", { name: "Stacks" }),
+      await screen.findByRole("heading", { name: "Overview" }),
     ).toBeInTheDocument();
   });
   it("opens a stack from a direct hash link and handles malformed stack IDs", async () => {
@@ -449,7 +459,9 @@ describe("Porty administration interface", () => {
     const editor = await openEditor();
     await edit(editor);
     vi.spyOn(window, "confirm").mockReturnValue(false);
-    fireEvent.click(screen.getByRole("link", { name: "All stacks" }));
+    fireEvent.click(
+      within(screen.getByRole("main")).getByRole("link", { name: "Overview" }),
+    );
     expect(
       screen.getByRole("textbox", { name: "File contents" }),
     ).toHaveTextContent("nginx");
