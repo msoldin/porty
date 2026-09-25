@@ -1,8 +1,11 @@
 package compose
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 )
 
@@ -133,8 +137,40 @@ func TestComposeLogsAndErrorsAreBoundedAndRedacted(t *testing.T) {
 
 type recordingContainers struct {
 	client.APIClient
-	calls []string
-	err   error
+	calls      []string
+	err        error
+	inspectRaw json.RawMessage
+	tty        bool
+	logs       []byte
+	logOptions client.ContainerLogsOptions
+	logClosed  bool
+}
+
+type trackedLogReader struct {
+	io.Reader
+	closed *bool
+}
+
+func (r trackedLogReader) Close() error {
+	*r.closed = true
+	return nil
+}
+
+func (r *recordingContainers) ContainerInspect(_ context.Context, id string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+	r.calls = append(r.calls, "inspect:"+id)
+	if options.Size {
+		return client.ContainerInspectResult{}, errors.New("unexpected size request")
+	}
+	return client.ContainerInspectResult{Container: container.InspectResponse{Config: &container.Config{Tty: r.tty}}, Raw: r.inspectRaw}, r.err
+}
+
+func (r *recordingContainers) ContainerLogs(_ context.Context, id string, options client.ContainerLogsOptions) (client.ContainerLogsResult, error) {
+	r.calls = append(r.calls, "logs:"+id)
+	r.logOptions = options
+	if r.err != nil {
+		return nil, r.err
+	}
+	return trackedLogReader{Reader: bytes.NewReader(r.logs), closed: &r.logClosed}, nil
 }
 
 func (r *recordingContainers) ContainerStart(_ context.Context, id string, _ client.ContainerStartOptions) (client.ContainerStartResult, error) {
@@ -174,5 +210,72 @@ func TestContainerActionRedactsAndBoundsDockerError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "secret") || len(err.Error()) > maxCommandOutput+len("Compose: ") {
 		t.Fatalf("unsafe Docker error: length = %d, contains secret = %t", len(err.Error()), strings.Contains(err.Error(), "secret"))
+	}
+}
+
+func TestContainerLogsReadsOnlySelectedID(t *testing.T) {
+	docker := &recordingContainers{tty: true, logs: []byte("ready\n")}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	got, err := runtime.ContainerLogs(context.Background(), Request{}, "full-id-b")
+	if err != nil || got.Output != "ready\n" || got.Truncated {
+		t.Fatalf("logs = %+v, %v", got, err)
+	}
+	if strings.Join(docker.calls, ",") != "inspect:full-id-b,logs:full-id-b" || !docker.logClosed {
+		t.Fatalf("SDK calls = %v, closed = %t", docker.calls, docker.logClosed)
+	}
+	if !docker.logOptions.ShowStdout || !docker.logOptions.ShowStderr || docker.logOptions.Follow || docker.logOptions.Tail != "500" {
+		t.Fatalf("log options = %+v", docker.logOptions)
+	}
+}
+
+func TestContainerLogsDemultiplexesAndBoundsOutput(t *testing.T) {
+	frame := func(stream byte, output string) []byte {
+		data := []byte(output)
+		length := len(data)
+		return append([]byte{stream, 0, 0, 0, byte(length >> 24), byte(length >> 16), byte(length >> 8), byte(length)}, data...)
+	}
+	docker := &recordingContainers{logs: append(frame(1, "out\n"), frame(2, "err\n")...)}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	got, err := runtime.ContainerLogs(context.Background(), Request{}, "full-id-b")
+	if err != nil || got.Output != "out\nerr\n" || got.Truncated {
+		t.Fatalf("demultiplexed logs = %+v, %v", got, err)
+	}
+	docker.logs = frame(1, strings.Repeat("x", maxCommandOutput+100))
+	got, err = runtime.ContainerLogs(context.Background(), Request{}, "full-id-b")
+	if err != nil || len(got.Output) > maxCommandOutput || !got.Truncated {
+		t.Fatalf("bounded logs length = %d, truncated = %t, err = %v", len(got.Output), got.Truncated, err)
+	}
+}
+
+func TestContainerLogsHandlesTTYAndRedactsSecrets(t *testing.T) {
+	docker := &recordingContainers{tty: true, logs: []byte("TOKEN=secret\n")}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	got, err := runtime.ContainerLogs(context.Background(), Request{Environment: map[string]string{"TOKEN": "secret"}}, "full-id-b")
+	if err != nil || got.Output != "TOKEN=[REDACTED]\n" {
+		t.Fatalf("TTY logs = %+v, %v", got, err)
+	}
+	docker.err = errors.New("cannot read secret")
+	_, err = runtime.ContainerLogs(context.Background(), Request{Environment: map[string]string{"TOKEN": "secret"}}, "full-id-b")
+	if err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("unsafe log error = %v", err)
+	}
+}
+
+func TestContainerInspectReturnsFullRawJSON(t *testing.T) {
+	raw := json.RawMessage(`{"Id":"full-id-b","Config":{"Env":["TOKEN=secret"]},"Size":9007199254740993}`)
+	docker := &recordingContainers{inspectRaw: raw}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	got, err := runtime.ContainerInspect(context.Background(), Request{}, "full-id-b")
+	if err != nil || !bytes.Equal(got, raw) || strings.Join(docker.calls, ",") != "inspect:full-id-b" {
+		t.Fatalf("inspect = %s, calls = %v, err = %v", got, docker.calls, err)
+	}
+}
+
+func TestContainerInspectRejectsOversizedJSON(t *testing.T) {
+	docker := &recordingContainers{inspectRaw: json.RawMessage(`{"large":"` + strings.Repeat("x", 2<<20) + `"}`)}
+	runtime := newWithContainerActions(&recordingCompose{}, docker, time.Minute)
+	got, err := runtime.ContainerInspect(context.Background(), Request{}, "full-id-b")
+	if !errors.Is(err, ErrContainerInspectTooLarge) || got != nil {
+		t.Fatalf("oversized inspect = %d bytes, %v", len(got), err)
 	}
 }
