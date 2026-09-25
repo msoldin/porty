@@ -3,15 +3,19 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/preact";
 import { afterEach, expect, it, vi } from "vitest";
 import { OverviewServices } from "./OverviewServices";
 import { useOverviewContainers } from "./useOverviewContainers";
+import { runContainerBatchAction } from "./api";
+import type { Operation } from "../operations/types";
 import type { OverviewSnapshot } from "./overviewContainers";
 import type { Container, Stack } from "./types";
 
 vi.mock("./useOverviewContainers", () => ({ useOverviewContainers: vi.fn() }));
+vi.mock("./api", () => ({ runContainerBatchAction: vi.fn() }));
 
 const stacks: Stack[] = [
   {
@@ -226,4 +230,151 @@ it("disables select-all above twenty visible containers", () => {
   expect(
     screen.getByRole("checkbox", { name: "Select all visible services" }),
   ).toBeDisabled();
+});
+
+it("submits full container IDs once per owning stack", async () => {
+  const accepted: Operation[] = [];
+  const onOperationsAccepted = vi.fn();
+  vi.mocked(useOverviewContainers).mockReturnValue({
+    ...loaded,
+    rows: [
+      { stackId: "one", container: web1 },
+      { stackId: "one", container: web2 },
+      { stackId: "two", container: { ...worker, state: "running" } },
+    ],
+  });
+  vi.mocked(runContainerBatchAction).mockImplementation(async (id) => {
+    const operation: Operation = {
+      id,
+      kind: "container_batch_restart",
+      scopeType: "stack",
+      scopeId: id,
+      status: "queued",
+      outputTruncated: false,
+    };
+    accepted.push(operation);
+    return operation;
+  });
+  render(
+    <OverviewServices
+      stacks={stacks}
+      operations={[]}
+      navigate={vi.fn()}
+      onOperationsAccepted={onOperationsAccepted}
+    />,
+  );
+  for (const name of ["alpha web-1", "alpha web-2", "beta worker-1"]) {
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select " + name }));
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Restart selected" }));
+  await waitFor(() => expect(runContainerBatchAction).toHaveBeenCalledTimes(2));
+  expect(runContainerBatchAction).toHaveBeenCalledWith(
+    "one",
+    ["web-1", "web-2"],
+    "restart",
+  );
+  expect(runContainerBatchAction).toHaveBeenCalledWith(
+    "two",
+    ["worker-1"],
+    "restart",
+  );
+  expect(onOperationsAccepted).toHaveBeenCalledWith(accepted);
+});
+
+it("enables start only for stopped rows and blocks actions during stack operations", () => {
+  const active: Operation = {
+    id: "active",
+    kind: "deploy",
+    scopeType: "stack",
+    scopeId: "one",
+    status: "running",
+    outputTruncated: false,
+  };
+  vi.mocked(useOverviewContainers).mockReturnValue(loaded);
+  const view = render(
+    <OverviewServices
+      stacks={stacks}
+      operations={[]}
+      navigate={vi.fn()}
+      onOperationsAccepted={vi.fn()}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Select beta worker-1" }),
+  );
+  expect(screen.getByRole("button", { name: "Start selected" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Stop selected" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select alpha web-1" }));
+  expect(screen.getByRole("button", { name: "Start selected" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Restart selected" }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Select beta worker-1" }),
+  );
+  view.rerender(
+    <OverviewServices
+      stacks={stacks}
+      operations={[active]}
+      navigate={vi.fn()}
+      onOperationsAccepted={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByRole("button", { name: "Restart selected" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("checkbox", { name: "Select old-app old-1" }),
+  ).toBeDisabled();
+});
+
+it("confirms stop and retains only selections from failed stack requests", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const onOperationsAccepted = vi.fn();
+  vi.mocked(useOverviewContainers).mockReturnValue({
+    ...loaded,
+    rows: [
+      { stackId: "one", container: web1 },
+      { stackId: "two", container: { ...worker, state: "running" } },
+    ],
+  });
+  vi.mocked(runContainerBatchAction).mockImplementation(async (id) => {
+    if (id === "two") throw new Error("Docker unavailable");
+    return {
+      id: "op-one",
+      kind: "container_batch_stop",
+      scopeType: "stack",
+      scopeId: id,
+      status: "queued",
+      outputTruncated: false,
+    };
+  });
+  render(
+    <OverviewServices
+      stacks={stacks}
+      operations={[]}
+      navigate={vi.fn()}
+      onOperationsAccepted={onOperationsAccepted}
+    />,
+  );
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select alpha web-1" }));
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Select beta worker-1" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Stop selected" }));
+  expect(confirm).toHaveBeenCalledWith(
+    "Stop 2 selected containers across 2 stacks?",
+  );
+  await waitFor(() => expect(onOperationsAccepted).toHaveBeenCalledTimes(1));
+  expect(
+    screen.getByRole("checkbox", { name: "Select alpha web-1" }),
+  ).not.toBeChecked();
+  expect(
+    screen.getByRole("checkbox", { name: "Select beta worker-1" }),
+  ).toBeChecked();
+  expect(screen.getByRole("status")).toHaveTextContent("alpha: accepted");
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "beta: Docker unavailable",
+  );
+  confirm.mockRestore();
 });
