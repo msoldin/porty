@@ -699,6 +699,16 @@ td > a {
   color: var(--blue);
   font-size: 15px;
 }
+.service-identity a {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-decoration: none;
+}
+.service-identity a:hover strong {
+  text-decoration: underline;
+}
 .service-identity small,
 .service-health {
   color: var(--muted);

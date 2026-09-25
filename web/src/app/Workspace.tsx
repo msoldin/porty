@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
 import { useHashRoute } from "./useHashRoute";
+import { parseStackRoute } from "./routes";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { WorkspaceShell } from "./WorkspaceShell";
 import { RepositoryHeader } from "../features/repository/RepositoryHeader";
@@ -13,6 +14,7 @@ import { runRepositoryAction } from "../features/repository/api";
 import { signOut } from "../features/auth/api";
 import { Dashboard } from "../features/stacks/Dashboard";
 import { StackDetail } from "../features/stacks/StackDetail";
+import { ContainerDetail } from "../features/stacks/ContainerDetail";
 import { AccountSettings } from "../features/auth/AccountSettings";
 import { Operations } from "../features/operations/Operations";
 import { OperationDrawer } from "../features/operations/OperationDrawer";
@@ -70,13 +72,10 @@ export function Workspace({
       setBusy(false);
     }
   }
-  let id = "";
-  try {
-    id = route.startsWith("/stacks/") ? decodeURIComponent(route.slice(8)) : "";
-  } catch {
-    /* unknown route */
-  }
-  const selectedStack = stacks.find((stack) => stack.id === id);
+  const stackRoute = parseStackRoute(route);
+  const selectedStack = stacks.find(
+    (stack) => stack.id === stackRoute?.stackId,
+  );
   const operation = operations.find(
     (operation) => operation.id === selectedOperation,
   );
@@ -129,6 +128,16 @@ export function Workspace({
       <main>
         {loading ? (
           <Empty>Loading stacks…</Empty>
+        ) : selectedStack && stackRoute?.containerId ? (
+          <ContainerDetail
+            key={`${selectedStack.id}:${stackRoute.containerId}`}
+            stack={selectedStack}
+            containerId={stackRoute.containerId}
+            operations={operations}
+            dirty={dirty}
+            navigate={navigate}
+            onAction={onAction}
+          />
         ) : selectedStack ? (
           <StackDetail
             key={selectedStack.id}

@@ -4,6 +4,7 @@ import { Icon } from "../../components/Icon";
 import { message } from "../../lib/http";
 import type { Operation } from "../operations/types";
 import { ServiceCells } from "./ServiceCells";
+import { containerRoute } from "./containerRoute";
 import { runContainerBatchAction } from "./api";
 import { useOverviewContainers } from "./useOverviewContainers";
 import type { OverviewContainer } from "./overviewContainers";
@@ -344,7 +345,13 @@ export function OverviewServices({
                       {stack.archivedAt && <Badge>Archived</Badge>}
                     </div>
                   </td>
-                  <ServiceCells container={row.container} />
+                  <ServiceCells
+                    container={row.container}
+                    href={containerRoute(row.stackId, row.container.id)}
+                    onOpen={() =>
+                      navigate(containerRoute(row.stackId, row.container.id))
+                    }
+                  />
                 </tr>
               );
             })}

@@ -44,7 +44,38 @@ const containers: Container[] = [
     ports: [],
   },
 ];
-const props = { error: "", busy: false, archived: false, dirty: false };
+const props = {
+  error: "",
+  busy: false,
+  archived: false,
+  dirty: false,
+  stackId: "stack/one",
+  navigate: vi.fn(),
+};
+
+it("opens one replica from its service link without selecting it", () => {
+  const navigate = vi.fn();
+  render(
+    <ServicesTable
+      {...props}
+      navigate={navigate}
+      containers={containers}
+      onBatchAction={vi.fn()}
+    />,
+  );
+  const link = screen.getByRole("link", { name: "Open web-2" });
+  expect(link).toHaveAttribute(
+    "href",
+    "#/stacks/stack%2Fone/containers/full-id-b",
+  );
+  fireEvent.click(link);
+  expect(navigate).toHaveBeenCalledWith(
+    "/stacks/stack%2Fone/containers/full-id-b",
+  );
+  expect(
+    screen.getByRole("checkbox", { name: "Select web-2" }),
+  ).not.toBeChecked();
+});
 
 it("shows exact Services columns and keeps replicas and runtime metadata distinct", () => {
   render(

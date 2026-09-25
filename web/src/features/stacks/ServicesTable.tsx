@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { Empty, Notice } from "../../components/Feedback";
 import { Icon } from "../../components/Icon";
 import { ServiceCells } from "./ServiceCells";
+import { containerRoute } from "./containerRoute";
 import type { Container, ContainerAction } from "./types";
 
 export function ServicesTable({
@@ -11,6 +12,8 @@ export function ServicesTable({
   archived,
   dirty,
   onBatchAction,
+  stackId,
+  navigate,
 }: {
   containers: Container[] | undefined;
   error: string;
@@ -18,6 +21,8 @@ export function ServicesTable({
   archived: boolean;
   dirty: boolean;
   onBatchAction: (ids: string[], action: ContainerAction) => void;
+  stackId: string;
+  navigate: (path: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -205,7 +210,11 @@ export function ServicesTable({
                     }
                   />
                 </td>
-                <ServiceCells container={container} />
+                <ServiceCells
+                  container={container}
+                  href={containerRoute(stackId, container.id)}
+                  onOpen={() => navigate(containerRoute(stackId, container.id))}
+                />
               </tr>
             ))}
           </tbody>

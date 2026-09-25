@@ -3,14 +3,31 @@ import { formatContainerPort } from "./serviceDisplay";
 import { containerStatePresentation } from "./statusPresentation";
 import type { Container } from "./types";
 
-export function ServiceCells({ container }: { container: Container }) {
+export function ServiceCells({
+  container,
+  href,
+  onOpen,
+}: {
+  container: Container;
+  href: string;
+  onOpen: () => void;
+}) {
   const state = containerStatePresentation(container.state, container.health);
   return (
     <>
       <td>
         <div class="service-identity">
-          <strong>{container.service || container.name}</strong>
-          <small title={container.name}>{container.name}</small>
+          <a
+            href={`#${href}`}
+            aria-label={`Open ${container.name}`}
+            onClick={(event) => {
+              event.preventDefault();
+              onOpen();
+            }}
+          >
+            <strong>{container.service || container.name}</strong>
+            <small title={container.name}>{container.name}</small>
+          </a>
         </div>
       </td>
       <td>

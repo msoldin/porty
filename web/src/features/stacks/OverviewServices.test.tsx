@@ -84,17 +84,39 @@ const loaded: OverviewSnapshot = {
   loading: false,
 };
 
-function show(snapshot: OverviewSnapshot = loaded) {
+function show(snapshot: OverviewSnapshot = loaded, navigate = vi.fn()) {
   vi.mocked(useOverviewContainers).mockReturnValue(snapshot);
   return render(
     <OverviewServices
       stacks={stacks}
       operations={[]}
-      navigate={vi.fn()}
+      navigate={navigate}
       onOperationsAccepted={vi.fn()}
     />,
   );
 }
+
+it("links each dashboard replica while preserving its stack link", () => {
+  const navigate = vi.fn();
+  show(loaded, navigate);
+  const row = within(
+    screen.getByRole("checkbox", { name: "Select alpha web-2" }).closest("tr")!,
+  );
+  expect(row.getByRole("link", { name: "alpha" })).toHaveAttribute(
+    "href",
+    "#/stacks/one",
+  );
+  const containerLink = row.getByRole("link", { name: "Open web-2" });
+  expect(containerLink).toHaveAttribute(
+    "href",
+    "#/stacks/one/containers/web-2",
+  );
+  fireEvent.click(containerLink);
+  expect(navigate).toHaveBeenCalledWith("/stacks/one/containers/web-2");
+  expect(
+    row.getByRole("checkbox", { name: "Select alpha web-2" }),
+  ).not.toBeChecked();
+});
 
 afterEach(() => vi.clearAllMocks());
 

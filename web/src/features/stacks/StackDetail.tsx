@@ -238,6 +238,8 @@ export function StackDetail({
       {tab === "Overview" && (
         <div class="detail-content">
           <ServicesTable
+            stackId={stack.id}
+            navigate={navigate}
             containers={containerState.containers}
             error={containerState.error}
             busy={busy || !!active}
