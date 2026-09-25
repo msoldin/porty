@@ -374,6 +374,8 @@ func writeAPIError(w stdhttp.ResponseWriter, r *stdhttp.Request, err error) {
 	switch {
 	case errors.Is(err, portycontrol.ErrContainerNotFound):
 		WriteError(w, r, stdhttp.StatusNotFound, "ContainerNotFound", "Container not found in this stack", nil)
+	case errors.Is(err, portycontrol.ErrContainerInspectTooLarge):
+		WriteError(w, r, stdhttp.StatusRequestEntityTooLarge, "LimitExceeded", "Container inspect exceeds the size limit", nil)
 	case errors.Is(err, portycontrol.ErrUnsupportedContainerAction):
 		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidContainerAction", "Container action is invalid", nil)
 	case errors.Is(err, portycontrol.ErrInvalidContainerSelection):

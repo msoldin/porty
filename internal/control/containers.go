@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -20,6 +21,7 @@ var (
 	ErrContainerArchived          = errors.New("archived stack cannot run container actions")
 	ErrUnsupportedContainerAction = errors.New("unsupported container action")
 	ErrInvalidContainerSelection  = errors.New("invalid container selection")
+	ErrContainerInspectTooLarge   = portycompose.ErrContainerInspectTooLarge
 )
 
 type Container struct {
@@ -31,6 +33,44 @@ type Container struct {
 	Image    string          `json:"image"`
 	Networks []string        `json:"networks"`
 	Ports    []ContainerPort `json:"ports"`
+}
+
+func (c *ControlPlane) containerReadRequest(ctx context.Context, id portystack.StackID, containerID string) (portycompose.Request, error) {
+	stack, err := c.lookup.ByID(ctx, id)
+	if err != nil {
+		return portycompose.Request{}, err
+	}
+	values, err := c.environment.Values(ctx, id)
+	if err != nil {
+		return portycompose.Request{}, err
+	}
+	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	rows, err := c.runtime.Status(ctx, request)
+	if err != nil {
+		return portycompose.Request{}, err
+	}
+	for _, row := range rows {
+		if row.ID == containerID && row.Project == stack.ComposeProjectName {
+			return request, nil
+		}
+	}
+	return portycompose.Request{}, ErrContainerNotFound
+}
+
+func (c *ControlPlane) ContainerLogs(ctx context.Context, id portystack.StackID, containerID string) (portycompose.ContainerLogSnapshot, error) {
+	request, err := c.containerReadRequest(ctx, id, containerID)
+	if err != nil {
+		return portycompose.ContainerLogSnapshot{}, err
+	}
+	return c.runtime.ContainerLogs(ctx, request, containerID)
+}
+
+func (c *ControlPlane) ContainerInspect(ctx context.Context, id portystack.StackID, containerID string) (json.RawMessage, error) {
+	request, err := c.containerReadRequest(ctx, id, containerID)
+	if err != nil {
+		return nil, err
+	}
+	return c.runtime.ContainerInspect(ctx, request, containerID)
 }
 
 type ContainerPort struct {

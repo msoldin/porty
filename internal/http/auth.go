@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	portycompose "github.com/msoldin/porty/internal/compose"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	portyop "github.com/msoldin/porty/internal/operation"
@@ -123,6 +124,8 @@ type StackStateAPI interface {
 
 type ContainerAPI interface {
 	Containers(context.Context, portystack.StackID) ([]portycontrol.Container, error)
+	ContainerLogs(context.Context, portystack.StackID, string) (portycompose.ContainerLogSnapshot, error)
+	ContainerInspect(context.Context, portystack.StackID, string) (json.RawMessage, error)
 	StartContainerAction(context.Context, portystack.StackID, string, string) (portyop.Operation, error)
 	StartContainerBatchAction(context.Context, portystack.StackID, []string, string) (portyop.Operation, error)
 }

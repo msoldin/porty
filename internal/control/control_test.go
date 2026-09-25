@@ -2,6 +2,7 @@ package control_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -456,6 +457,7 @@ type controlRuntime struct {
 	status       []api.ContainerSummary
 	called       chan string
 	actionErrors map[string]error
+	readIDs      []string
 }
 
 func (*controlRuntime) Validate(context.Context, portycompose.Request) error { return nil }
@@ -480,6 +482,54 @@ func (r *controlRuntime) Deploy(context.Context, portycompose.Request, bool) err
 func (*controlRuntime) Pull(context.Context, portycompose.Request) error { return nil }
 func (*controlRuntime) Logs(context.Context, portycompose.Request, int) (string, error) {
 	return "", nil
+}
+
+func (r *controlRuntime) ContainerLogs(_ context.Context, _ portycompose.Request, id string) (portycompose.ContainerLogSnapshot, error) {
+	r.readIDs = append(r.readIDs, "logs:"+id)
+	return portycompose.ContainerLogSnapshot{Output: "only " + id}, nil
+}
+
+func (r *controlRuntime) ContainerInspect(_ context.Context, _ portycompose.Request, id string) (json.RawMessage, error) {
+	r.readIDs = append(r.readIDs, "inspect:"+id)
+	return json.RawMessage(`{"Id":"` + id + `"}`), nil
+}
+
+func TestContainerDetailsRejectWrongProjectAndMissingID(t *testing.T) {
+	runtime := &controlRuntime{status: []api.ContainerSummary{
+		{ID: "full-id-a", Project: "porty-gateway"},
+		{ID: "full-id-b", Project: "other"},
+	}}
+	control, _ := newContainerControl(runtime, controlLookup{}, portyop.NewCoordinator())
+	for _, id := range []string{"full-id-b", "missing"} {
+		if _, err := control.ContainerLogs(context.Background(), "stk_gateway", id); !errors.Is(err, portycontrol.ErrContainerNotFound) {
+			t.Fatalf("logs for %s = %v", id, err)
+		}
+		if _, err := control.ContainerInspect(context.Background(), "stk_gateway", id); !errors.Is(err, portycontrol.ErrContainerNotFound) {
+			t.Fatalf("inspect for %s = %v", id, err)
+		}
+	}
+	if len(runtime.readIDs) != 0 {
+		t.Fatalf("foreign reads reached runtime: %v", runtime.readIDs)
+	}
+}
+
+func TestContainerDetailsReadSelectedReplica(t *testing.T) {
+	runtime := &controlRuntime{status: []api.ContainerSummary{
+		{ID: "full-id-a", Project: "porty-gateway"},
+		{ID: "full-id-b", Project: "porty-gateway"},
+	}}
+	control, _ := newContainerControl(runtime, controlLookup{}, portyop.NewCoordinator())
+	logs, err := control.ContainerLogs(context.Background(), "stk_gateway", "full-id-b")
+	if err != nil || logs.Output != "only full-id-b" {
+		t.Fatalf("logs = %+v, %v", logs, err)
+	}
+	inspect, err := control.ContainerInspect(context.Background(), "stk_gateway", "full-id-b")
+	if err != nil || string(inspect) != `{"Id":"full-id-b"}` {
+		t.Fatalf("inspect = %s, %v", inspect, err)
+	}
+	if got := strings.Join(runtime.readIDs, ","); got != "logs:full-id-b,inspect:full-id-b" {
+		t.Fatalf("targeted reads = %s", got)
+	}
 }
 
 type countingOperationStore struct {

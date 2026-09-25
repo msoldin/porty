@@ -15,6 +15,7 @@ import (
 	"time"
 
 	portyauth "github.com/msoldin/porty/internal/auth"
+	portycompose "github.com/msoldin/porty/internal/compose"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyfs "github.com/msoldin/porty/internal/filesystem"
 	portyop "github.com/msoldin/porty/internal/operation"
@@ -347,6 +348,8 @@ type fakeContainerAPI struct {
 	calledID, calledAction string
 	batchIDs               []string
 	err                    error
+	logSnapshot            portycompose.ContainerLogSnapshot
+	inspectJSON            json.RawMessage
 }
 
 func (f *fakeContainerAPI) Containers(context.Context, portystack.StackID) ([]portycontrol.Container, error) {
@@ -361,6 +364,77 @@ func (f *fakeContainerAPI) StartContainerAction(_ context.Context, _ portystack.
 func (f *fakeContainerAPI) StartContainerBatchAction(_ context.Context, _ portystack.StackID, ids []string, action string) (portyop.Operation, error) {
 	f.batchIDs, f.calledAction = ids, action
 	return portyop.Operation{ID: "op_batch", Kind: "container_batch_" + action}, f.err
+}
+
+func (f *fakeContainerAPI) ContainerLogs(_ context.Context, _ portystack.StackID, id string) (portycompose.ContainerLogSnapshot, error) {
+	f.calledID = id
+	return f.logSnapshot, f.err
+}
+
+func (f *fakeContainerAPI) ContainerInspect(_ context.Context, _ portystack.StackID, id string) (json.RawMessage, error) {
+	f.calledID = id
+	return f.inspectJSON, f.err
+}
+
+func TestContainerDetailsRoutesRequireSessionAndNoStore(t *testing.T) {
+	containers := &fakeContainerAPI{
+		logSnapshot: portycompose.ContainerLogSnapshot{Output: "ready\n", Truncated: false},
+		inspectJSON: json.RawMessage(`{"Id":"full-id-b","Config":{"Env":["TOKEN=secret"]},"Size":9007199254740993}`),
+	}
+	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{Containers: containers})
+	base := "http://porty.local/api/v1/stacks/stk_gateway/containers/full-id-b"
+	for _, tc := range []struct{ suffix, body string }{
+		{"/logs", `"output":"ready\n"`},
+		{"/inspect", `"TOKEN=secret"`},
+	} {
+		unauthorized := httptest.NewRecorder()
+		handler.ServeHTTP(unauthorized, httptest.NewRequest(stdhttp.MethodGet, base+tc.suffix, nil))
+		if unauthorized.Code != stdhttp.StatusUnauthorized || unauthorized.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("unauthorized %s = %d, cache=%q", tc.suffix, unauthorized.Code, unauthorized.Header().Get("Cache-Control"))
+		}
+		request := httptest.NewRequest(stdhttp.MethodGet, base+tc.suffix, nil)
+		request.AddCookie(session)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != stdhttp.StatusOK || response.Header().Get("Cache-Control") != "no-store" || !strings.Contains(response.Body.String(), tc.body) {
+			t.Fatalf("GET %s = %d cache=%q body=%s", tc.suffix, response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+		}
+		if containers.calledID != "full-id-b" {
+			t.Fatalf("targeted ID = %q", containers.calledID)
+		}
+	}
+	request := httptest.NewRequest(stdhttp.MethodGet, base+"/inspect", nil)
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if !strings.Contains(response.Body.String(), "9007199254740993") {
+		t.Fatalf("inspect lost integer precision: %s", response.Body.String())
+	}
+}
+
+func TestContainerDetailsRoutesMapNotFoundAndLimit(t *testing.T) {
+	containers := &fakeContainerAPI{}
+	handler, session, _ := authenticatedAPIRouter(t, RouterOptions{Containers: containers})
+	base := "http://porty.local/api/v1/stacks/stk_gateway/containers/full-id-b"
+	for _, tc := range []struct {
+		suffix string
+		err    error
+		status int
+		code   string
+	}{
+		{"/logs", portycontrol.ErrContainerNotFound, stdhttp.StatusNotFound, "ContainerNotFound"},
+		{"/inspect", portycontrol.ErrContainerInspectTooLarge, stdhttp.StatusRequestEntityTooLarge, "LimitExceeded"},
+	} {
+		containers.err = tc.err
+		request := httptest.NewRequest(stdhttp.MethodGet, base+tc.suffix, nil)
+		request.AddCookie(session)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		assertAPIError(t, response, tc.status, tc.code)
+		if response.Header().Get("Cache-Control") != "no-store" || strings.Contains(response.Body.String(), "secret") {
+			t.Fatalf("unsafe error response: %s", response.Body.String())
+		}
+	}
 }
 
 func TestContainerBatchRouteRequiresSessionOriginAndCSRF(t *testing.T) {
