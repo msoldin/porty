@@ -255,8 +255,7 @@ export function ContainerDetail({
                   <dd>
                     <Badge tone={state.tone} dot>
                       {state.label}
-                    </Badge>{" "}
-                    {container.state}
+                    </Badge>
                   </dd>
                 </div>
                 <div>
