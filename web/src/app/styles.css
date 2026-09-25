@@ -653,6 +653,28 @@ td > a {
   min-height: 68px;
   vertical-align: middle;
 }
+.overview-services {
+  margin-top: 40px;
+}
+.overview-service-filters {
+  display: flex;
+  gap: 12px;
+  width: min(520px, 100%);
+}
+.overview-service-filters .search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.overview-services-table {
+  min-width: 1120px;
+}
+.overview-services-table th:nth-child(2) { width: 17%; }
+.overview-services-table th:nth-child(3) { width: 17%; }
+.overview-services-table th:nth-child(4) { width: 13%; }
+.overview-services-table th:nth-child(5) { width: 18%; }
+.overview-services-table th:nth-child(6) { width: 14%; }
+.overview-services-table th:nth-child(7) { width: 21%; }
 .service-identity,
 .service-state,
 .service-ports {
@@ -1336,6 +1358,9 @@ td > a {
     flex-direction: column;
   }
   .service-search {
+    width: 100%;
+  }
+  .overview-service-filters {
     width: 100%;
   }
   .service-selection {

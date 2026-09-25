@@ -1,8 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
-import { Badge, Empty, Notice } from "../../components/Feedback";
+import { Empty, Notice } from "../../components/Feedback";
 import { Icon } from "../../components/Icon";
-import { containerStatePresentation } from "./statusPresentation";
-import { formatContainerPort } from "./serviceDisplay";
+import { ServiceCells } from "./ServiceCells";
 import type { Container, ContainerAction } from "./types";
 
 export function ServicesTable({
@@ -182,87 +181,33 @@ export function ServicesTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map((container) => {
-              const state = containerStatePresentation(
-                container.state,
-                container.health,
-              );
-              return (
-                <tr
-                  key={container.id}
-                  class={
-                    selected.has(container.id) ? "selected-row" : undefined
-                  }
-                >
-                  <td class="select-column">
-                    <input
-                      type="checkbox"
-                      aria-label={"Select " + container.name}
-                      checked={selected.has(container.id)}
-                      disabled={
-                        busy ||
-                        (selected.size >= 20 && !selected.has(container.id))
-                      }
-                      onChange={(event) =>
-                        setSelected((current) => {
-                          const next = new Set(current);
-                          if (event.currentTarget.checked)
-                            next.add(container.id);
-                          else next.delete(container.id);
-                          return next;
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <div class="service-identity">
-                      <strong>{container.service || container.name}</strong>
-                      <small title={container.name}>{container.name}</small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="service-state">
-                      <Badge tone={state.tone} dot>
-                        {state.label}
-                      </Badge>
-                      {state.health && (
-                        <small class={"service-health " + state.healthTone}>
-                          {state.health}
-                        </small>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <code class="service-image" title={container.image}>
-                      {container.image || "—"}
-                    </code>
-                  </td>
-                  <td>
-                    <span
-                      class="service-networks"
-                      title={container.networks.join(", ")}
-                    >
-                      {container.networks.length
-                        ? [...container.networks].sort().join(", ")
-                        : "—"}
-                    </span>
-                  </td>
-                  <td>
-                    {container.ports.length ? (
-                      <div class="service-ports">
-                        {container.ports.map((port, index) => (
-                          <span key={index} title={formatContainerPort(port)}>
-                            {formatContainerPort(port)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            {visible.map((container) => (
+              <tr
+                key={container.id}
+                class={selected.has(container.id) ? "selected-row" : undefined}
+              >
+                <td class="select-column">
+                  <input
+                    type="checkbox"
+                    aria-label={"Select " + container.name}
+                    checked={selected.has(container.id)}
+                    disabled={
+                      busy ||
+                      (selected.size >= 20 && !selected.has(container.id))
+                    }
+                    onChange={(event) =>
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (event.currentTarget.checked) next.add(container.id);
+                        else next.delete(container.id);
+                        return next;
+                      })
+                    }
+                  />
+                </td>
+                <ServiceCells container={container} />
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
