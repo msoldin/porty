@@ -26,6 +26,11 @@ func TestNewServesFreshInstallation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	unauthenticated := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/v1/alerts", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("alert route unavailable or unguarded: %d", unauthenticated.Code)
+	}
 	for _, path := range []string{"/healthz", "/readyz", "/api/v1/setup/status", "/"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080"+path, nil))

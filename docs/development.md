@@ -32,3 +32,13 @@ The browser test starts a real Porty process and Git repository. It intercepts D
 The SDK uses a new normalized Compose digest. A stack deployed before this migration may show pending changes once; redeploying records the new digest and restores the current state.
 
 Tests that open an HTTP listener, run processes, or use a browser may require permission in restricted sandboxes. Never commit generated Playwright reports, traces, or screenshots.
+
+## Shared alerts
+
+`internal/alert` owns the alert lifecycle contract. SQLite persists deduplication occurrences, revisions, episodes, and actor history. Operation completion and its alert changes commit together; WebSocket `alerts` events publish only after commit. HTTP reads are authoritative after reconnect. A stale recovery cannot resolve a newer failure, and stale user mutations return 409.
+
+Control actions supply stable stack/problem/target keys and verify matching postconditions before resolving incidents. Alert HTTP routes require authentication and mutation origin/CSRF checks but remain available when repository readiness fails. Acknowledgment and manual resolution have separate audit entries.
+
+`web/src/features/alerts` owns alert reads, mutations, views, and lifecycle history. `useTopicStream` supplies shared reconnect mechanics for operations and alerts. Browser fixtures exercise global/stack consistency and stale revisions independently of Docker; `TestManualAlertLifecycleSurvivesRestartAndRecurrence` exercises the control/runtime boundary with real SQLite.
+
+Run `bun run test:e2e -- alerts.spec.ts --output=/tmp/porty-alert-playwright` from `web` after building `/tmp/porty-e2e`. Desktop/mobile screenshots are written to `/tmp/porty-alerts-desktop.png` and `/tmp/porty-alerts-mobile.png`.

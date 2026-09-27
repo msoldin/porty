@@ -104,3 +104,14 @@ docker run --rm -p 127.0.0.1:8080:8080 \
 ```
 
 Do not expose port 8080 beyond a trusted network without TLS and an appropriate network boundary.
+
+## Alerts
+
+The **Alerts** page collects persisted stack and container operation failures. The navigation badge counts all unacknowledged incidents, including resolved incidents. Each stack also has an Alerts tab. Stack names and alert history remain available after a stack is archived or deleted.
+
+- **Acknowledge** records that you reviewed an incident. It does not resolve the problem or change container state.
+- **Resolved** records recovery. Successful manual actions resolve matching incidents only when the requested runtime state is verified; unrelated failures stay open. Where offered, manual resolution records your recovery and an optional note.
+- A repeated failure of an open incident adds an occurrence. A failure after resolution opens a new episode and needs acknowledgment again.
+- **Needs attention** includes open incidents and recovered incidents awaiting acknowledgment. Use **All history** to review completed incidents and their linked operations.
+
+Historical failed operations remain failed after recovery. Acknowledging or resolving an alert never starts containers or resumes automatic updates. Alerts do not continuously monitor runtime health or send external notifications. Interrupted accepted mutations are recorded once when Porty restarts.

@@ -105,3 +105,94 @@ func TestManualDeploymentFailureCreatesPersistentAlert(t *testing.T) {
 		t.Fatalf("alert: %+v %v", page, err)
 	}
 }
+
+func TestManualAlertLifecycleSurvivesRestartAndRecurrence(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "gateway"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "gateway", "docker-compose.yml"), []byte("services:\n  app:\n    image: alpine\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "p.db")
+	db, err := sqlstore.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { db.Close() }()
+	runtime := &controlRuntime{deployErr: errors.New("failed to start"), status: []api.ContainerSummary{{ID: "a", Name: "app-1", Service: "app", Project: "porty-gateway", State: "running", Health: "healthy"}}}
+	alerts := sqlstore.NewAlertStore(db)
+	opsStore := sqlstore.NewOperationStore(db)
+	events := &finalEvents{done: make(chan op.Operation, 1)}
+	co := op.NewCoordinator()
+	control := ctl.NewControlPlane(root, controlLookup{}, stack.NewEnvironmentService(controlEnvironmentStore{}), repo.NewRepositoryService(controlGit{}), runtime, op.NewOperationService(opsStore, events, time.Second, 1024), op.NewDeploymentService(runtime, &capturingDeploymentStore{saved: make(chan op.Deployment, 10)}, co), co, nil, nil)
+	control.SetAlertReader(alerts)
+	run := func() op.Operation {
+		t.Helper()
+		deadline := time.Now().Add(time.Second)
+		for {
+			_, err := control.StartAction(ctx, "stk_gateway", "deploy")
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, op.ErrOperationConflict) || time.Now().After(deadline) {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		select {
+		case result := <-events.done:
+			return result
+		case <-time.After(time.Second):
+			t.Fatal("operation not completed")
+			return op.Operation{}
+		}
+	}
+	failed := run()
+	if failed.Status != op.OperationFailed {
+		t.Fatal(failed.Status)
+	}
+	page, err := alerts.List(ctx, alert.Filter{})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("alerts=%+v %v", page, err)
+	}
+	item, err := alerts.Acknowledge(ctx, alert.Mutation{ID: page.Items[0].ID, ExpectedRevision: 1, ActorID: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.deployErr = nil
+	if run().Status != op.OperationSucceeded {
+		t.Fatal("recovery failed")
+	}
+	recovered, err := alerts.Get(ctx, item.ID)
+	if err != nil || recovered.ResolvedAt == nil || recovered.AcknowledgedAt == nil {
+		t.Fatalf("recovery=%+v %v", recovered, err)
+	}
+	historical, err := opsStore.Operation(ctx, failed.ID)
+	if err != nil || historical.Status != op.OperationFailed {
+		t.Fatal("recovery changed failure history")
+	}
+	runtime.deployErr = errors.New("failed again")
+	run()
+	reopened, err := alerts.Get(ctx, item.ID)
+	if err != nil || reopened.Episode != 2 || reopened.AcknowledgedAt != nil || reopened.ResolvedAt != nil {
+		t.Fatalf("recurrence=%+v %v", reopened, err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = sqlstore.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := sqlstore.NewOperationStore(db).FailInterrupted(ctx, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	persisted, err := sqlstore.NewAlertStore(db).Get(ctx, item.ID)
+	if err != nil || persisted.Revision != reopened.Revision || persisted.Count != reopened.Count {
+		t.Fatalf("restart duplicated alert: %+v %v", persisted, err)
+	}
+}
