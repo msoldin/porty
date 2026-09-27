@@ -3,7 +3,7 @@ CREATE TABLE auto_update_policies (
  stack_id TEXT PRIMARY KEY REFERENCES stacks(id) ON DELETE CASCADE,
  enabled INTEGER NOT NULL DEFAULT 0, expression TEXT NOT NULL,
  revision INTEGER NOT NULL, next_run_at INTEGER NOT NULL,
- paused_reason TEXT NOT NULL DEFAULT ''
+ paused_reason TEXT NOT NULL DEFAULT '', last_started_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE auto_update_runs (
  id TEXT PRIMARY KEY, stack_id TEXT NOT NULL, stack_name TEXT NOT NULL,

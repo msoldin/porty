@@ -143,6 +143,9 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, erro
 	root.Handle("/api/", api)
 	root.Handle("/", web.Handler())
 	application.handler = root
+	if updateControl != nil && options.RepositorySetup != nil {
+		application.startScheduler(ctx, updateStore, updateControl, compose, options.RepositorySetup.Ready)
+	}
 	assembled = true
 	return application, nil
 }

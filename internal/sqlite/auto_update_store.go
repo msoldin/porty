@@ -81,7 +81,7 @@ func (s *AutoUpdateStore) ListDue(ctx context.Context, now time.Time, limit int)
 	if limit <= 0 || limit > 200 {
 		limit = 200
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+policyColumns+` FROM auto_update_policies p JOIN stacks s ON s.id=p.stack_id WHERE p.enabled=1 AND p.paused_reason='' AND s.archived_at IS NULL AND p.next_run_at<=? ORDER BY p.next_run_at,p.stack_id LIMIT ?`, now.UnixNano(), limit)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+policyColumns+` FROM auto_update_policies p JOIN stacks s ON s.id=p.stack_id WHERE p.enabled=1 AND p.paused_reason='' AND s.archived_at IS NULL AND p.next_run_at<=? ORDER BY p.next_run_at,p.last_started_at,p.stack_id LIMIT ?`, now.UnixNano(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -240,4 +240,35 @@ func (s *AutoUpdateStore) FinishRun(ctx context.Context, id, outcome, reason str
 func (s *AutoUpdateStore) Pause(ctx context.Context, id stack.StackID, reason string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE auto_update_policies SET paused_reason=?,revision=revision+1 WHERE stack_id=?", reason, id)
 	return err
+}
+
+func (s *AutoUpdateStore) NextScheduled(ctx context.Context) (time.Time, error) {
+	var at sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT min(p.next_run_at) FROM auto_update_policies p JOIN stacks s ON s.id=p.stack_id WHERE p.enabled=1 AND p.paused_reason='' AND s.archived_at IS NULL`).Scan(&at)
+	if err != nil || !at.Valid {
+		return time.Time{}, err
+	}
+	return time.Unix(0, at.Int64).UTC(), nil
+}
+func (s *AutoUpdateStore) MarkChecking(ctx context.Context, run autoupdate.Run, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE auto_update_runs SET phase='checking' WHERE id=? AND phase='queued' AND EXISTS(SELECT 1 FROM auto_update_policies p JOIN stacks s ON s.id=p.stack_id WHERE p.stack_id=? AND p.enabled=1 AND p.paused_reason='' AND p.revision=? AND s.archived_at IS NULL)`, run.ID, run.StackID, run.PolicyRevision)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return autoupdate.ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE auto_update_policies SET last_started_at=? WHERE stack_id=?", now.UnixNano(), run.StackID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

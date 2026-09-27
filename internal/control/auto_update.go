@@ -276,3 +276,8 @@ func (c *ControlPlane) manualImageOverrides(ctx context.Context, id stack.StackI
 	}
 	return sources, overrides, platforms, nil
 }
+
+func (c *ControlPlane) SuspendUpdates() { c.updatesBlocked.Store(true) }
+func (c *ControlPlane) UpdatesAvailable() bool {
+	return c.updateStore != nil && !c.updatesBlocked.Load()
+}

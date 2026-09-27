@@ -129,3 +129,27 @@ func TestPolicyEditsCannotClearRecoveryPause(t *testing.T) {
 		t.Fatalf("pause lost: %+v %v", p, err)
 	}
 }
+
+func TestSchedulerSkipsOverlapAndRejectsStalePolicyRevision(t *testing.T) {
+	s, _, now := updateFixture(t)
+	ctx := context.Background()
+	p, _ := s.SavePolicy(ctx, "s", autoupdate.PolicyUpdate{Enabled: true, Expression: "* * * * *"}, now)
+	_, accepted, err := s.Admit(ctx, p, p.NextRunAt)
+	if err != nil || !accepted {
+		t.Fatalf("first=%v %v", accepted, err)
+	}
+	p, _ = s.GetPolicy(ctx, "s")
+	run, accepted, err := s.Admit(ctx, p, p.NextRunAt)
+	if err != nil || accepted || run.Reason != "overlap" {
+		t.Fatalf("overlap=%+v %v %v", run, accepted, err)
+	}
+	p, _ = s.GetPolicy(ctx, "s")
+	_, err = s.SavePolicy(ctx, "s", autoupdate.PolicyUpdate{Enabled: false, Expression: p.Expression, ExpectedRevision: p.Revision}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, accepted, err = s.Admit(ctx, p, p.NextRunAt)
+	if err != nil || accepted {
+		t.Fatalf("stale admitted=%v %v", accepted, err)
+	}
+}

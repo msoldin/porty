@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/msoldin/porty/internal/autoupdate"
 	op "github.com/msoldin/porty/internal/operation"
 	portyws "github.com/msoldin/porty/internal/websocket"
 	"io"
@@ -11,6 +12,7 @@ import (
 )
 
 type Application struct {
+	scheduler     *autoupdate.Scheduler
 	handler       http.Handler
 	operations    *op.OperationService
 	docker        io.Closer
