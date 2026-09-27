@@ -46,6 +46,7 @@ type ControlPlane struct {
 	coordinator *portyop.Coordinator
 	logs        LogPublisher
 	stateStore  DeploymentStateStore
+	alerts      AlertReader
 }
 
 type DeploymentStateStore interface {
@@ -100,8 +101,7 @@ func (c *ControlPlane) StartRepositoryAction(ctx context.Context, action string)
 	if err != nil {
 		return portyop.Operation{}, err
 	}
-	operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{Kind: action, ScopeType: "repository"}, func(jobCtx context.Context) (string, error) {
-		defer release()
+	operation, startErr := c.operations.StartTracked(ctx, portyop.OperationRequest{Kind: action, ScopeType: "repository"}, func(jobCtx context.Context) portyop.Result {
 		var actionErr error
 		if action == "fetch" {
 			actionErr = c.repository.Fetch(jobCtx)
@@ -110,8 +110,8 @@ func (c *ControlPlane) StartRepositoryAction(ctx context.Context, action string)
 		} else {
 			actionErr = c.repository.Push(jobCtx)
 		}
-		return "", actionErr
-	})
+		return portyop.Result{Err: actionErr}
+	}, release)
 	if startErr != nil {
 		release()
 	}
@@ -186,8 +186,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 			return portyop.Operation{}, err
 		}
 		operationID := portyop.NewOperationID()
-		operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{ID: operationID, Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values)}, func(jobCtx context.Context) (string, error) {
-			defer release()
+		operation, startErr := c.startObserved(ctx, portyop.OperationRequest{ID: operationID, Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), StackName: stack.DirectoryName, AlertTargets: stackAlertTargets(string(id), action)}, func(jobCtx context.Context) (string, error) {
 			status, statusErr := c.repository.Status(jobCtx)
 			if statusErr != nil {
 				return "", statusErr
@@ -210,7 +209,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 				return "", err
 			}
 			return fmt.Sprintf("deployment %s", deployment.ID), nil
-		})
+		}, func(jobCtx context.Context) bool { return c.verifyStackAction(jobCtx, request, action) }, release)
 		if startErr != nil {
 			release()
 		}
@@ -246,8 +245,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 				return portyop.Operation{}, ErrStackRuntimeActionUnavailable
 			}
 		}
-		operation, startErr := c.operations.Start(ctx, portyop.OperationRequest{Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), DiscardOutput: action == "logs"}, func(jobCtx context.Context) (string, error) {
-			defer release()
+		operation, startErr := c.startObserved(ctx, portyop.OperationRequest{Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), DiscardOutput: action == "logs", StackName: stack.DirectoryName, AlertTargets: stackAlertTargets(string(id), action)}, func(jobCtx context.Context) (string, error) {
 			switch action {
 			case "validate":
 				err = c.runtime.Validate(jobCtx, request)
@@ -274,7 +272,7 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 				return output, logErr
 			}
 			return "", err
-		})
+		}, func(jobCtx context.Context) bool { return c.verifyStackAction(jobCtx, request, action) }, release)
 		if startErr != nil {
 			release()
 		}

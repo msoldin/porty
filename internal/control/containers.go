@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/docker/compose/v5/pkg/api"
+	"github.com/msoldin/porty/internal/alert"
 	portycompose "github.com/msoldin/porty/internal/compose"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portystack "github.com/msoldin/porty/internal/stack"
@@ -196,12 +196,13 @@ func (c *ControlPlane) StartContainerAction(ctx context.Context, id portystack.S
 	if !containerActionAllowed(strings.ToLower(string(selected.State)), action) {
 		return portyop.Operation{}, ErrContainerStateConflict
 	}
-	operation, err := c.operations.Start(ctx, portyop.OperationRequest{
-		Kind: "container_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values),
+	operation, err := c.startObserved(ctx, portyop.OperationRequest{
+		Kind: "container_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), StackName: stack.DirectoryName, AlertTargets: []alert.Key{containerAlertKey(string(id), action, *selected)},
 	}, func(jobCtx context.Context) (string, error) {
-		defer release()
 		return "", c.runtime.ContainerAction(jobCtx, request, containerID, action)
-	})
+	}, func(jobCtx context.Context) bool {
+		return c.verifyContainerAction(jobCtx, request, containerID, action)
+	}, release)
 	if err != nil {
 		return portyop.Operation{}, err
 	}
@@ -270,25 +271,9 @@ func (c *ControlPlane) StartContainerBatchAction(ctx context.Context, id portyst
 			return portyop.Operation{}, ErrContainerStateConflict
 		}
 	}
-	operation, err := c.operations.Start(ctx, portyop.OperationRequest{
-		Kind: "container_batch_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values),
-	}, func(jobCtx context.Context) (string, error) {
-		defer release()
-		var output strings.Builder
-		failed := false
-		for _, containerID := range ids {
-			if err := c.runtime.ContainerAction(jobCtx, request, containerID, action); err != nil {
-				failed = true
-				fmt.Fprintf(&output, "%s: failed\n", containerID)
-			} else {
-				fmt.Fprintf(&output, "%s: succeeded\n", containerID)
-			}
-		}
-		if failed {
-			return output.String(), errors.New("one or more container actions failed")
-		}
-		return output.String(), nil
-	})
+	operation, err := c.startContainerBatchObserved(ctx, portyop.OperationRequest{
+		Kind: "container_batch_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), StackName: stack.DirectoryName,
+	}, request, ids, owned, action, release)
 	if err != nil {
 		return portyop.Operation{}, err
 	}

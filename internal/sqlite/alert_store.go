@@ -16,6 +16,10 @@ type AlertStore struct{ db *sql.DB }
 
 func NewAlertStore(db *sql.DB) *AlertStore { return &AlertStore{db: db} }
 
+func (s *AlertStore) Find(ctx context.Context, key alert.Key) (alert.Alert, error) {
+	return scanAlert(s.db.QueryRowContext(ctx, `SELECT `+alertColumns+` FROM alerts WHERE stack_id=? AND problem=? AND target=?`, key.StackID, key.Problem, key.Target))
+}
+
 const alertColumns = `id,stack_id,problem,target,stack_name,revision,episode,occurrence_count,summary,operation_id,first_at,latest_at,acknowledged_at,acknowledged_by,resolved_at,resolved_by,resolution,can_resolve_manually`
 
 func scanAlert(row rowScanner) (alert.Alert, error) {

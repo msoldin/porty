@@ -67,7 +67,9 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 	authService.OnKeyRotation(hub.CloseConnections)
 	options.Stream = portyws.Handler{Hub: hub}
 	operationStore := portysqlite.NewOperationStore(db)
-	_ = operationStore.FailInterrupted(ctx, time.Now().UTC())
+	if err := operationStore.FailInterrupted(ctx, time.Now().UTC()); err != nil {
+		return nil, err
+	}
 	deploymentStore := portysqlite.NewDeploymentStore(db)
 	options.Operations = operationStore
 	options.Deployments = deploymentStore
@@ -101,6 +103,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			operations := portyop.NewOperationService(operationStore, hub, 10*time.Minute, 256<<10)
 			deployments := portyop.NewDeploymentService(compose, deploymentStore, coordinator)
 			control := portycontrol.NewControlPlane(repositoryRoot, stackStore, environment, repositoryService, compose, operations, deployments, coordinator, deploymentStore, hub)
+			control.SetAlertReader(portysqlite.NewAlertStore(db))
 			options.Repository = control
 			options.Actions = control
 			options.State = control

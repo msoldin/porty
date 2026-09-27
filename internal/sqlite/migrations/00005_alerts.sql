@@ -39,8 +39,15 @@ CREATE TABLE alert_events (
  operation_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX alert_events_history ON alert_events(alert_id,sequence DESC);
+CREATE TABLE operation_alert_context (
+ operation_id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE CASCADE,
+ trigger_kind TEXT NOT NULL,
+ stack_name TEXT NOT NULL,
+ targets_json TEXT NOT NULL
+);
 
 -- +goose Down
+DROP TABLE operation_alert_context;
 DROP TABLE alert_events;
 DROP TABLE alert_occurrences;
 DROP TABLE alerts;

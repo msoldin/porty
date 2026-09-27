@@ -1,6 +1,9 @@
 package operation
 
-import "time"
+import (
+	"github.com/msoldin/porty/internal/alert"
+	"time"
+)
 
 type OperationStatus string
 
@@ -26,4 +29,7 @@ type Operation struct {
 	Output          string          `json:"output,omitempty"`
 	OutputTruncated bool            `json:"outputTruncated"`
 	InitiatedBy     string          `json:"initiatedBy,omitempty"`
+	Trigger         string          `json:"trigger,omitempty"`
+	AlertTargets    []alert.Key     `json:"-"`
+	StackName       string          `json:"-"`
 }
