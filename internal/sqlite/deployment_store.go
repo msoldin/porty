@@ -108,3 +108,12 @@ func nullableString(value string) any {
 	}
 	return value
 }
+
+func (s *DeploymentStore) LatestSuccessfulDeployment(ctx context.Context, id portystack.StackID) (portyop.Deployment, error) {
+	var row generated.Deployment
+	err := s.db.QueryRowContext(ctx, `SELECT id,stack_id,operation_id,git_commit,dirty,diff_digest,compose_digest,status,started_at,completed_at,duration_ms,error_code FROM deployments WHERE stack_id=? AND status='succeeded' ORDER BY started_at DESC,id DESC LIMIT 1`, id).Scan(&row.ID, &row.StackID, &row.OperationID, &row.GitCommit, &row.Dirty, &row.DiffDigest, &row.ComposeDigest, &row.Status, &row.StartedAt, &row.CompletedAt, &row.DurationMs, &row.ErrorCode)
+	if err != nil {
+		return portyop.Deployment{}, err
+	}
+	return deploymentFromRow(row), nil
+}

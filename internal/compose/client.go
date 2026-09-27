@@ -13,6 +13,8 @@ import (
 )
 
 type Client struct {
+	updates    updateDocker
+	guard      SelfGuard
 	service    api.Compose
 	containers containerActions
 	timeout    time.Duration

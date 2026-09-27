@@ -20,7 +20,13 @@ func NewDockerClient(ctx context.Context, timeout time.Duration) (*Client, io.Cl
 	if err != nil {
 		return nil, nil, err
 	}
-	return newWithContainerActions(service, sdk, timeout), sdk, nil
+	adapter := newWithContainerActions(service, sdk, timeout)
+	adapter.updates = sdk
+	guard, guardErr := NewRuntimeGuard(sdk)
+	if guardErr == nil {
+		adapter.guard = guard
+	}
+	return adapter, &dockerResources{docker: sdk, guard: guard}, nil
 }
 
 // dockerBridge supplies Compose with the SDK daemon client while retaining
@@ -75,4 +81,16 @@ func safeDockerConfig(source *configfile.ConfigFile) *configfile.ConfigFile {
 		configuration.CredentialHelpers = nil
 	}
 	return configuration
+}
+
+type dockerResources struct {
+	docker io.Closer
+	guard  *RuntimeGuard
+}
+
+func (r *dockerResources) Close() error {
+	if r.guard != nil {
+		_ = r.guard.Close()
+	}
+	return r.docker.Close()
 }

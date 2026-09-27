@@ -67,6 +67,10 @@ func TestDeploymentStoreTracksSuccessfulHistoryAfterFailedDeployments(t *testing
 	if err != nil || !hasDeployed {
 		t.Fatalf("prior success after later failure = %v, %v", hasDeployed, err)
 	}
+	successful, err := store.LatestSuccessfulDeployment(ctx, stack.ID)
+	if err != nil || successful.ID != deployment.ID || successful.ComposeDigest != deployment.ComposeDigest {
+		t.Fatalf("LatestSuccessfulDeployment() = %+v, %v", successful, err)
+	}
 	latest, err := store.LatestDeployment(ctx, stack.ID)
 	if err != nil {
 		t.Fatal(err)

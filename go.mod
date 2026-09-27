@@ -5,6 +5,8 @@ go 1.27.1
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/compose-spec/compose-go/v2 v2.15.0
+	github.com/containerd/errdefs v1.0.0
+	github.com/containerd/platforms v1.0.0-rc.5
 	github.com/docker/cli v29.7.2+incompatible
 	github.com/docker/compose/v5 v5.5.1
 	github.com/docker/go-sdk/client v0.1.0-alpha013
@@ -13,6 +15,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/robfig/cron/v3 v3.0.1
 	go.yaml.in/yaml/v3 v3.0.5
@@ -38,10 +42,8 @@ require (
 	github.com/containerd/containerd/api v1.11.1 // indirect
 	github.com/containerd/containerd/v2 v2.3.4 // indirect
 	github.com/containerd/continuity v0.5.0 // indirect
-	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
-	github.com/containerd/platforms v1.0.0-rc.5 // indirect
 	github.com/containerd/ttrpc v1.2.9 // indirect
 	github.com/containerd/typeurl/v2 v2.3.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
@@ -95,8 +97,6 @@ require (
 	github.com/moby/term v0.5.2 // indirect
 	github.com/morikuni/aec v1.1.0 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
