@@ -13,12 +13,13 @@ import (
 )
 
 type Client struct {
-	images     imageDockerAPI
-	updates    updateDocker
-	guard      SelfGuard
-	service    api.Compose
-	containers containerActions
-	timeout    time.Duration
+	updateClock updateClock
+	images      imageDockerAPI
+	updates     updateDocker
+	guard       SelfGuard
+	service     api.Compose
+	containers  containerActions
+	timeout     time.Duration
 }
 
 type containerActions interface {

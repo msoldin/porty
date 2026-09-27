@@ -23,6 +23,9 @@ func (c *Client) SnapshotUpdate(ctx context.Context, request Request) (UpdateSna
 	return c.snapshotProject(ctx, project, request)
 }
 func (c *Client) snapshotProject(ctx context.Context, project *types.Project, request Request) (UpdateSnapshot, error) {
+	return c.inspectUpdateProject(ctx, project, request, false)
+}
+func (c *Client) inspectUpdateProject(ctx context.Context, project *types.Project, request Request, allowStarting bool) (UpdateSnapshot, error) {
 	snapshot := UpdateSnapshot{Project: project, Excluded: map[string]string{}}
 	reject := func(reason string) (UpdateSnapshot, error) {
 		return snapshot, fmt.Errorf("%w: %s", ErrUpdateIneligible, reason)
@@ -81,11 +84,11 @@ func (c *Client) snapshotProject(ctx context.Context, project *types.Project, re
 		health := ""
 		if state.Health != nil {
 			health = string(state.Health.Status)
-			if health != "healthy" {
+			if health != "healthy" && !(allowStarting && health == "starting") {
 				return reject("container is not healthy")
 			}
 		}
-		if service.HealthCheck != nil && !service.HealthCheck.Disable && len(service.HealthCheck.Test) > 0 && service.HealthCheck.Test[0] != "NONE" && health != "healthy" {
+		if service.HealthCheck != nil && !service.HealthCheck.Disable && len(service.HealthCheck.Test) > 0 && service.HealthCheck.Test[0] != "NONE" && health != "healthy" && !(allowStarting && health == "starting") {
 			return reject("health result unavailable")
 		}
 		started, err := time.Parse(time.RFC3339Nano, state.StartedAt)

@@ -50,3 +50,15 @@ type imageDockerAPI interface {
 	ImagePull(context.Context, string, client.ImagePullOptions) (client.ImagePullResponse, error)
 	ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error)
 }
+
+type UpdateResult struct {
+	Services         []ServiceUpdateResult
+	RecoveryRequired bool
+}
+type ServiceUpdateResult struct {
+	Service       string `json:"service"`
+	BeforeImageID string `json:"beforeImageId"`
+	TargetImageID string `json:"targetImageId"`
+	ActualImageID string `json:"actualImageId"`
+	Outcome       string `json:"outcome"`
+}
