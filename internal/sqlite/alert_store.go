@@ -319,3 +319,24 @@ func (s *AlertStore) History(ctx context.Context, id string, limit, offset int) 
 	}
 	return result, rows.Err()
 }
+
+func currentAlertChanges(ctx context.Context, tx *sql.Tx, input []alert.Change) ([]alert.Change, error) {
+	changes := make([]alert.Change, 0, len(input))
+	for _, change := range input {
+		if change.Kind == "recovery" {
+			var revision int64
+			err := tx.QueryRowContext(ctx, `SELECT revision FROM alerts WHERE stack_id=? AND problem=? AND target=?`, change.Key.StackID, change.Key.Problem, change.Key.Target).Scan(&revision)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			if revision != change.ExpectedRevision {
+				continue
+			}
+		}
+		changes = append(changes, change)
+	}
+	return changes, nil
+}

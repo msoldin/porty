@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/msoldin/porty/internal/alert"
 	portyauth "github.com/msoldin/porty/internal/auth"
+	"github.com/msoldin/porty/internal/autoupdate"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	"io"
 	"log/slog"
@@ -31,6 +32,7 @@ const (
 )
 
 type RouterOptions struct {
+	AutoUpdates          AutoUpdateAPI
 	Alerts               AlertAPI
 	AccessLogger         *slog.Logger
 	Readiness            func(context.Context) error
@@ -320,4 +322,10 @@ func setCookie(w stdhttp.ResponseWriter, name, value, path string, secure bool, 
 
 func setCSRFCookie(w stdhttp.ResponseWriter, value string, secure bool, maxAge int) {
 	stdhttp.SetCookie(w, &stdhttp.Cookie{Name: csrfCookieName, Value: value, Path: "/", HttpOnly: false, Secure: secure, SameSite: stdhttp.SameSiteStrictMode, MaxAge: maxAge})
+}
+
+type AutoUpdateAPI interface {
+	Get(context.Context, portystack.StackID) (autoupdate.Status, error)
+	Update(context.Context, portystack.StackID, autoupdate.PolicyUpdate, string) (autoupdate.Status, error)
+	Resume(context.Context, portystack.StackID, int64, string) (autoupdate.Status, error)
 }

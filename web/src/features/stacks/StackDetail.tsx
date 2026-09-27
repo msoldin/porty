@@ -245,7 +245,12 @@ export function StackDetail({
         />
       )}
       {tab === "Settings" && (
-        <StackSettings stack={stack} onChanged={refresh} />
+        <StackSettings
+          stack={stack}
+          onChanged={refresh}
+          onAlerts={() => setTab("Alerts")}
+          openOperation={openOperation}
+        />
       )}
       {tab === "Overview" && (
         <div class="detail-content">

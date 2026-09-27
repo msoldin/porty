@@ -229,6 +229,10 @@ func (s *AutoUpdateStore) FinishRun(ctx context.Context, id, outcome, reason str
 	if n == 0 {
 		return nil
 	}
+	changes, err = currentAlertChanges(ctx, tx, changes)
+	if err != nil {
+		return err
+	}
 	if _, err := applyAlertChanges(ctx, tx, changes); err != nil {
 		return err
 	}

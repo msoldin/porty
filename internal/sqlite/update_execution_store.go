@@ -274,3 +274,50 @@ func (s *AutoUpdateStore) RecoverExecution(ctx context.Context, e autoupdate.Exe
 	_, err = operationStore.CompleteOperation(ctx, operation, result)
 	return err
 }
+
+func (s *AutoUpdateStore) ResumePolicy(ctx context.Context, id stack.StackID, revision int64, now time.Time, actor string, baseline op.Deployment, images []compose.ImageChange, changes []alert.Change) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var expression string
+	if err := tx.QueryRowContext(ctx, "SELECT expression FROM auto_update_policies WHERE stack_id=? AND revision=? AND paused_reason!=''", id, revision).Scan(&expression); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return autoupdate.ErrConflict
+		}
+		return err
+	}
+	next, err := autoupdate.NextRun(expression, now)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE auto_update_policies SET paused_reason='',revision=revision+1,next_run_at=? WHERE stack_id=? AND revision=?", next.UnixNano(), id, revision); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO operations(id,kind,scope_type,scope_id,status,started_at,completed_at,output_tail,initiated_by) VALUES(?,'verify_recovery','stack',?,'succeeded',?,?,?,?)`, baseline.OperationID, id, encodeTime(now), encodeTime(now), []byte("Manual recovery verified; future scheduled updates may resume according to the saved policy."), nullableString(actor)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO operation_alert_context(operation_id,trigger_kind,stack_name,targets_json) VALUES(?,'manual',(SELECT directory_name FROM stacks WHERE id=?),'[]')`, baseline.OperationID, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO deployments(id,stack_id,operation_id,git_commit,dirty,diff_digest,compose_digest,status,started_at,completed_at,duration_ms) VALUES(?,?,?,?,?,?,?,'succeeded',?,?,0)`, baseline.ID, id, baseline.OperationID, nullableString(baseline.GitCommit), baseline.Dirty, nullableString(baseline.DiffDigest), baseline.ComposeDigest, encodeTime(now), encodeTime(now)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM deployment_images WHERE stack_id=?", id); err != nil {
+		return err
+	}
+	for _, image := range images {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO deployment_images(stack_id,service,source_reference,target_reference,platform,image_id) VALUES(?,?,?,?,?,?)`, id, image.Service, image.SourceReference, image.TargetReference, image.Platform, image.AfterImageID); err != nil {
+			return err
+		}
+	}
+	changes, err = currentAlertChanges(ctx, tx, changes)
+	if err != nil {
+		return err
+	}
+	if _, err := applyAlertChanges(ctx, tx, changes); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

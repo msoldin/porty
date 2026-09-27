@@ -269,6 +269,9 @@ func (c *ControlPlane) manualImageOverrides(ctx context.Context, id stack.StackI
 			continue
 		}
 		sources[name] = service.Image
+		if prior, ok := images[name]; ok && service.Platform != "" && service.Platform != prior.Platform {
+			sources[name] = ""
+		}
 		if image, ok := images[name]; ok && image.SourceReference == service.Image && (service.Platform == "" || service.Platform == image.Platform) {
 			overrides[name] = image.TargetReference
 			platforms[name] = image.Platform

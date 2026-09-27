@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/msoldin/porty/internal/alert"
+	"github.com/msoldin/porty/internal/autoupdate"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
@@ -113,6 +114,11 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, erro
 			control.SetAlertReader(alertStore)
 			control.SetUpdateStore(updateStore)
 			updateControl = control
+			options.AutoUpdates = autoupdate.NewPolicyService(updateStore, control, func() {
+				if application.scheduler != nil {
+					application.scheduler.Notify()
+				}
+			})
 			options.Repository = control
 			options.Actions = control
 			options.State = control

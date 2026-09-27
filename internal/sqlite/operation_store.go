@@ -170,22 +170,9 @@ func (s *OperationStore) CompleteOperation(ctx context.Context, o portyop.Operat
 	}
 	// Acknowledgments or newer failures can race with a successful runtime
 	// action. A stale recovery must not invalidate that action's completion.
-	changes := make([]alert.Change, 0, len(result.Alerts))
-	for _, change := range result.Alerts {
-		if change.Kind == "recovery" {
-			var revision int64
-			err := tx.QueryRowContext(ctx, `SELECT revision FROM alerts WHERE stack_id=? AND problem=? AND target=?`, change.Key.StackID, change.Key.Problem, change.Key.Target).Scan(&revision)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			if revision != change.ExpectedRevision {
-				continue
-			}
-		}
-		changes = append(changes, change)
+	changes, err := currentAlertChanges(ctx, tx, result.Alerts)
+	if err != nil {
+		return nil, err
 	}
 	changed, err := applyAlertChanges(ctx, tx, changes)
 	if err != nil {

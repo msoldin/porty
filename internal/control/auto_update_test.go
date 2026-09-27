@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/msoldin/porty/internal/alert"
 	"github.com/msoldin/porty/internal/autoupdate"
 	"github.com/msoldin/porty/internal/compose"
 	ctl "github.com/msoldin/porty/internal/control"
@@ -19,6 +20,9 @@ import (
 )
 
 type autoRuntime struct {
+	alerts    *alert.Service
+	guardErr  error
+	verifyErr error
 	controlRuntime
 	snapshot compose.UpdateSnapshot
 	prepare  func()
@@ -27,7 +31,7 @@ type autoRuntime struct {
 	applied  int
 }
 
-func (r *autoRuntime) CheckProject(context.Context, string) error { return nil }
+func (r *autoRuntime) CheckProject(context.Context, string) error { return r.guardErr }
 func (r *autoRuntime) SnapshotUpdate(context.Context, compose.Request) (compose.UpdateSnapshot, error) {
 	return r.snapshot, nil
 }
@@ -45,8 +49,8 @@ func (r *autoRuntime) ApplyUpdate(context.Context, compose.PreparedUpdate) error
 	return r.applyErr
 }
 func (r *autoRuntime) VerifyUpdate(context.Context, compose.PreparedUpdate) (compose.UpdateResult, error) {
-	if r.applyErr != nil {
-		return compose.UpdateResult{RecoveryRequired: true}, r.applyErr
+	if r.applyErr != nil || r.verifyErr != nil {
+		return compose.UpdateResult{RecoveryRequired: true}, errors.Join(r.applyErr, r.verifyErr)
 	}
 	return compose.UpdateResult{Services: []compose.ServiceUpdateResult{{Service: "app", TargetImageID: "after", ActualImageID: "after", Outcome: "verified"}}}, nil
 }
@@ -84,6 +88,7 @@ func autoFixture(t *testing.T) (*ctl.ControlPlane, *store.AutoUpdateStore, *auto
 	runtime := &autoRuntime{snapshot: compose.UpdateSnapshot{SourceDigest: "source", Project: &types.Project{Name: "porty-gateway", Services: types.Services{"app": {Name: "app", Image: "alpine:latest"}}}, Containers: []compose.UpdateContainer{{ID: "one", Service: "app", ImageID: "before", State: "running"}}}}
 	co := op.NewCoordinator()
 	control := ctl.NewControlPlane(t.TempDir(), ss, stack.NewEnvironmentService(ss), repo.NewRepositoryService(controlGit{}), runtime, op.NewOperationService(os, nil, time.Minute, 1024), op.NewDeploymentService(runtime, ds, co), co, ds, nil)
+	runtime.alerts = alert.NewService(store.NewAlertStore(db), nil)
 	control.SetAlertReader(store.NewAlertStore(db))
 	control.SetUpdateStore(updates)
 	return control, updates, runtime, run, co
@@ -190,5 +195,63 @@ func TestAutoUpdateDiscardsDisabledPolicyAfterPrepare(t *testing.T) {
 	}
 	if r.applied != 0 {
 		t.Fatal("disabled update mutated runtime")
+	}
+}
+
+func TestAutoUpdateCannotEnableHostingStack(t *testing.T) {
+	c, _, r, _, _ := autoFixture(t)
+	r.guardErr = compose.ErrSelfProtected
+	if !errors.Is(c.EnableAutoUpdate(context.Background(), "stk_gateway"), compose.ErrSelfProtected) {
+		t.Fatal("hosting stack enabled")
+	}
+}
+func TestResumeRequiresVerifiedRecoveryAndKeepsDisabledPolicyDisabled(t *testing.T) {
+	c, s, r, run, _ := autoFixture(t)
+	r.applyErr = errors.New("apply failed")
+	if err := c.CheckAndUpdate(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.GetPolicy(context.Background(), run.StackID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err = s.SavePolicy(context.Background(), run.StackID, autoupdate.PolicyUpdate{Enabled: false, Expression: p.Expression, ExpectedRevision: p.Revision}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ResumeAutoUpdate(context.Background(), run.StackID, p.Revision, ""); err == nil {
+		t.Fatal("unverified recovery accepted")
+	}
+	r.applyErr = nil
+	r.verifyErr = nil
+	if err := c.ResumeAutoUpdate(context.Background(), run.StackID, p.Revision, ""); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := s.GetPolicy(context.Background(), run.StackID)
+	if err != nil || resumed.Enabled || resumed.PausedReason != "" || r.applied != 1 {
+		t.Fatalf("resume mutated runtime or enabled policy: %+v %v applies=%d", resumed, err, r.applied)
+	}
+}
+
+func TestAlertResolutionCannotResumeUpdate(t *testing.T) {
+	c, s, r, run, _ := autoFixture(t)
+	r.applyErr = errors.New("partial failure")
+	if err := c.CheckAndUpdate(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	page, err := r.alerts.List(context.Background(), alert.Filter{})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("alerts=%+v %v", page, err)
+	}
+	item, err := r.alerts.Acknowledge(context.Background(), alert.Mutation{ID: page.Items[0].ID, ExpectedRevision: page.Items[0].Revision, ActorID: "reviewer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.alerts.Resolve(context.Background(), alert.Mutation{ID: item.ID, ExpectedRevision: item.Revision, ActorID: "reviewer"}); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := s.GetPolicy(context.Background(), run.StackID)
+	if err != nil || policy.PausedReason == "" || r.applied != 1 {
+		t.Fatalf("alert resumed updates: %+v %v", policy, err)
 	}
 }

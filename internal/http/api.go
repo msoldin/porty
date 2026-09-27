@@ -8,6 +8,8 @@ import (
 	"errors"
 	"github.com/msoldin/porty/internal/alert"
 	portyauth "github.com/msoldin/porty/internal/auth"
+	"github.com/msoldin/porty/internal/autoupdate"
+	"github.com/msoldin/porty/internal/compose"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
@@ -24,6 +26,7 @@ import (
 
 func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 	registerAlertRoutes(mux, options)
+	registerAutoUpdateRoutes(mux, options)
 	if options.Stacks != nil {
 		mux.HandleFunc("GET /api/v1/stacks", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			items, err := options.Stacks.ListStacks(r.Context())
@@ -374,6 +377,16 @@ func writeResult(w stdhttp.ResponseWriter, r *stdhttp.Request, value any, err er
 
 func writeAPIError(w stdhttp.ResponseWriter, r *stdhttp.Request, err error) {
 	switch {
+	case errors.Is(err, autoupdate.ErrConflict):
+		WriteError(w, r, stdhttp.StatusConflict, "PolicyConflict", "The policy changed; reload before trying again", nil)
+	case errors.Is(err, autoupdate.ErrInvalid):
+		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidSchedule", "Use a valid five-field UTC cron expression", nil)
+	case errors.Is(err, compose.ErrSelfProtected):
+		WriteError(w, r, stdhttp.StatusConflict, "HostingStackProtected", "Porty cannot automatically update its hosting stack", nil)
+	case errors.Is(err, autoupdate.ErrUnavailable), errors.Is(err, compose.ErrProtectionUnavailable):
+		WriteError(w, r, stdhttp.StatusConflict, "AutomationUnavailable", "Automatic updates are unavailable until runtime protection and recovery succeed", nil)
+	case errors.Is(err, compose.ErrUpdateIneligible), errors.Is(err, compose.ErrUpdateVerification):
+		WriteError(w, r, stdhttp.StatusConflict, "RecoveryRequired", "Verify the complete running stack and deploy pending configuration before resuming", nil)
 	case errors.Is(err, alert.ErrNotFound):
 		WriteError(w, r, stdhttp.StatusNotFound, "NotFound", "Alert not found", nil)
 	case errors.Is(err, alert.ErrConflict):

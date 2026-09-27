@@ -1,3 +1,4 @@
+import { AutoUpdateSettings } from "./AutoUpdateSettings";
 import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
 import {
@@ -12,9 +13,13 @@ import type { Stack } from "./types";
 import { Notice } from "../../components/Feedback";
 
 export function StackSettings({
+  onAlerts,
+  openOperation,
   stack,
   onChanged,
 }: {
+  onAlerts?: () => void;
+  openOperation?: (id: string) => void;
   stack: Stack;
   onChanged: () => void;
 }) {
@@ -33,6 +38,12 @@ export function StackSettings({
   }, [root]);
   return (
     <div class="settings-content">
+      <AutoUpdateSettings
+        stackId={stack.id}
+        archived={Boolean(stack.archivedAt)}
+        onAlerts={onAlerts}
+        openOperation={openOperation}
+      />
       <h2>Environment</h2>
       <p class="muted">
         Saved values can be edited in place. Choose Secret value when adding a

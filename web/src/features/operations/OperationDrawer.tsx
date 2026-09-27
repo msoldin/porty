@@ -40,6 +40,23 @@ export function OperationDrawer({
           {operation.status}
         </Badge>
         {operation.errorCode && <Notice>{operation.errorCode}</Notice>}
+        <p>Trigger: {operation.trigger || "manual"}</p>
+        {operation.serviceUpdates?.map((service) => (
+          <section key={service.service} class="update-result">
+            <h4>
+              {service.service}: {service.outcome}
+            </h4>
+            <p>
+              Before: <code>{service.beforeImageId || "Unknown"}</code>
+            </p>
+            <p>
+              Target: <code>{service.targetImageId || "Unknown"}</code>
+            </p>
+            <p>
+              Actual: <code>{service.actualImageId || "Unknown"}</code>
+            </p>
+          </section>
+        ))}
         <h4>Output</h4>
         <pre class="output">
           {operation.output || "Waiting for operation output…"}
