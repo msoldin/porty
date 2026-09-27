@@ -1,4 +1,4 @@
-# Scheduled stack image updates
+# Scheduled stack image updates and shared alerts
 
 Status: design proposed for written review; implementation has not started.
 
@@ -8,6 +8,10 @@ Automatically check opted-in Docker Compose stacks for changed image content and
 update eligible running services safely. Keep scheduling separate from execution
 so future automation can invoke the same operation without requiring a procedure
 engine now.
+
+Provide one persistent Alerts area for actionable problems from manual and
+automatic stack operations. Stack status describes current runtime state,
+operation history records attempts, and alerts track problems needing attention.
 
 Decisions agreed during discussion:
 
@@ -28,6 +32,9 @@ Decisions agreed during discussion:
 - Existing healthchecks must pass. Containers without a healthcheck must stay
   running for 30 seconds. Verification has a five-minute overall timeout.
 - The stack hosting Porty must never be updated through this feature.
+- Shared alerts cover failed manual deployments/runtime actions, automatic update
+  failures and interrupted operations requiring recovery. Acknowledgment is
+  separate from resolution; neither action resumes automatic updates.
 
 The detailed policies below make these decisions concrete for review.
 
@@ -59,6 +66,7 @@ GitNexus index at commit `16e70c14d11761a7f6ffdfaa04e20c0be524cad9`.
 | Package | Responsibility |
 | --- | --- |
 | `internal/autoupdate` | Policy, cron scheduling, due-run admission, latest check state and pause state |
+| `internal/alert` | Shared alert types, deduplication, acknowledgment and resolution lifecycle |
 | `internal/control` | Stack eligibility, coordinator ownership and the controlled image-update operation |
 | `internal/compose` | Public registry resolution, runtime image inspection, exact-digest pulls, constrained recreation and verification |
 | `internal/operation` | Existing operation/deployment tracking, extended with update provenance and recovery information |
@@ -66,6 +74,7 @@ GitNexus index at commit `16e70c14d11761a7f6ffdfaa04e20c0be524cad9`.
 | `internal/app` | Wiring, scheduler lifetime, startup reconciliation and shutdown |
 | `internal/http` | Authenticated policy/status contracts using existing guards |
 | `web/src/features/stacks` | Auto-update settings and current result, linked to existing operation history |
+| `web/src/features/alerts` | Global alert list, badge and reusable stack-scoped alert presentation |
 
 Keep interfaces narrow and at their consumers. The scheduler invokes an explicit
 stack image-update entry point; it does not call HTTP handlers or Docker directly.
@@ -219,6 +228,75 @@ The coordinator is process-local. V1 assumes one Porty process manages a Docker
 daemon/workspace; distributed scheduling and multiple independent writers are
 outside scope.
 
+## Shared alerts
+
+Persist alerts in SQLite and expose one consistent lifecycle for manual and
+automatic operations. Feature services report typed failures and verified recovery
+through a narrow alert interface; the alert package does not interpret arbitrary
+logs, poll Docker or own deployment policy. Continuous health monitoring, external
+delivery channels and alerts for unrelated features are outside v1. Future
+features can use the same interface and lifecycle.
+
+Create alerts for:
+
+- Failed manual deployments and accepted mutating runtime actions, including
+  image pulls and partially failed container batches.
+- Automatic registry checks or pulls that fail after bounded retries, deployment
+  failures, and health verification failures.
+- Interrupted mutating operations where reconciliation requires manual recovery.
+
+Expected eligibility skips, operation conflicts and invalid form input remain
+contextual messages. An auth-required image encountered in an enabled automatic
+check creates an unsupported-image alert after that check, since the user must
+change the configuration or disable the policy. Other documented exclusions stay
+visible in stack settings. Do not generate an alert for each internal retry.
+
+Group recurring failures by stable stack ID, problem type and affected target
+where needed (for example service and intended action). Manual and scheduled
+attempts describing the same problem share the key; trigger source is provenance,
+not a separate alert category. Distinct failures on different targets must not be
+merged solely because their text matches. Store a bounded redacted summary, first
+and latest occurrence, count, latest operation link when available, acknowledgment
+actor/time and resolution actor/time/reason. Use stable occurrence identifiers so
+replayed reports cannot inflate counts.
+
+Acknowledgment and resolution are independent:
+
+| Event | Result |
+| --- | --- |
+| First failure | Open and unacknowledged |
+| Repeated unresolved failure | Update latest occurrence/count; retain acknowledgment |
+| Acknowledge | Record actor/time; leave problem open |
+| Verified equivalent recovery | Resolve automatically; retain acknowledgment state |
+| Mark resolved | Resolve manually with actor/time and optional note |
+| Failure after resolution | Reopen, clear acknowledgment and record a new episode |
+
+Retain lifecycle history across reopening, including previous acknowledgments and
+resolutions. A failure which resolves before anyone sees it remains unacknowledged
+until acknowledged, so unattended incidents do not disappear silently. The global
+badge counts unacknowledged alerts, including these resolved incidents. The default
+list includes open or unacknowledged alerts; filters expose full history.
+
+Feature producers determine recovery evidence for the same target and action.
+A successful registry check can resolve a registry-check failure; a successful
+log request cannot resolve a deployment failure. Failed manual deployments require
+a subsequent successful deployment and verified runtime recovery, not merely a
+successful SDK return. Stale success reports must not resolve a newer failure;
+use occurrence/revision checks for both producer and user lifecycle writes.
+
+Offer Mark resolved for conditions Porty cannot verify, with an optional note.
+If the same failure is observed again, reopen it unacknowledged. Acknowledgment
+and manual resolution never start containers, retry operations, change historical
+operation outcomes or clear auto-update pause/recovery guards. Resume remains a
+separate action requiring recovery and eligibility verification.
+
+Save an operation's terminal failure and its corresponding alert atomically where
+they share SQLite persistence. Scheduled checks without a deployment still need a
+durable failure result and alert. Startup reconciliation must report interrupted
+work idempotently. If storage is unavailable, retain the existing execution intent
+as the recovery marker and report persistence failure; do not silently treat an
+in-memory alert as durable.
+
 ## API and UI
 
 Add focused stack settings for enablement, cron expression, explicit UTC display,
@@ -226,10 +304,21 @@ next scheduled time, last checked time/result and pause/resume. Show skip and
 unsupported reasons, including Porty self-update exclusion. Link executions to the
 existing operation UI, with service-level old/target/observed image information.
 
+Add a global Alerts entry and unacknowledged count. Stack details show the same
+alerts filtered by stack, with links to operation history and clear recovery
+guidance. Provide acknowledge and, where applicable, mark-resolved actions; show
+who acted and when. Keep auto-update pause/resume separate from alert controls.
+Publish alert changes through the existing WebSocket infrastructure and reload
+authoritative state on reconnect. Preserve historical context when a stack is
+archived or deleted; unavailable stack links must not break the alert history.
+
 Keep policy revision checks at the API boundary to reject stale writes. Reuse
 authentication, CSRF/origin guards, secret redaction and bounded output. Record
 scheduled provenance and policy edits without impersonating an interactive user.
 Registry errors must never expose credentials or be reported as up to date.
+Alert reads and mutations use the same authorization boundaries as their affected
+resources. Alert acknowledgment/resolution records the authenticated actor and
+rejects stale revisions; alerts never contain environment or credential values.
 
 ## Verification required before implementation completion
 
@@ -253,6 +342,14 @@ suites. Cover:
   symlinks, redaction and bounded registry/error output.
 - UI schedule validation, UTC/next-run display, disabled/paused/unsupported states
   and operation links, with desktop/mobile browser coverage for visible changes.
+- Shared manual/automatic alert production, target-aware grouping, retry/replay
+  deduplication, independent acknowledgment/resolution, retained history, reopening
+  and stale success rejection.
+- Atomic failure/alert persistence, restart recovery, storage failure, stack
+  deletion, and acknowledgment or resolution never resuming updates or altering
+  operation outcomes.
+- Global badge and stack-list consistency, resolved-but-unacknowledged visibility,
+  authenticated actor attribution, stale mutations and WebSocket reconnect.
 
 ## Alternatives and future extension
 
@@ -264,3 +361,5 @@ current responsibilities small.
 
 Private registries, semantic-version selection, dependency restarts, automatic
 rollback, backup hooks, self-updates and general procedures remain outside v1.
+Alerts add no continuous health polling, email, webhook or other external delivery
+in v1; later delivery channels can consume the same alert lifecycle.
