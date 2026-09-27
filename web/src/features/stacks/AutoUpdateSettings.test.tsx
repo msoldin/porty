@@ -53,7 +53,7 @@ it("shows next UTC run and skipped reason", async () => {
   });
   render(<AutoUpdateSettings stackId="s" />);
   expect(
-    await screen.findByText(/2026-09-28T00:00:00.000Z/),
+    await screen.findByText(/28 Sept? 2026, 00:00 UTC/),
   ).toBeInTheDocument();
   expect(screen.getByText(/stack not eligible/)).toBeInTheDocument();
 });

@@ -164,6 +164,7 @@ test("edits UTC policy and keeps acknowledgment separate from verified resume", 
     if (!(path in responses)) throw new Error(`Unexpected request ${path}`);
     return route.fulfill({ json: responses[path] });
   });
+  await page.emulateMedia({ colorScheme: "dark" });
   await page.goto(`${baseURL}/#/stacks/s1`);
   await expect(page).toHaveTitle("Porty");
   await page.getByRole("tab", { name: "Settings" }).click();
@@ -171,7 +172,12 @@ test("edits UTC policy and keeps acknowledgment separate from verified resume", 
   await expect(page.getByLabel("Enable automatic updates")).not.toBeChecked();
   await page.getByLabel("Enable automatic updates").check();
   await page.getByRole("button", { name: "Save schedule" }).click();
-  await expect(page.getByText(/Next run.*2026-09-28/)).toBeVisible();
+  await expect(page.getByText(/Next run.*28 Sept? 2026/)).toBeVisible();
+  await page
+    .locator(".auto-update-settings")
+    .screenshot({
+      path: join(tmpdir(), `porty-auto-update-panel-${info.project.name}.png`),
+    });
   status = {
     ...status,
     policy: {

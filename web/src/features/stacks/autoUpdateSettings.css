@@ -1,0 +1,122 @@
+.auto-update-settings .auto-update-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+.auto-update-heading h2 {
+  margin: 0 0 6px;
+}
+.auto-update-heading p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.auto-update-settings .auto-update-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-direction: row;
+  margin: 3px 0 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+.auto-update-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+.auto-update-settings form {
+  gap: 6px;
+}
+.auto-update-settings .auto-update-schedule {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.auto-update-schedule label {
+  width: 240px;
+  max-width: 100%;
+  margin: 0;
+  font-size: 13px;
+}
+.auto-update-schedule input {
+  font-family: monospace;
+  letter-spacing: 0.08em;
+}
+.auto-update-schedule button {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.auto-update-settings .auto-update-schedule-hint {
+  margin: 0;
+  font-size: 12px;
+}
+.auto-update-settings .auto-update-next {
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+.auto-update-next time {
+  color: var(--text-strong);
+}
+.auto-update-settings .auto-update-last {
+  font-size: 13px;
+}
+.auto-update-settings .auto-update-safety {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 18px 0 8px;
+}
+.auto-update-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+}
+.auto-update-footer details {
+  max-width: 460px;
+  color: var(--muted);
+}
+.auto-update-footer summary {
+  cursor: pointer;
+  min-height: 28px;
+  padding-top: 5px;
+}
+.auto-update-footer details p {
+  line-height: 1.6;
+}
+.auto-update-links {
+  display: flex;
+  gap: 16px;
+  flex-shrink: 0;
+  align-items: center;
+}
+.auto-update-links button {
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .auto-update-settings .auto-update-heading {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .auto-update-heading > div {
+    flex: 1 1 220px;
+  }
+  .auto-update-schedule label {
+    flex: 1;
+    min-width: 0;
+  }
+  .auto-update-footer {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+.auto-update-settings .auto-update-excluded {
+  font-size: 12px;
+  margin: 8px 0;
+}
