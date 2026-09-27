@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"context"
 	"errors"
+	"github.com/msoldin/porty/internal/alert"
 	"github.com/msoldin/porty/internal/autoupdate"
 	"github.com/msoldin/porty/internal/compose"
 	op "github.com/msoldin/porty/internal/operation"
@@ -87,5 +88,57 @@ func TestAutoUpdateCompletionCommitsDeploymentImagesAndPauseAtomically(t *testin
 	pending, err := s.PendingRuns(ctx)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("run incomplete: %+v %v", pending, err)
+	}
+}
+
+func TestRecoveryNeverReplaysInterruptedMutationAndPausesAmbiguousOutcome(t *testing.T) {
+	for _, phase := range []string{"prepared", "applying", "verifying"} {
+		t.Run(phase, func(t *testing.T) {
+			s, db, now := updateFixture(t)
+			ctx := context.Background()
+			p, _ := s.SavePolicy(ctx, "s", autoupdate.PolicyUpdate{Enabled: true, Expression: autoupdate.DefaultExpression}, now)
+			run, _, _ := s.Admit(ctx, p, p.NextRunAt)
+			operation := op.Operation{ID: "op-update", Kind: "auto_update", ScopeType: "stack", ScopeID: "s", Status: op.OperationRunning}
+			ops := store.NewOperationStore(db)
+			if err := ops.CreateOperation(ctx, operation); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.SavePrepared(ctx, run, operation, compose.PreparedUpdate{Snapshot: compose.UpdateSnapshot{SourceDigest: "source"}, Changes: []compose.ImageChange{{Service: "app", AfterImageID: "after"}}}, op.Deployment{StackID: "s", ComposeDigest: "source"}); err != nil {
+				t.Fatal(err)
+			}
+			if phase != "prepared" {
+				if err := s.MarkApplying(ctx, run.ID, 1); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if phase == "verifying" {
+				if err := s.MarkVerifying(ctx, run.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pending, err := s.PendingExecutions(ctx)
+			if err != nil || len(pending) != 1 {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if err := s.RecoverExecution(ctx, pending[0], nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			policy, err := s.GetPolicy(ctx, "s")
+			if err != nil || (policy.PausedReason != "") != (phase != "prepared") {
+				t.Fatalf("phase=%s policy=%+v %v", phase, policy, err)
+			}
+			page, err := store.NewAlertStore(db).List(ctx, alert.Filter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if phase == "prepared" && page.Total != 0 {
+				t.Fatal("prepared-only work raised deployment failure")
+			}
+			if phase != "prepared" && (page.Total != 1 || page.Items[0].Count != 1) {
+				t.Fatalf("recovery alert=%+v", page)
+			}
+		})
 	}
 }

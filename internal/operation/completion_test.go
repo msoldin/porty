@@ -104,3 +104,74 @@ func TestWaitReturnsOnlyAfterCompletionAndCoordinatorRelease(t *testing.T) {
 		t.Fatalf("wait=%+v err=%v released=%v", result, err, released)
 	}
 }
+
+func TestShutdownRejectsNewWorkAndDrainsAcceptedWork(t *testing.T) {
+	store := &memoryOperationStore{completed: make(chan op.Operation, 100)}
+	service := op.NewOperationService(store, nil, time.Minute, 1024)
+	running := make(chan struct{})
+	finish := make(chan struct{})
+	released := make(chan struct{})
+	_, err := service.StartTracked(context.Background(), op.OperationRequest{}, func(context.Context) op.Result { close(running); <-finish; return op.Result{} }, func() { close(released) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-running
+	shut := make(chan error, 1)
+	go func() { shut <- service.Shutdown(context.Background()) }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		_, err = service.Start(context.Background(), op.OperationRequest{}, func(context.Context) (string, error) { return "", nil })
+		if errors.Is(err, op.ErrShuttingDown) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("admission remained open")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case <-shut:
+		t.Fatal("shutdown did not drain")
+	default:
+	}
+	close(finish)
+	select {
+	case err := <-shut:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("drain timed out")
+	}
+	select {
+	case <-released:
+	default:
+		t.Fatal("resource cleanup preceded release")
+	}
+}
+func TestShutdownCancelsAfterDrainDeadline(t *testing.T) {
+	store := &memoryOperationStore{completed: make(chan op.Operation, 1)}
+	service := op.NewOperationService(store, nil, time.Minute, 1024)
+	running := make(chan struct{})
+	cancelled := make(chan struct{})
+	_, err := service.Start(context.Background(), op.OperationRequest{}, func(ctx context.Context) (string, error) {
+		close(running)
+		<-ctx.Done()
+		close(cancelled)
+		return "", ctx.Err()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-running
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	if !errors.Is(service.Shutdown(ctx), context.DeadlineExceeded) {
+		t.Fatal("deadline ignored")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("worker not cancelled")
+	}
+}

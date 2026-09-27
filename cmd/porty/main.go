@@ -43,6 +43,7 @@ func main() {
 	root, err := app.New(ctx, db, cfg)
 	if err != nil {
 		slog.Error("construct application", "error", err)
+		_ = db.Close()
 		os.Exit(1)
 	}
 
@@ -61,6 +62,10 @@ func main() {
 		}
 		return server.ListenAndServe()
 	})
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownErr := root.Shutdown(shutdownCtx)
+	shutdownCancel()
+	err = errors.Join(err, shutdownErr, db.Close())
 	if err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)

@@ -49,7 +49,11 @@ type trackedOperation struct {
 	operation Operation
 	err       error
 }
+
+var ErrShuttingDown = errors.New("operation service is shutting down")
+
 type OperationService struct {
+	stopped   bool
 	mu        sync.Mutex
 	jobs      map[string]*trackedOperation
 	completed []string
@@ -89,10 +93,15 @@ func (s *OperationService) StartTracked(requestCtx context.Context, request Oper
 	if operation.Trigger == "" {
 		operation.Trigger = "manual"
 	}
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return Operation{}, ErrShuttingDown
+	}
 	if err := s.store.CreateOperation(requestCtx, operation); err != nil {
+		s.mu.Unlock()
 		return Operation{}, err
 	}
-	s.publish(operation)
 	timeout := request.Timeout
 	if timeout <= 0 {
 		timeout = s.timeout
@@ -102,9 +111,9 @@ func (s *OperationService) StartTracked(requestCtx context.Context, request Oper
 	}
 	jobCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	job := &trackedOperation{done: make(chan struct{}), cancel: cancel}
-	s.mu.Lock()
 	s.jobs[operation.ID] = job
 	s.mu.Unlock()
+	s.publish(operation)
 	go func() {
 		completed, err := s.execute(jobCtx, operation, request.Secrets, request.DiscardOutput, run, release)
 		cancel()
@@ -219,4 +228,25 @@ func (s *OperationService) Wait(ctx context.Context, id string) (Operation, erro
 	case <-job.done:
 		return job.operation, job.err
 	}
+}
+
+func (s *OperationService) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	s.stopped = true
+	jobs := make([]*trackedOperation, 0, len(s.jobs))
+	for _, job := range s.jobs {
+		jobs = append(jobs, job)
+	}
+	s.mu.Unlock()
+	for _, job := range jobs {
+		select {
+		case <-job.done:
+		case <-ctx.Done():
+			for _, pending := range jobs {
+				pending.cancel()
+			}
+			return ctx.Err()
+		}
+	}
+	return nil
 }

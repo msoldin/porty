@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/msoldin/porty/internal/alert"
 	"github.com/msoldin/porty/internal/autoupdate"
 	"github.com/msoldin/porty/internal/compose"
 	op "github.com/msoldin/porty/internal/operation"
 	"github.com/msoldin/porty/internal/stack"
+	"time"
 )
 
 func (s *AutoUpdateStore) SavePrepared(ctx context.Context, run autoupdate.Run, operation op.Operation, prepared compose.PreparedUpdate, baseline op.Deployment) error {
@@ -215,4 +217,60 @@ func (s *AutoUpdateStore) PruneImages(ctx context.Context, id stack.StackID, sou
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *AutoUpdateStore) RecoverExecution(ctx context.Context, e autoupdate.Execution, services []compose.ServiceUpdateResult) error {
+	var phase string
+	if err := s.db.QueryRowContext(ctx, "SELECT phase FROM update_executions WHERE run_id=?", e.RunID).Scan(&phase); err != nil {
+		return err
+	}
+	if phase == "terminal" {
+		return nil
+	}
+	if phase == "prepared" {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err := tx.ExecContext(ctx, "UPDATE update_executions SET phase='terminal' WHERE run_id=? AND phase='prepared'", e.RunID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE auto_update_runs SET phase='terminal',outcome='interrupted',reason='restart_before_mutation' WHERE id=?", e.RunID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE operations SET status='cancelled',completed_at=?,error_code='server_restarted' WHERE id=?", encodeTime(time.Now()), e.OperationID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if phase != "applying" && phase != "verifying" {
+		return errors.New("unknown update recovery phase")
+	}
+	operationStore := NewOperationStore(s.db)
+	operation, err := operationStore.Operation(ctx, e.OperationID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	operation.Status = op.OperationFailed
+	operation.CompletedAt = now
+	operation.ErrorCode = "update_interrupted"
+	operation.Output = "Update interrupted after mutation began. Inspect and recover the stack before resuming automatic updates."
+	deployment := e.Baseline
+	deployment.ID = "dep_" + operation.ID
+	deployment.OperationID = operation.ID
+	deployment.StackID = stack.StackID(operation.ScopeID)
+	deployment.ComposeDigest = e.SourceDigest
+	deployment.Status = op.DeploymentFailed
+	deployment.StartedAt = operation.StartedAt
+	if deployment.StartedAt.IsZero() {
+		deployment.StartedAt = now
+	}
+	deployment.CompletedAt = now
+	deployment.Duration = now.Sub(deployment.StartedAt)
+	deployment.ErrorCode = "update_interrupted"
+	result := op.Result{Update: &op.UpdateCompletion{RunID: e.RunID, Deployment: deployment, Services: services, PauseReason: "interrupted_update"}, Alerts: []alert.Change{{Kind: "failure", Key: alert.Key{StackID: operation.ScopeID, Problem: "deployment", Target: "stack"}, StackName: operation.StackName, OccurrenceID: operation.ID, OperationID: operation.ID, Summary: "Automatic update interrupted; manual recovery required.", ObservedAt: now, CanResolveManually: true}}}
+	_, err = operationStore.CompleteOperation(ctx, operation, result)
+	return err
 }

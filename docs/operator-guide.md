@@ -115,3 +115,7 @@ The **Alerts** page collects persisted stack and container operation failures. T
 - **Needs attention** includes open incidents and recovered incidents awaiting acknowledgment. Use **All history** to review completed incidents and their linked operations.
 
 Historical failed operations remain failed after recovery. Acknowledging or resolving an alert never starts containers or resumes automatic updates. Alerts do not continuously monitor runtime health or send external notifications. Interrupted accepted mutations are recorded once when Porty restarts.
+
+### Restart and shutdown safety
+
+Porty stops background admission and drains accepted operations for up to 30 seconds before closing Docker. The systemd unit allows 45 seconds for HTTP shutdown and this drain. A forced stop can leave durable update intent: prepared-only work is discarded; applying/verifying work is recorded as interrupted and automatic updates stay paused for manual recovery. Startup inspection never replays a recreation or performs rollback. If outcome persistence fails, automatic admission stops until reconciliation succeeds after restart.

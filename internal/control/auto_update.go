@@ -33,6 +33,7 @@ type UpdateStore interface {
 	InvalidateImages(context.Context, stack.StackID) error
 	PruneImages(context.Context, stack.StackID, map[string]string) error
 	PendingExecutions(context.Context) ([]autoupdate.Execution, error)
+	RecoverExecution(context.Context, autoupdate.Execution, []compose.ServiceUpdateResult) error
 }
 
 func (c *ControlPlane) SetUpdateStore(store UpdateStore) { c.updateStore = store }

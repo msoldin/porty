@@ -108,7 +108,7 @@ func (s *OperationStore) FailInterrupted(ctx context.Context, at time.Time) erro
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT o.id,c.stack_name,c.targets_json FROM operations o JOIN operation_alert_context c ON c.operation_id=o.id WHERE o.status IN (?,?)`, portyop.OperationQueued, portyop.OperationRunning)
+	rows, err := tx.QueryContext(ctx, `SELECT o.id,c.stack_name,c.targets_json FROM operations o JOIN operation_alert_context c ON c.operation_id=o.id WHERE o.status IN (?,?) AND NOT EXISTS(SELECT 1 FROM update_executions e WHERE e.operation_id=o.id AND e.phase!='terminal')`, portyop.OperationQueued, portyop.OperationRunning)
 	if err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func (s *OperationStore) FailInterrupted(ctx context.Context, at time.Time) erro
 	if _, err := applyAlertChanges(ctx, tx, changes); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE operations SET status=?,completed_at=?,error_code=? WHERE status IN (?,?)`,
+	_, err = tx.ExecContext(ctx, `UPDATE operations SET status=?,completed_at=?,error_code=? WHERE status IN (?,?) AND NOT EXISTS(SELECT 1 FROM update_executions e WHERE e.operation_id=operations.id AND e.phase!='terminal')`,
 		portyop.OperationFailed, encodeTime(at), "server_restarted", portyop.OperationQueued, portyop.OperationRunning)
 	if err != nil {
 		return err

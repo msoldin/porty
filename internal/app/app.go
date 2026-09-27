@@ -26,7 +26,7 @@ import (
 )
 
 // New assembles the application and its HTTP routes.
-func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, error) {
+func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, error) {
 	var repositorySafetyErr error
 	var accessHandler slog.Handler = slog.NewTextHandler(os.Stdout, nil)
 	if cfg.LogFormat == "json" {
@@ -51,10 +51,14 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 	if err != nil {
 		return nil, err
 	}
-	go func() {
-		<-ctx.Done()
-		_ = dockerClient.Close()
+	assembled := false
+	defer func() {
+		if !assembled {
+			_ = dockerClient.Close()
+		}
 	}()
+	application := &Application{docker: dockerClient}
+	var updateControl *portycontrol.ControlPlane
 	if err := os.MkdirAll(repositoryRoot, 0o700); err == nil {
 		if files, err := portyfs.Open(repositoryRoot, portyfs.Limits{MaxEditableBytes: cfg.MaxEditableFileBytes, MaxDepth: 32, MaxEntries: 10_000}); err == nil {
 			stackStore := portysqlite.NewStackStore(db)
@@ -70,9 +74,10 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 	authService.OnKeyRotation(hub.CloseConnections)
 	options.Stream = portyws.Handler{Hub: hub}
 	operationStore := portysqlite.NewOperationStore(db)
-	if err := operationStore.FailInterrupted(ctx, time.Now().UTC()); err != nil {
-		return nil, err
-	}
+	operations := portyop.NewOperationService(operationStore, hub, 10*time.Minute, 256<<10)
+	application.operations = operations
+	application.hub = hub
+	updateStore := portysqlite.NewAutoUpdateStore(db)
 	deploymentStore := portysqlite.NewDeploymentStore(db)
 	options.Operations = operationStore
 	options.Deployments = deploymentStore
@@ -103,10 +108,11 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 					err = reconcileErr
 				}
 			}
-			operations := portyop.NewOperationService(operationStore, hub, 10*time.Minute, 256<<10)
 			deployments := portyop.NewDeploymentService(compose, deploymentStore, coordinator)
 			control := portycontrol.NewControlPlane(repositoryRoot, stackStore, environment, repositoryService, compose, operations, deployments, coordinator, deploymentStore, hub)
 			control.SetAlertReader(alertStore)
+			control.SetUpdateStore(updateStore)
+			updateControl = control
 			options.Repository = control
 			options.Actions = control
 			options.State = control
@@ -121,6 +127,14 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			repositorySafetyErr = err
 		}
 	}
+	if updateControl != nil {
+		if err := updateControl.ReconcileUpdates(ctx); err != nil {
+			slog.Error("automatic update reconciliation unavailable")
+		}
+	}
+	if err := operationStore.FailInterrupted(ctx, time.Now().UTC()); err != nil {
+		return nil, err
+	}
 	options.Audit = portysqlite.NewAuditStore(db)
 	api := httpapi.NewRouter(options)
 	root := http.NewServeMux()
@@ -128,5 +142,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 	root.Handle("/readyz", api)
 	root.Handle("/api/", api)
 	root.Handle("/", web.Handler())
-	return root, nil
+	application.handler = root
+	assembled = true
+	return application, nil
 }
