@@ -31,3 +31,22 @@ type updateDocker interface {
 type SelfGuard interface {
 	CheckProject(context.Context, string) error
 }
+
+type ImageChange struct {
+	Service         string `json:"service"`
+	SourceReference string `json:"sourceReference"`
+	TargetReference string `json:"targetReference"`
+	Platform        string `json:"platform"`
+	BeforeImageID   string `json:"beforeImageId"`
+	AfterImageID    string `json:"afterImageId"`
+	ManifestDigest  string `json:"manifestDigest"`
+}
+type PreparedUpdate struct {
+	Snapshot UpdateSnapshot
+	Changes  []ImageChange
+}
+type imageDockerAPI interface {
+	DistributionInspect(context.Context, string, client.DistributionInspectOptions) (client.DistributionInspectResult, error)
+	ImagePull(context.Context, string, client.ImagePullOptions) (client.ImagePullResponse, error)
+	ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error)
+}

@@ -13,6 +13,7 @@ import (
 )
 
 type Client struct {
+	images     imageDockerAPI
 	updates    updateDocker
 	guard      SelfGuard
 	service    api.Compose
