@@ -1,6 +1,10 @@
 # Scheduled stack image updates and shared alerts
 
-Status: design proposed for written review; implementation has not started.
+Status: reviewed and approved on 2026-09-27; implementation has not started.
+
+Implementation plans: [shared alerts](../plans/2026-09-27-shared-alerts.md), then
+[scheduled stack updates](../plans/2026-09-27-stack-auto-update.md). Plans require
+review before execution.
 
 ## Intent and agreed scope
 
