@@ -85,3 +85,22 @@ func TestOperationDoesNotPublishUncommittedCompletion(t *testing.T) {
 		}
 	}
 }
+
+func TestWaitReturnsOnlyAfterCompletionAndCoordinatorRelease(t *testing.T) {
+	service := op.NewOperationService(&memoryOperationStore{completed: make(chan op.Operation, 1)}, nil, time.Second, 1024)
+	released := false
+	accepted, err := service.StartTracked(context.Background(), op.OperationRequest{Timeout: time.Minute}, func(ctx context.Context) op.Result {
+		deadline, _ := ctx.Deadline()
+		if time.Until(deadline) < 50*time.Second {
+			return op.Result{Err: errors.New("request budget ignored")}
+		}
+		return op.Result{}
+	}, func() { released = true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Wait(context.Background(), accepted.ID)
+	if err != nil || result.Status != op.OperationSucceeded || !released {
+		t.Fatalf("wait=%+v err=%v released=%v", result, err, released)
+	}
+}

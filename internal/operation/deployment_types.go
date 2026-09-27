@@ -1,6 +1,7 @@
 package operation
 
 import (
+	"github.com/msoldin/porty/internal/compose"
 	portystack "github.com/msoldin/porty/internal/stack"
 	"time"
 )
@@ -26,3 +27,10 @@ const (
 	DeploymentSucceeded DeploymentStatus = "succeeded"
 	DeploymentFailed    DeploymentStatus = "failed"
 )
+
+type UpdateCompletion struct {
+	RunID       string
+	Deployment  Deployment
+	Services    []compose.ServiceUpdateResult
+	PauseReason string
+}

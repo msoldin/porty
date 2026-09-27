@@ -105,6 +105,18 @@ func (c *Client) up(parent context.Context, request Request, recreate, removeOrp
 	if err != nil {
 		return err
 	}
+	for name, image := range request.ImageOverrides {
+		service, exists := project.Services[name]
+		if !exists || service.Build != nil {
+			continue
+		}
+		service.Image = image
+		service.PullPolicy = "never"
+		if platform := request.ImagePlatforms[name]; platform != "" {
+			service.Platform = platform
+		}
+		project.Services[name] = service
+	}
 	mode := api.RecreateDiverged
 	if recreate {
 		mode = api.RecreateForce

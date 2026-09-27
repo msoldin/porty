@@ -298,3 +298,26 @@ func TestContainerInspectRejectsOversizedJSON(t *testing.T) {
 		t.Fatalf("oversized inspect = %d bytes, %v", len(got), err)
 	}
 }
+
+func TestManualRedeployKeepsEffectiveImageWithoutChangingSourceDigest(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("services:\n  app:\n    image: alpine:latest\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	service := &recordingCompose{}
+	c := New(service, time.Minute)
+	request := Request{StackDir: dir, ProjectName: "sample"}
+	before, err := c.Digest(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.ImageOverrides = map[string]string{"app": "alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	request.ImagePlatforms = map[string]string{"app": "linux/arm64"}
+	if err := c.Deploy(context.Background(), request, false); err != nil {
+		t.Fatal(err)
+	}
+	after, err := c.Digest(context.Background(), request)
+	if err != nil || before != after || service.project.Services["app"].Image != request.ImageOverrides["app"] || service.project.Services["app"].Platform != "linux/arm64" {
+		t.Fatalf("source/effective image mixed: %s %s %+v %v", before, after, service.project.Services["app"], err)
+	}
+}

@@ -3,6 +3,8 @@ package autoupdate
 import (
 	"context"
 	"errors"
+	"github.com/msoldin/porty/internal/compose"
+	"github.com/msoldin/porty/internal/operation"
 	"github.com/msoldin/porty/internal/stack"
 	"time"
 )
@@ -47,4 +49,11 @@ type Store interface {
 }
 type Executor interface {
 	CheckAndUpdate(context.Context, Run) error
+}
+
+// Execution contains allowlisted recovery intent; never a Compose project or environment.
+type Execution struct {
+	RunID, OperationID, Phase, SourceDigest string
+	Changes                                 []compose.ImageChange
+	Baseline                                operation.Deployment
 }

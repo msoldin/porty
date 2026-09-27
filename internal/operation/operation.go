@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/msoldin/porty/internal/alert"
@@ -21,6 +22,7 @@ type OperationPublisher interface {
 }
 
 type OperationRequest struct {
+	Timeout       time.Duration
 	ID            string
 	Kind          string
 	ScopeType     string
@@ -35,12 +37,22 @@ type OperationRequest struct {
 }
 
 type Result struct {
+	Update *UpdateCompletion
 	Output string
 	Err    error
 	Alerts []alert.Change
 }
 
+type trackedOperation struct {
+	done      chan struct{}
+	cancel    context.CancelFunc
+	operation Operation
+	err       error
+}
 type OperationService struct {
+	mu        sync.Mutex
+	jobs      map[string]*trackedOperation
+	completed []string
 	store     OperationRepository
 	publisher OperationPublisher
 	timeout   time.Duration
@@ -55,7 +67,7 @@ func NewOperationService(store OperationRepository, publisher OperationPublisher
 	if maxOutput <= 0 {
 		maxOutput = 256 << 10
 	}
-	return &OperationService{store: store, publisher: publisher, timeout: timeout, maxOutput: maxOutput, now: time.Now}
+	return &OperationService{jobs: make(map[string]*trackedOperation), store: store, publisher: publisher, timeout: timeout, maxOutput: maxOutput, now: time.Now}
 }
 
 func (s *OperationService) Start(requestCtx context.Context, request OperationRequest, run func(context.Context) (string, error)) (Operation, error) {
@@ -81,21 +93,45 @@ func (s *OperationService) StartTracked(requestCtx context.Context, request Oper
 		return Operation{}, err
 	}
 	s.publish(operation)
-	go s.execute(operation, request.Secrets, request.DiscardOutput, run, release)
+	timeout := request.Timeout
+	if timeout <= 0 {
+		timeout = s.timeout
+	}
+	if timeout > 20*time.Minute {
+		timeout = 20 * time.Minute
+	}
+	jobCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	job := &trackedOperation{done: make(chan struct{}), cancel: cancel}
+	s.mu.Lock()
+	s.jobs[operation.ID] = job
+	s.mu.Unlock()
+	go func() {
+		completed, err := s.execute(jobCtx, operation, request.Secrets, request.DiscardOutput, run, release)
+		cancel()
+		completed.Output = "" // Wait reports status; authoritative output stays in persistent history.
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		job.operation = completed
+		job.err = err
+		close(job.done)
+		s.completed = append(s.completed, operation.ID)
+		if len(s.completed) > 128 {
+			delete(s.jobs, s.completed[0])
+			s.completed = s.completed[1:]
+		}
+	}()
 	return operation, nil
 }
 
-func (s *OperationService) execute(operation Operation, secrets []string, discardOutput bool, run func(context.Context) Result, release func()) {
+func (s *OperationService) execute(ctx context.Context, operation Operation, secrets []string, discardOutput bool, run func(context.Context) Result, release func()) (Operation, error) {
 	if release != nil {
 		defer release()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
-	defer cancel()
 	operation.Status = OperationRunning
 	operation.StartedAt = s.now().UTC()
 	if err := s.store.UpdateOperation(ctx, operation); err != nil {
 		slog.Error("operation running state could not be saved", "operation_id", operation.ID)
-		return
+		return operation, err
 	}
 	s.publish(operation)
 	result := run(ctx)
@@ -141,13 +177,16 @@ func (s *OperationService) execute(operation Operation, secrets []string, discar
 			}
 		}
 	}
+	if result.Update != nil {
+		operation.ServiceUpdates = result.Update.Services
+	}
 	result.Output = operation.Output
 	finishCtx, finishCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer finishCancel()
 	changed, saveErr := s.store.CompleteOperation(finishCtx, operation, result)
 	if saveErr != nil {
 		slog.Error("operation completion could not be saved", "operation_id", operation.ID)
-		return
+		return operation, saveErr
 	}
 	s.publish(operation)
 	if publisher, ok := s.publisher.(alert.Publisher); ok {
@@ -155,6 +194,7 @@ func (s *OperationService) execute(operation Operation, secrets []string, discar
 			publisher.PublishAlert(a)
 		}
 	}
+	return operation, nil
 }
 
 func NewOperationID() string { return "op_" + randomID(12) }
@@ -162,5 +202,21 @@ func NewOperationID() string { return "op_" + randomID(12) }
 func (s *OperationService) publish(operation Operation) {
 	if s.publisher != nil {
 		s.publisher.PublishOperation(operation)
+	}
+}
+
+// Wait returns the accepted operation's terminal status after its coordinator is released.
+func (s *OperationService) Wait(ctx context.Context, id string) (Operation, error) {
+	s.mu.Lock()
+	job := s.jobs[id]
+	s.mu.Unlock()
+	if job == nil {
+		return Operation{}, errors.New("tracked operation unavailable")
+	}
+	select {
+	case <-ctx.Done():
+		return Operation{}, ctx.Err()
+	case <-job.done:
+		return job.operation, job.err
 	}
 }

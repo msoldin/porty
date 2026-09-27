@@ -232,6 +232,9 @@ func (s *AutoUpdateStore) FinishRun(ctx context.Context, id, outcome, reason str
 	if _, err := applyAlertChanges(ctx, tx, changes); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, "UPDATE update_executions SET phase='terminal' WHERE run_id=? AND phase='prepared'", id); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 func (s *AutoUpdateStore) Pause(ctx context.Context, id stack.StackID, reason string) error {

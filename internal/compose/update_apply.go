@@ -65,6 +65,9 @@ func (c *Client) ApplyUpdate(parent context.Context, prepared PreparedUpdate) er
 	for _, change := range prepared.Changes {
 		s := project.Services[change.Service]
 		s.Image = change.TargetReference
+		if change.Platform != "" {
+			s.Platform = change.Platform
+		}
 		s.Build = nil
 		s.PullPolicy = types.PullPolicyNever
 		project.Services[change.Service] = s

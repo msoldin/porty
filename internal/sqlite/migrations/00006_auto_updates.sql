@@ -14,6 +14,21 @@ CREATE TABLE auto_update_runs (
 );
 CREATE INDEX auto_update_runs_pending ON auto_update_runs(phase,scheduled_at);
 CREATE INDEX auto_update_runs_stack ON auto_update_runs(stack_id,scheduled_at DESC);
+CREATE TABLE update_executions (
+ run_id TEXT PRIMARY KEY REFERENCES auto_update_runs(id),
+ operation_id TEXT NOT NULL UNIQUE REFERENCES operations(id),
+ phase TEXT NOT NULL, source_digest TEXT NOT NULL,
+ changes_json TEXT NOT NULL, baseline_json TEXT NOT NULL,
+ results_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE deployment_images (
+ stack_id TEXT NOT NULL REFERENCES stacks(id) ON DELETE CASCADE,
+ service TEXT NOT NULL, source_reference TEXT NOT NULL, target_reference TEXT NOT NULL,
+ platform TEXT NOT NULL, image_id TEXT NOT NULL,
+ PRIMARY KEY(stack_id,service)
+);
 -- +goose Down
+DROP TABLE deployment_images;
+DROP TABLE update_executions;
 DROP TABLE auto_update_runs;
 DROP TABLE auto_update_policies;

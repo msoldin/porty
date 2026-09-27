@@ -70,7 +70,7 @@ func (s *OperationStore) Operation(ctx context.Context, id string) (portyop.Oper
 		return portyop.Operation{}, err
 	}
 	o := operationFromRow(row)
-	if err := s.loadAlertContext(ctx, &o); err != nil {
+	if err := s.loadOperationDetails(ctx, &o); err != nil {
 		return o, err
 	}
 	return o, nil
@@ -94,7 +94,7 @@ func (s *OperationStore) OperationsPage(ctx context.Context, limit, offset int) 
 	result := make([]portyop.Operation, 0, len(rows))
 	for _, row := range rows {
 		o := operationFromRow(row)
-		if err := s.loadAlertContext(ctx, &o); err != nil {
+		if err := s.loadOperationDetails(ctx, &o); err != nil {
 			return nil, err
 		}
 		result = append(result, o)
@@ -162,6 +162,9 @@ func (s *OperationStore) CompleteOperation(ctx context.Context, o portyop.Operat
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := completeUpdate(ctx, tx, o, result.Update); err != nil {
+		return nil, err
+	}
 	if err := updateOperation(ctx, tx, o); err != nil {
 		return nil, err
 	}
@@ -222,4 +225,19 @@ func nullableInt(value int) any {
 		return nil
 	}
 	return value
+}
+
+func (s *OperationStore) loadOperationDetails(ctx context.Context, o *portyop.Operation) error {
+	if err := s.loadAlertContext(ctx, o); err != nil {
+		return err
+	}
+	var encoded string
+	err := s.db.QueryRowContext(ctx, "SELECT results_json FROM update_executions WHERE operation_id=?", o.ID).Scan(&encoded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(encoded), &o.ServiceUpdates)
 }

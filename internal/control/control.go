@@ -16,6 +16,7 @@ import (
 	portystack "github.com/msoldin/porty/internal/stack"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 )
 
 type RuntimeController interface {
@@ -36,17 +37,19 @@ type RuntimeController interface {
 var ErrStackRuntimeActionUnavailable = errors.New("stack runtime action is unavailable")
 
 type ControlPlane struct {
-	root        string
-	lookup      portystack.StackLookup
-	environment *portystack.EnvironmentService
-	repository  *portyrepo.RepositoryService
-	runtime     RuntimeController
-	operations  *portyop.OperationService
-	deployments *portyop.DeploymentService
-	coordinator *portyop.Coordinator
-	logs        LogPublisher
-	stateStore  DeploymentStateStore
-	alerts      AlertReader
+	updateStore    UpdateStore
+	updatesBlocked atomic.Bool
+	root           string
+	lookup         portystack.StackLookup
+	environment    *portystack.EnvironmentService
+	repository     *portyrepo.RepositoryService
+	runtime        RuntimeController
+	operations     *portyop.OperationService
+	deployments    *portyop.DeploymentService
+	coordinator    *portyop.Coordinator
+	logs           LogPublisher
+	stateStore     DeploymentStateStore
+	alerts         AlertReader
 }
 
 type DeploymentStateStore interface {
@@ -204,9 +207,18 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 				digest := sha256.Sum256([]byte(diff))
 				diffDigest = "sha256:" + hex.EncodeToString(digest[:])
 			}
-			deployment, err := c.deployments.DeployLocked(jobCtx, portyop.DeployRequest{StackID: id, OperationID: operationID, StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: values, GitCommit: head, Dirty: status.Dirty, DiffDigest: diffDigest, Recreate: action == "recreate"})
+			sources, images, platforms, err := c.manualImageOverrides(jobCtx, id, request)
 			if err != nil {
 				return "", err
+			}
+			deployment, err := c.deployments.DeployLocked(jobCtx, portyop.DeployRequest{StackID: id, OperationID: operationID, StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: values, GitCommit: head, Dirty: status.Dirty, DiffDigest: diffDigest, Recreate: action == "recreate", ImageOverrides: images, ImagePlatforms: platforms})
+			if err != nil {
+				return "", err
+			}
+			if c.updateStore != nil {
+				if err := c.updateStore.PruneImages(jobCtx, id, sources); err != nil {
+					return "", err
+				}
 			}
 			return fmt.Sprintf("deployment %s", deployment.ID), nil
 		}, func(jobCtx context.Context) bool { return c.verifyStackAction(jobCtx, request, action) }, release)
@@ -264,6 +276,9 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 				err = c.runtime.Restart(jobCtx, request)
 			case "pull":
 				err = c.runtime.Pull(jobCtx, request)
+				if err == nil && c.updateStore != nil {
+					err = c.updateStore.InvalidateImages(jobCtx, id)
+				}
 			case "logs":
 				output, logErr := c.runtime.Logs(jobCtx, request, 500)
 				if logErr == nil && c.logs != nil {

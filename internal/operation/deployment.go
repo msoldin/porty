@@ -23,15 +23,17 @@ type DeploymentRepository interface {
 }
 
 type DeployRequest struct {
-	StackID     portystack.StackID
-	OperationID string
-	StackDir    string
-	ProjectName string
-	Environment map[string]string
-	GitCommit   string
-	Dirty       bool
-	DiffDigest  string
-	Recreate    bool
+	ImageOverrides map[string]string
+	ImagePlatforms map[string]string
+	StackID        portystack.StackID
+	OperationID    string
+	StackDir       string
+	ProjectName    string
+	Environment    map[string]string
+	GitCommit      string
+	Dirty          bool
+	DiffDigest     string
+	Recreate       bool
 }
 
 type DeploymentService struct {
@@ -65,7 +67,7 @@ func (s *DeploymentService) DeployLocked(ctx context.Context, request DeployRequ
 		GitCommit: request.GitCommit, Dirty: request.Dirty, DiffDigest: request.DiffDigest,
 		Status: DeploymentFailed, StartedAt: started,
 	}
-	composeRequest := portycompose.Request{StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: request.Environment}
+	composeRequest := portycompose.Request{StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: request.Environment, ImageOverrides: request.ImageOverrides, ImagePlatforms: request.ImagePlatforms}
 	if err := s.runtime.Validate(ctx, composeRequest); err != nil {
 		deployment.ErrorCode = "compose_validation_failed"
 		return s.finish(ctx, deployment, err)

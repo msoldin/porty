@@ -1,7 +1,9 @@
 package compose
 
 type Request struct {
-	StackDir    string
-	ProjectName string
-	Environment map[string]string
+	ImageOverrides map[string]string
+	ImagePlatforms map[string]string
+	StackDir       string
+	ProjectName    string
+	Environment    map[string]string
 }
