@@ -139,6 +139,9 @@ func (c *ControlPlane) CheckAndUpdate(parent context.Context, run autoupdate.Run
 	}
 	request := op.OperationRequest{ID: op.NewOperationID(), Kind: "auto_update", ScopeType: "stack", ScopeID: string(run.StackID), Trigger: "scheduled", StackName: run.StackName, Secrets: mapValues(evidence.Environment)}
 	prepared, err := runtime.PrepareUpdate(ctx, evidence.Snapshot)
+	if errors.Is(err, compose.ErrUpdateIneligible) {
+		return c.finishUpdateCheck(run, "skipped", "unsupported_configuration", nil)
+	}
 	if err != nil {
 		return c.finishUpdateCheck(run, "failed", "image_check_failed", observedChange(op.OperationRequest{ID: run.ID, StackName: run.StackName}, checkKey, 0, compose.ErrImageCheckFailed, false))
 	}

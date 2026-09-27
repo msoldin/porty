@@ -34,29 +34,8 @@ func (c *Client) ApplyUpdate(parent context.Context, prepared PreparedUpdate) er
 		selected[change.Service] = true
 		names = append(names, change.Service)
 	}
-	// Dependency propagation and shared namespaces are excluded in both directions.
-	for name, s := range original.Services {
-		if selected[name] && (len(s.PostStart) > 0 || len(s.PreStop) > 0 || len(s.Links) > 0 || len(s.ExternalLinks) > 0 || len(s.VolumesFrom) > 0) {
-			return ErrUpdateIneligible
-		}
-		for dependency, d := range s.DependsOn {
-			if d.Restart && (selected[name] || selected[dependency]) {
-				return ErrUpdateIneligible
-			}
-		}
-		for _, link := range append(append([]string{}, s.Links...), s.VolumesFrom...) {
-			if selected[strings.Split(link, ":")[0]] {
-				return ErrUpdateIneligible
-			}
-		}
-		for _, mode := range []string{s.NetworkMode, s.Ipc, s.Pid} {
-			if strings.HasPrefix(mode, "service:") && (selected[name] || selected[strings.TrimPrefix(mode, "service:")]) {
-				return ErrUpdateIneligible
-			}
-			if strings.HasPrefix(mode, "container:") {
-				return ErrUpdateIneligible
-			}
-		}
+	if err := validateUpdateSelection(original, selected); err != nil {
+		return err
 	}
 	project, err := original.WithSelectedServices(names, types.IgnoreDependencies)
 	if err != nil {
@@ -80,6 +59,37 @@ func (c *Client) ApplyUpdate(parent context.Context, prepared PreparedUpdate) er
 	err = c.service.Up(ctx, project, api.UpOptions{Create: api.CreateOptions{Services: names, Recreate: api.RecreateDiverged, RecreateDependencies: api.RecreateNever, Inherit: true, RemoveOrphans: false, IgnoreOrphans: true}, Start: api.StartOptions{}})
 	if err != nil {
 		return ErrUpdateApplyFailed
+	}
+	return nil
+}
+
+// validateUpdateSelection rejects configuration that can affect services outside
+// the selection. Preparation checks it before durable mutation admission; apply
+// checks again so the runtime boundary remains safe on its own.
+func validateUpdateSelection(project *types.Project, selected map[string]bool) error {
+	// Dependency propagation and shared namespaces are excluded in both directions.
+	for name, s := range project.Services {
+		if selected[name] && (len(s.PostStart) > 0 || len(s.PreStop) > 0 || len(s.Links) > 0 || len(s.ExternalLinks) > 0 || len(s.VolumesFrom) > 0) {
+			return ErrUpdateIneligible
+		}
+		for dependency, d := range s.DependsOn {
+			if d.Restart && (selected[name] || selected[dependency]) {
+				return ErrUpdateIneligible
+			}
+		}
+		for _, link := range append(append([]string{}, s.Links...), s.VolumesFrom...) {
+			if selected[strings.Split(link, ":")[0]] {
+				return ErrUpdateIneligible
+			}
+		}
+		for _, mode := range []string{s.NetworkMode, s.Ipc, s.Pid} {
+			if strings.HasPrefix(mode, "service:") && (selected[name] || selected[strings.TrimPrefix(mode, "service:")]) {
+				return ErrUpdateIneligible
+			}
+			if strings.HasPrefix(mode, "container:") {
+				return ErrUpdateIneligible
+			}
+		}
 	}
 	return nil
 }

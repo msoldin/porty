@@ -24,11 +24,12 @@ type autoRuntime struct {
 	guardErr  error
 	verifyErr error
 	controlRuntime
-	snapshot compose.UpdateSnapshot
-	prepare  func()
-	apply    func()
-	applyErr error
-	applied  int
+	snapshot   compose.UpdateSnapshot
+	prepare    func()
+	prepareErr error
+	apply      func()
+	applyErr   error
+	applied    int
 }
 
 func (r *autoRuntime) CheckProject(context.Context, string) error { return r.guardErr }
@@ -39,7 +40,7 @@ func (r *autoRuntime) PrepareUpdate(_ context.Context, s compose.UpdateSnapshot)
 	if r.prepare != nil {
 		r.prepare()
 	}
-	return compose.PreparedUpdate{Snapshot: s, Changes: []compose.ImageChange{{Service: "app", SourceReference: "alpine:latest", TargetReference: "alpine@sha256:target", BeforeImageID: "before", AfterImageID: "after"}}}, nil
+	return compose.PreparedUpdate{Snapshot: s, Changes: []compose.ImageChange{{Service: "app", SourceReference: "alpine:latest", TargetReference: "alpine@sha256:target", BeforeImageID: "before", AfterImageID: "after"}}}, r.prepareErr
 }
 func (r *autoRuntime) ApplyUpdate(context.Context, compose.PreparedUpdate) error {
 	r.applied++
@@ -253,5 +254,28 @@ func TestAlertResolutionCannotResumeUpdate(t *testing.T) {
 	policy, err := s.GetPolicy(context.Background(), run.StackID)
 	if err != nil || policy.PausedReason == "" || r.applied != 1 {
 		t.Fatalf("alert resumed updates: %+v %v", policy, err)
+	}
+}
+
+func TestAutoUpdateSkipsUnsupportedSelectionWithoutAlertOrPause(t *testing.T) {
+	c, s, r, run, _ := autoFixture(t)
+	r.prepareErr = compose.ErrUpdateIneligible
+	if err := c.CheckAndUpdate(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	last, err := s.LatestRun(context.Background(), run.StackID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := s.GetPolicy(context.Background(), run.StackID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alerts, err := r.alerts.List(context.Background(), alert.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.Outcome != "skipped" || policy.PausedReason != "" || r.applied != 0 || len(alerts.Items) != 0 {
+		t.Fatalf("unsupported selection treated as failure: run=%+v policy=%+v alerts=%+v applies=%d", last, policy, alerts, r.applied)
 	}
 }

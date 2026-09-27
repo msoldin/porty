@@ -3,6 +3,7 @@ package compose
 import (
 	"context"
 	"errors"
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/api/types/jsonstream"
@@ -129,5 +130,17 @@ func TestRegistryRetriesOnlyTransientFailures(t *testing.T) {
 	err = retryRegistry(context.Background(), func() error { attempts++; return errdefs.ErrResourceExhausted })
 	if err == nil || attempts != 1 {
 		t.Fatal("retried without Retry-After evidence")
+	}
+}
+
+func TestPrepareRejectsDependencySideEffectsBeforeMutation(t *testing.T) {
+	c, p, _ := snapshotFixture()
+	s := p.Services["app"]
+	s.DependsOn = types.DependsOnConfig{"db": {Restart: true}}
+	p.Services["app"] = s
+	c.images = &imageDocker{resolved: "sha256:" + strings.Repeat("b", 64), after: "sha256:" + strings.Repeat("d", 64)}
+	_, err := c.PrepareUpdate(context.Background(), UpdateSnapshot{Project: p, Containers: []UpdateContainer{{Service: "app", ImageID: "sha256:" + strings.Repeat("a", 64), Platform: "linux/amd64"}}})
+	if !errors.Is(err, ErrUpdateIneligible) {
+		t.Fatalf("unsupported update reached mutation admission: %v", err)
 	}
 }

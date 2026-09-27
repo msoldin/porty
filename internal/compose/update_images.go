@@ -128,6 +128,15 @@ func (c *Client) PrepareUpdate(parent context.Context, snapshot UpdateSnapshot) 
 		}
 		prepared.Changes = append(prepared.Changes, ImageChange{Service: name, SourceReference: service.Image, TargetReference: immutable.String(), Platform: running.Platform, BeforeImageID: running.ImageID, AfterImageID: selected.ID, ManifestDigest: manifest})
 	}
+	selected := make(map[string]bool, len(prepared.Changes))
+	for _, change := range prepared.Changes {
+		selected[change.Service] = true
+	}
+	if len(selected) > 0 {
+		if err := validateUpdateSelection(snapshot.Project, selected); err != nil {
+			return prepared, err
+		}
+	}
 	return prepared, nil
 }
 func safeImageError(err error) error {
