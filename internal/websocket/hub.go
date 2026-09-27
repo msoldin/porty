@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"context"
+	"github.com/msoldin/porty/internal/alert"
 	"sync"
 	"time"
 
@@ -77,6 +78,10 @@ func (h *Hub) CloseConnections() {
 
 func (h *Hub) PublishOperation(operation portyop.Operation) {
 	h.publish(Event{Type: "operation", Topic: "operations", Timestamp: time.Now().UTC(), Payload: operation})
+}
+
+func (h *Hub) PublishAlert(item alert.Alert) {
+	h.publish(Event{Type: "alert", Topic: "alerts", Timestamp: time.Now().UTC(), Payload: item})
 }
 
 func (h *Hub) PublishLog(stackID, output string) {

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/msoldin/porty/internal/alert"
 	portyauth "github.com/msoldin/porty/internal/auth"
 	portyrepo "github.com/msoldin/porty/internal/repository"
 	"io"
@@ -30,6 +31,7 @@ const (
 )
 
 type RouterOptions struct {
+	Alerts               AlertAPI
 	AccessLogger         *slog.Logger
 	Readiness            func(context.Context) error
 	Auth                 *portyauth.AuthService
@@ -48,6 +50,14 @@ type RouterOptions struct {
 	State                StackStateAPI
 	Containers           ContainerAPI
 	Stream               stdhttp.Handler
+}
+
+type AlertAPI interface {
+	List(context.Context, alert.Filter) (alert.Page, error)
+	Get(context.Context, string) (alert.Alert, error)
+	History(context.Context, string, int, int) ([]alert.Event, error)
+	Acknowledge(context.Context, alert.Mutation) (alert.Alert, error)
+	Resolve(context.Context, alert.Mutation) (alert.Alert, error)
 }
 
 type StackAPI interface {

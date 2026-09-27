@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"github.com/msoldin/porty/internal/alert"
 	portyauth "github.com/msoldin/porty/internal/auth"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
@@ -22,6 +23,7 @@ import (
 )
 
 func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
+	registerAlertRoutes(mux, options)
 	if options.Stacks != nil {
 		mux.HandleFunc("GET /api/v1/stacks", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			items, err := options.Stacks.ListStacks(r.Context())
@@ -372,6 +374,14 @@ func writeResult(w stdhttp.ResponseWriter, r *stdhttp.Request, value any, err er
 
 func writeAPIError(w stdhttp.ResponseWriter, r *stdhttp.Request, err error) {
 	switch {
+	case errors.Is(err, alert.ErrNotFound):
+		WriteError(w, r, stdhttp.StatusNotFound, "NotFound", "Alert not found", nil)
+	case errors.Is(err, alert.ErrConflict):
+		WriteError(w, r, stdhttp.StatusConflict, "AlertConflict", "The alert changed; refresh before trying again", nil)
+	case errors.Is(err, alert.ErrManualResolutionUnavailable):
+		WriteError(w, r, stdhttp.StatusForbidden, "PermissionDenied", "This alert requires verified recovery", nil)
+	case errors.Is(err, alert.ErrInvalid):
+		WriteError(w, r, stdhttp.StatusBadRequest, "InvalidRequest", "The alert request is invalid", nil)
 	case errors.Is(err, portycontrol.ErrContainerNotFound):
 		WriteError(w, r, stdhttp.StatusNotFound, "ContainerNotFound", "Container not found in this stack", nil)
 	case errors.Is(err, portycontrol.ErrContainerInspectTooLarge):

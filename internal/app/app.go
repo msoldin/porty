@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"github.com/msoldin/porty/internal/alert"
 	portycontrol "github.com/msoldin/porty/internal/control"
 	portyop "github.com/msoldin/porty/internal/operation"
 	portyrepo "github.com/msoldin/porty/internal/repository"
@@ -64,6 +65,8 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 		}
 	}
 	hub := portyws.NewHub(512)
+	alertStore := portysqlite.NewAlertStore(db)
+	options.Alerts = alert.NewService(alertStore, hub)
 	authService.OnKeyRotation(hub.CloseConnections)
 	options.Stream = portyws.Handler{Hub: hub}
 	operationStore := portysqlite.NewOperationStore(db)
@@ -103,7 +106,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (http.Handler, erro
 			operations := portyop.NewOperationService(operationStore, hub, 10*time.Minute, 256<<10)
 			deployments := portyop.NewDeploymentService(compose, deploymentStore, coordinator)
 			control := portycontrol.NewControlPlane(repositoryRoot, stackStore, environment, repositoryService, compose, operations, deployments, coordinator, deploymentStore, hub)
-			control.SetAlertReader(portysqlite.NewAlertStore(db))
+			control.SetAlertReader(alertStore)
 			options.Repository = control
 			options.Actions = control
 			options.State = control
