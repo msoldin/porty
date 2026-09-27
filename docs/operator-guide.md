@@ -116,6 +116,38 @@ The **Alerts** page collects persisted stack and container operation failures. T
 
 Historical failed operations remain failed after recovery. Acknowledging or resolving an alert never starts containers or resumes automatic updates. Alerts do not continuously monitor runtime health or send external notifications. Interrupted accepted mutations are recorded once when Porty restarts.
 
+## Automatic stack updates
+
+In **Stack → Settings → Automatic updates**, enable updates for each stack and save its schedule. Existing stacks default to disabled. The default `0 0 * * *` runs daily at midnight **UTC**, regardless of the server or browser timezone. Use five fields: minute, hour, day of month, month, day of week. Seconds, `@daily`, and timezone prefixes are unsupported. When both day fields are restricted, matching either day of month **or** day of week triggers the schedule.
+
+Porty checks the configured public image tags for a different runnable image on the running platform. It does not discover newer version tags: `postgres:17` stays on that tag. Private registry credentials and automatic builds are unsupported. Built services, digest-pinned images, `pull_policy: never`, images without registry provenance, and services scaled to zero are excluded. Other eligible services in the stack can still update. Registry authentication failures and check failures create persistent alerts; rate limits wait until the next scheduled check.
+
+A check only updates a fully running, healthy stack with a successful deployment matching its current source configuration. Stopped, missing, partially running, archived, never-deployed, or drifted stacks are skipped. One-off containers, unsupported profiles and dependency behavior can also prevent an update. A saved policy can remain enabled while a stack is stopped; checks will skip it until it is eligible. Check the last outcome, exclusions, and eligibility message in Settings.
+
+Updates pull immutable image digests before recreating only changed services. They preserve replica counts and mounted named/anonymous volumes, and do not start dependencies, remove orphans, prune, or roll back. Recreation causes downtime and discards container writable-layer data. Application migrations can change retained volume data; Porty cannot undo those changes. Keep application-appropriate backups. Healthchecks must pass; containers without healthchecks must stay running continuously for 30 seconds, within a five-minute verification window.
+
+Manual operations and automatic mutations share stack/repository coordination. Configuration and runtime evidence are checked again after image preparation; a conflicting manual operation makes the check skip. Run only **one Porty instance per workspace/daemon**. Direct external Docker or filesystem changes are outside these process-local locks.
+
+Two workers process due checks. Each occurrence has a 20-minute admission-to-completion budget; busy or expired queued checks are recorded as skips. Restarting Porty advances schedules to future occurrences, with no missed-run replay. Disabling a schedule invalidates queued checks but lets an already accepted mutation finish verification and persistence.
+
+### Porty self-protection and Docker support
+
+Porty cannot automatically update its own hosting stack. It proves runtime ownership through a private random marker and Docker's container archive API, independently of image names and hostnames. Unreadable/ambiguous scans, changed daemon identity, or a missing marker make automatic updates unavailable. Shared mounts exposing the marker in multiple projects protect all matching projects. Keep Porty's temporary directory private and available for the lifetime of the process; do not deliberately share it into managed stacks. A remote daemon must permit the same complete inspection. Manual operations remain available when this automatic safety proof fails.
+
+Automatic image inspection requires Docker API **1.49 or newer** and an unambiguous platform-specific runnable image identity. Older or incompatible image stores fail closed. The release must pass the disposable-daemon verification matrix described in the development guide before enabling this feature for real workloads.
+
+### Failure and recovery
+
+Check failures before mutation leave the stack running and retry only at the next cron occurrence. A failure or interruption after recreation may have begun creates a deployment incident and **pauses automatic updates**. There is no automatic retry or rollback of a partially changed stack.
+
+1. Review the linked operation, per-service image results, and stack alerts.
+2. Inspect and recover the application using manual operations. Deploy any pending source changes.
+3. Use **Verify recovery and resume** in the automatic-update panel. Porty verifies the complete current runtime, records its baseline, and clears the pause. It does not recreate or start containers. A disabled policy remains disabled.
+
+Acknowledging or resolving the alert records incident handling; neither clears the recovery pause. Enable/disable and schedule edits also preserve it. A stale browser revision is rejected; refresh the status and review the current state before retrying.
+
+After a verified automatic update, later manual deploy/recreate operations retain the selected image for unchanged image references and platforms. A successful explicit **Pull** clears that selection so the configured tag can be used again. Editing an image reference, platform, or build configuration also invalidates the matching selection after a successful deployment. Source Compose files are not rewritten by automatic updates.
+
 ### Restart and shutdown safety
 
 Porty stops background admission and drains accepted operations for up to 30 seconds before closing Docker. The systemd unit allows 45 seconds for HTTP shutdown and this drain. A forced stop can leave durable update intent: prepared-only work is discarded; applying/verifying work is recorded as interrupted and automatic updates stay paused for manual recovery. Startup inspection never replays a recreation or performs rollback. If outcome persistence fails, automatic admission stops until reconciliation succeeds after restart.

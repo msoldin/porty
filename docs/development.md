@@ -42,3 +42,34 @@ Control actions supply stable stack/problem/target keys and verify matching post
 `web/src/features/alerts` owns alert reads, mutations, views, and lifecycle history. `useTopicStream` supplies shared reconnect mechanics for operations and alerts. Browser fixtures exercise global/stack consistency and stale revisions independently of Docker; `TestManualAlertLifecycleSurvivesRestartAndRecurrence` exercises the control/runtime boundary with real SQLite.
 
 Run `bun run test:e2e -- alerts.spec.ts --output=/tmp/porty-alert-playwright` from `web` after building `/tmp/porty-e2e`. Desktop/mobile screenshots are written to `/tmp/porty-alerts-desktop.png` and `/tmp/porty-alerts-mobile.png`.
+
+## Scheduled updates
+
+`internal/autoupdate` owns strict UTC cron parsing, revisioned policies, bounded scheduling, and run outcomes. It depends on narrow store/executor interfaces; `internal/control` coordinates that executor with existing manual operations. The Compose adapter owns snapshot inspection, public-registry digest preparation, constrained recreation, runtime verification, and self-protection. SQLite owns atomic run/operation/deployment/image/alert completion. No general workflow engine or action graph is introduced.
+
+Image preparation releases the stack coordinator; mutation reacquires it and compares policy, source, environment, deployment provenance, and container evidence. Prepared intent is stored before the applying phase. Startup discards preparation and conservatively pauses interrupted applying/verifying executions without replaying Docker actions. Effective image selections remain separate from the source configuration digest. Keep these boundaries intact when adding future automation types.
+
+Deterministic tests cover scheduling/clock rollback, stale policies, preparation races, partial failure pauses, intent persistence, restart phases, manual image selection, authentication/CSRF, and alert recovery. The browser fixtures cover policy editing and failure → acknowledgment → manual recovery → explicit resume on desktop/mobile:
+
+```sh
+go build -o /tmp/porty-e2e ./cmd/porty
+(cd web && bun run test:e2e -- auto-update.spec.ts alerts.spec.ts --output=/tmp/porty-update-playwright)
+```
+
+Screenshots are written to `/tmp/porty-auto-update-desktop.png` and `/tmp/porty-auto-update-mobile.png`. Browser fixtures do not prove Docker behavior.
+
+### Disposable Docker release gate
+
+Do not run live tests against a daemon hosting user workloads. Set `DOCKER_HOST` to an isolated disposable daemon and explicitly attest that it is disposable. Supply two distinct immutable public Alpine-compatible images containing `sh`, `hostname`, and `sleep`:
+
+```sh
+DOCKER_HOST=unix:///path/to/disposable/docker.sock \
+PORTY_LIVE_DOCKER_CHECK=1 PORTY_DISPOSABLE_DOCKER=1 \
+PORTY_TEST_IMAGE_A='alpine@sha256:<first-manifest>' \
+PORTY_TEST_IMAGE_B='alpine@sha256:<second-manifest>' \
+go test ./internal/compose -run 'TestUpdateLive' -count=1 -v
+```
+
+`TestUpdateLivePreservesVolumesAndUnselectedService` creates a uniquely named fixture, checks named/anonymous volume markers and unselected container identity across recreation, and verifies a stopped service remains stopped. Cleanup removes only the fixture project and volumes; pulled images are left on the disposable daemon. The fixture bypasses registry discovery to isolate Compose recreation behavior.
+
+**Release gate pending:** live tests were not run during this implementation because no daemon had been established as disposable. Record Docker version, API version, storage mode, fixture images and test output before release. The full matrix still needs live coverage on classic and containerd image stores, mutable-tag publication during pull, a multi-architecture index changing only another platform, shared-tag stacks, multi-replica/dependency fixtures, and marker ownership inside custom-hostname/shared-mount containers. Unit tests for these boundaries are not substitutes for the missing live scenarios. The OCI packaging test has its own explicit live gate.
