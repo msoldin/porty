@@ -1,4 +1,7 @@
-import { useState } from "preact/hooks";
+import { Alerts } from "../features/alerts/Alerts";
+import { useAlerts } from "../features/alerts/useAlerts";
+import { getOperation } from "../features/operations/api";
+import { useRef, useState } from "preact/hooks";
 import { useHashRoute } from "./useHashRoute";
 import { parseStackRoute } from "./routes";
 import { useWorkspaceData } from "./useWorkspaceData";
@@ -46,10 +49,27 @@ export function Workspace({
     addOperation,
     addOperations,
   } = useWorkspaceData(logout);
+  const alerts = useAlerts();
+  const operationRequest = useRef(0);
+  const [linkedOperation, setLinkedOperation] = useState<Operation>();
   const [selectedOperation, setSelectedOperation] = useState<string>();
   const [busy, setBusy] = useState(false);
   const remoteEnabled = Boolean(repositoryStatus.managedRemote);
+  async function openOperation(id: string) {
+    const request = ++operationRequest.current;
+    try {
+      const item =
+        operations.find((item) => item.id === id) || (await getOperation(id));
+      if (request !== operationRequest.current) return;
+      setLinkedOperation(item);
+      addOperation(item);
+      setSelectedOperation(item.id);
+    } catch (cause) {
+      if (request === operationRequest.current) setError(message(cause));
+    }
+  }
   function onAction(operation: Operation) {
+    operationRequest.current++;
     addOperation(operation);
     setSelectedOperation(operation.id);
   }
@@ -76,9 +96,9 @@ export function Workspace({
   const selectedStack = stacks.find(
     (stack) => stack.id === stackRoute?.stackId,
   );
-  const operation = operations.find(
-    (operation) => operation.id === selectedOperation,
-  );
+  const operation =
+    operations.find((operation) => operation.id === selectedOperation) ||
+    (linkedOperation?.id === selectedOperation ? linkedOperation : undefined);
   const configuredRepo = repo?.configured ? repo : null;
   async function signOutAction(): Promise<void> {
     if (dirty && !confirm("Discard unsaved changes and sign out?")) return;
@@ -91,6 +111,7 @@ export function Workspace({
   }
   return (
     <WorkspaceShell
+      unacknowledgedAlerts={alerts.page?.unacknowledgedCount || 0}
       username={session.username}
       route={route}
       stackSelected={Boolean(selectedStack)}
@@ -102,7 +123,10 @@ export function Workspace({
         operation && (
           <OperationDrawer
             operation={operation}
-            close={() => setSelectedOperation(undefined)}
+            close={() => {
+              operationRequest.current++;
+              setSelectedOperation(undefined);
+            }}
           />
         )
       }
@@ -126,7 +150,9 @@ export function Workspace({
         </Notice>
       )}
       <main>
-        {loading ? (
+        {route === "/alerts" ? (
+          <Alerts navigate={navigate} openOperation={openOperation} />
+        ) : loading ? (
           <Empty>Loading stacks…</Empty>
         ) : selectedStack && stackRoute?.containerId ? (
           <ContainerDetail
@@ -140,6 +166,7 @@ export function Workspace({
           />
         ) : selectedStack ? (
           <StackDetail
+            openOperation={openOperation}
             key={selectedStack.id}
             stack={selectedStack}
             repo={configuredRepo}

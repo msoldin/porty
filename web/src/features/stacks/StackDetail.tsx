@@ -1,3 +1,4 @@
+import { Alerts } from "../alerts/Alerts";
 import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
 import {
@@ -26,6 +27,7 @@ import { useStackContainers } from "./useStackContainers";
 import { ServicesTable } from "./ServicesTable";
 
 export function StackDetail({
+  openOperation,
   stack,
   repo,
   operations,
@@ -35,6 +37,7 @@ export function StackDetail({
   refresh,
   onAction,
 }: {
+  openOperation?: (id: string) => void;
   stack: Stack;
   repo: Repository | null;
   operations: Operation[];
@@ -208,22 +211,31 @@ export function StackDetail({
         </div>
       </div>
       <div class="tabs" role="tablist" aria-label="Stack sections">
-        {["Overview", "Editor", "Logs", "History", "Settings"].map((name) => (
-          <button
-            role="tab"
-            aria-selected={tab === name}
-            onClick={() => {
-              if (dirty && !confirm("Discard unsaved changes?")) return;
-              setDirty(false);
-              setTab(name);
-              setError("");
-            }}
-          >
-            {name}
-          </button>
-        ))}
+        {["Overview", "Editor", "Logs", "History", "Alerts", "Settings"].map(
+          (name) => (
+            <button
+              role="tab"
+              aria-selected={tab === name}
+              onClick={() => {
+                if (dirty && !confirm("Discard unsaved changes?")) return;
+                setDirty(false);
+                setTab(name);
+                setError("");
+              }}
+            >
+              {name}
+            </button>
+          ),
+        )}
       </div>
       {error && <Notice>{error}</Notice>}
+      {tab === "Alerts" && openOperation && (
+        <Alerts
+          stackId={stack.id}
+          navigate={navigate}
+          openOperation={openOperation}
+        />
+      )}
       {tab === "Editor" && (
         <Editor
           stack={stack}

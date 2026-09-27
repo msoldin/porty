@@ -1,88 +1,15 @@
-import { useEffect, useRef, useState } from "preact/hooks";
-import { refreshSession } from "../../lib/http";
+import { useTopicStream } from "../../hooks/useTopicStream";
 import type { Operation } from "./types";
-import type { StreamEvent } from "./streamState";
 export function useOperationStream(
   onOperation: (operation: Operation) => void,
   refresh: () => void,
 ) {
-  const callback = useRef(onOperation);
-  callback.current = onOperation;
-  const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
-  const [connection, setConnection] = useState("Connecting");
-  const [gap, setGap] = useState(false);
-  useEffect(() => {
-    let stopped = false;
-    let sequence = 0;
-    let socket: WebSocket;
-    let timer: ReturnType<typeof setTimeout>;
-    let attempts = 0;
-    function connect() {
-      socket = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/v1/stream`,
-      );
-      socket.onopen = () => {
-        attempts = 0;
-        setConnection("Connected");
-        socket.send(
-          JSON.stringify({
-            type: "subscribe",
-            subscriptionId: "operations",
-            topic: "operations",
-            since: sequence,
-          }),
-        );
-        refreshRef.current();
-      };
-      socket.onmessage = (event) => {
-        try {
-          const value = JSON.parse(event.data) as StreamEvent & {
-            subscriptionId: string;
-          };
-          if (value.subscriptionId !== "operations") return;
-          if (value.type === "gap") {
-            sequence = 0;
-            setGap(true);
-            refreshRef.current();
-            return;
-          }
-          if (
-            value.type === "operation" &&
-            value.sequence > sequence &&
-            typeof value.payload?.id === "string"
-          ) {
-            sequence = value.sequence;
-            callback.current(value.payload as unknown as Operation);
-          }
-        } catch {
-          setGap(true);
-        }
-      };
-      socket.onclose = () => {
-        if (stopped) return;
-        setConnection("Reconnecting");
-        setGap(true);
-        timer = setTimeout(
-          async () => {
-            try {
-              await refreshSession();
-              if (!stopped) connect();
-            } catch {
-              if (!stopped) setConnection("Disconnected");
-            }
-          },
-          Math.min(30000, 1000 * 2 ** attempts++),
-        );
-      };
-      socket.onerror = () => socket.close();
-    }
-    connect();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      socket.close();
-    };
-  }, []);
-  return { connection, gap };
+  return useTopicStream(
+    "operations",
+    (event) => {
+      if (event.type === "operation" && typeof event.payload?.id === "string")
+        onOperation(event.payload as unknown as Operation);
+    },
+    refresh,
+  );
 }

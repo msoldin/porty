@@ -5,11 +5,13 @@ const nav = [
   { name: "Overview", icon: "Stacks", path: "/" },
   { name: "Repository", path: "/repository" },
   { name: "Operations", path: "/operations" },
+  { name: "Alerts", path: "/alerts" },
   { name: "Audit", path: "/audit" },
   { name: "Settings", path: "/settings" },
 ];
 
 export function WorkspaceShell({
+  unacknowledgedAlerts,
   username,
   route,
   stackSelected,
@@ -20,6 +22,7 @@ export function WorkspaceShell({
   drawer,
   children,
 }: {
+  unacknowledgedAlerts: number;
   username: string;
   route: string;
   stackSelected: boolean;
@@ -65,6 +68,14 @@ export function WorkspaceShell({
             >
               <Icon name={item.icon || item.name} />
               {item.name}
+              {item.path === "/alerts" && unacknowledgedAlerts > 0 && (
+                <span
+                  class="alert-count"
+                  aria-label={`${unacknowledgedAlerts} unacknowledged alerts`}
+                >
+                  {unacknowledgedAlerts}
+                </span>
+              )}
             </a>
           ))}
         </nav>

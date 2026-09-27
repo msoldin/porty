@@ -16,6 +16,7 @@ const stack = {
   createdAt: "",
   updatedAt: "",
 };
+let alertRecord: Record<string, unknown>;
 let writes: { path: string; init?: RequestInit }[];
 let stale = false;
 let holdSave: (() => void) | undefined;
@@ -35,6 +36,19 @@ let environmentKeys: string[];
 let environmentReadResponse: (() => Promise<Response>) | undefined;
 let environmentUpdateFails = false;
 beforeEach(() => {
+  alertRecord = {
+    id: "alert1",
+    key: { stackId: "s1", problem: "deployment", target: "stack" },
+    stackName: "paperless",
+    revision: 1,
+    episode: 1,
+    count: 1,
+    summary: "Deployment failed",
+    operationId: "old-op",
+    firstAt: "2026-09-27T00:00:00Z",
+    latestAt: "2026-09-27T00:00:00Z",
+    canResolveManually: true,
+  };
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
   location.hash = "";
@@ -148,6 +162,31 @@ beforeEach(() => {
           : new Response(null, { status: 204 });
       if (path.includes("/environment/") && method === "DELETE")
         return new Response(null, { status: 204 });
+      if (path.startsWith("/alerts?"))
+        return Response.json({
+          items: [alertRecord],
+          unacknowledgedCount: alertRecord.acknowledgedAt ? 0 : 1,
+          total: 1,
+        });
+      if (path === "/alerts/alert1/acknowledge") {
+        alertRecord = {
+          ...alertRecord,
+          revision: 2,
+          acknowledgedAt: "2026-09-27T01:00:00Z",
+          acknowledgedBy: "admin",
+        };
+        return Response.json(alertRecord);
+      }
+      if (path === "/operations/old-op")
+        return Response.json({
+          id: "old-op",
+          kind: "deploy",
+          scope: "stack",
+          scopeId: "s1",
+          status: "failed",
+          output: "Historical failure output",
+          startedAt: "2026-09-20T00:00:00Z",
+        });
       const data: Record<string, unknown> = {
         "/session": { username: "admin", csrfToken: "csrf" },
         "/repository/setup/status": {
@@ -698,4 +737,29 @@ describe("Porty administration interface", () => {
       message: "Update paperless",
     });
   });
+});
+
+it("shows the same alert revision globally and on its stack and opens an older linked operation", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("link", { name: /Alerts/ }));
+  expect(await screen.findByText("Deployment failed")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "View operation" }));
+  expect(
+    await screen.findByText("Historical failure output"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByLabelText("1 unacknowledged alerts"),
+    ).not.toBeInTheDocument(),
+  );
+  fireEvent.click(screen.getByRole("link", { name: "paperless" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "Alerts" }));
+  expect(await screen.findByText(/Acknowledged by admin/)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Acknowledge" }),
+  ).not.toBeInTheDocument();
+  expect(writes.map((write) => write.path)).toEqual([
+    "/alerts/alert1/acknowledge",
+  ]);
 });

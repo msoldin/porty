@@ -4,6 +4,7 @@ export function Icon({ name }: { name: string }) {
     Repository:
       "M6 7v10m12-10v3a4 4 0 0 1-4 4H6M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM18 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z",
     Operations: "m4 5 6 7-6 7m9 0h7",
+    Alerts: "M12 3a6 6 0 0 0-6 6v5l-2 3h16l-2-3V9a6 6 0 0 0-6-6Zm-2 17h4",
     Audit: "M6 3h8l4 4v14H6V3Zm8 0v5h4M9 12h6m-6 4h6",
     Settings:
       "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-2-5h4l1 3 3 1 3 3v4l-3 1-1 3-3 3h-4l-1-3-3-1-3-3v-4l3-1 1-3 3-3Z",
