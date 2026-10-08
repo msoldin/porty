@@ -13,6 +13,9 @@ Agreed behavior:
 
 - Support TCP and UDP. Any matching traffic counts, including browser queries,
   probes, and keepalives; no game-specific player detection.
+- Make the incoming wake packet threshold configurable, defaulting to one packet.
+  Notify Porty immediately when it is reached; do not wait for a polling interval
+  or the end of a packet-counting window before requesting a wake.
 - Start a configured group of Compose services within one stack. A group defaults
   to one service. Stop all members after inactivity, terminating their processes
   while retaining containers and volumes.
@@ -68,9 +71,11 @@ queue. The new packages are domain and kernel boundaries, not file-size splits.
 
 Use a socket-attached eBPF program on an `AF_PACKET` monitoring socket in the
 host network namespace. Match selected host address, protocol, and port tuples;
-update bounded per-endpoint counters in kernel maps. Return zero from the socket
-filter after accounting, so no packet payload enters Porty's socket receive
-queue. This discards only the monitoring socket's delivery, not the original
+update bounded per-endpoint counters in kernel maps. For armed sleeping groups,
+also maintain bounded wake-threshold state and emit a small notification when the
+threshold is reached. Return zero from the socket filter after accounting, so no
+packet payload enters Porty's socket receive queue. This discards only the
+monitoring socket's delivery, not the original
 packet. Normal Docker forwarding and the original connection endpoints remain
 unchanged. The kernel's [socket-filter documentation](https://kernel.org/doc/html/latest/networking/filter.html)
 and [counter example](https://github.com/torvalds/linux/blob/master/samples/bpf/sock_example.c)
@@ -94,15 +99,17 @@ kernel headers, or a compiler toolchain.
 
 Activity semantics:
 
-- Incoming traffic to a monitored host endpoint wakes an armed sleeping group.
+- Incoming traffic meeting the packet threshold wakes an armed sleeping group.
   While running, incoming and outgoing traffic on any group endpoint refreshes
   its idle timer. Outgoing traffic alone does not wake a stopped group.
 - Match addresses as well as ports so unrelated forwarded traffic and the same
   port on a different host address do not select the wrong group.
 - Monitor external interfaces and local-loopback access explicitly. Capture
   points must account for pre-DNAT ingress and post-SNAT responses. Docker bridge
-  traffic can appear more than once; activity is a boolean/time signal, not a
-  billing counter. Do not let duplicates produce duplicate operations.
+  traffic can appear more than once. Assign each ingress path one canonical
+  counting point so socket/bridge/loopback duplicates cannot satisfy a threshold
+  early. Retransmitted packets arriving separately are distinct traffic and do
+  count. Activity counters are not billing counters.
 - Support IPv4 and IPv6, VLAN headers, bounded IPv6 extension-header parsing,
   and first fragments with transport headers. Noninitial fragments do not reveal
   ports: a packet observed without a first fragment must not be attributed by
@@ -163,10 +170,42 @@ Proposed settings:
 
 | Setting | Default | Allowed range |
 | --- | --- | --- |
+| Incoming packets required to wake | 1 | 1 to 1,000 |
+| Wake packet window | 1 second | 10 milliseconds to 60 seconds |
 | Idle timeout | 10 minutes | 1 minute to 24 hours |
 | Minimum running time after successful wake | 2 minutes | 0 to 1 hour |
 | Group startup deadline | 5 minutes | 30 seconds to 15 minutes |
 | Per-container stop grace | 2 minutes | 10 seconds to 2 minutes |
+
+Count matching incoming packets across all endpoints and clients in the group.
+With threshold one, the first packet triggers a wake immediately; the window is
+irrelevant. With a larger threshold, the first packet starts a monotonic counting
+window. The threshold must be reached before that window expires. The first
+packet at or after expiry starts a new window with count one. Trigger on the
+threshold-reaching packet, without waiting for the window to finish. The counter
+is bounded and saturates once a wake is pending. No distinct-client requirement,
+payload parsing, or per-source state is introduced. While running, a single
+matching packet in either direction still resets inactivity, regardless of the
+wake threshold. Reset threshold state when arming a new sleep generation or
+changing policy, so old traffic cannot satisfy a new policy. Concurrent CPUs must
+agree on window rollover, count, and latch ownership; verify boundary behavior
+and avoid a global lock shared by unrelated groups.
+
+For Minecraft Java, an example group watches the server's configured published
+TCP port (commonly [25565](https://help.minecraft.net/hc/en-us/articles/360058525452-How-to-Setup-a-Minecraft-Java-Edition-Server))
+with threshold one. Its first TCP SYN qualifies; the
+application handshake need not reach a running server. A Bedrock group can use
+its configured UDP port with the same threshold. Counting is transport-level,
+so a server-list probe can trigger startup too. A threshold of three with a
+500-millisecond window instead requests startup on the third matching packet
+within that window, not 500 milliseconds afterward.
+
+Fast notification is distinct from game readiness: Porty's control-plane checks,
+Docker startup, and Minecraft world/plugin loading take additional time. The
+initial attempt can be refused and does not automatically become a valid game
+session. The player may need to refresh/reconnect, as already accepted. Normal
+networking can serve players as soon as the application listens; Porty's health
+or stability observation does not gate or delay packet forwarding.
 
 The configured stop grace overrides Docker's default for these automatic stops
 and is shown explicitly to the operator. Stop dependents before dependencies,
@@ -204,8 +243,10 @@ are durable policy conditions; Docker state remains the source of runtime facts.
 - Enabling a fully stopped group arms it without starting it. Enabling a fully
   running group starts a fresh idle window. Mixed state requires explicit
   reconciliation rather than guessing which processes may be stopped.
-- An incoming counter change queues one wake decision per group. Bounded workers
-  call the controller; no goroutine or operation is created for each packet.
+- Reaching the incoming threshold latches one pending wake for the group and emits
+  a compact kernel notification. Bounded workers call the controller; no goroutine
+  or operation is created for each packet. Include group ID and policy/sleep
+  generation so delayed notifications cannot revive a held or reconfigured group.
 - The controller acquires the existing stack coordinator, rereads policy and
   runtime evidence, records intent, and hands ownership of the lock to the
   tracked operation. Busy stacks retain one coalesced pending wake; disabling,
@@ -293,19 +334,36 @@ after Porty exits; closing a client does not undo a daemon-side mutation.
 
 ## Resource and performance contract
 
-Use one host monitor with bounded endpoint maps and a single batched activity
-sampling loop, initially every second. No capture rings containing payloads, flow
-tracking, per-player maps, packet logging, or database writes per sample. Persist
-policy and lifecycle transitions only; expose recent activity as volatile status.
+Use one host monitor with bounded endpoint/group maps, one blocking reader for a
+bounded kernel notification ring, and a batched activity sampling loop every
+second. Wake notification is event-driven; the sampling loop serves idle detection
+and recovery of missed notifications. Emit at most one notification attempt per
+armed group generation when its threshold is crossed. Running groups update only
+activity counters and do not emit per-packet notifications. No capture rings
+containing payloads, flow tracking, per-player maps, packet logging, or database
+writes per sample. Persist policy and lifecycle transitions only; expose recent
+activity as volatile status.
+
+Latch the wake request in a kernel map before attempting notification. If the
+ring is full, the pending request remains readable by the periodic sweep, even
+if there are no further packets. The sweep cannot derive this request only from
+a transient counter delta. Kernel notification failure must never block packet
+processing or lose the one-packet wake permanently. Acknowledge requests with
+generation checks; only an explicit rearm clears the latch for a new sleep cycle.
+Linux's [BPF ring-buffer documentation](https://www.kernel.org/doc/html/latest/bpf/ringbuf.html)
+describes nonblocking reservations and failure when capacity is exhausted.
+
 Use per-CPU counters if measurements justify them and include their CPU-count
 multiplier in the memory budget. Do not claim that avoiding payload copies removes
 all packet-socket overhead: kernel packet taps can affect unrelated traffic too.
 
 Initial bounds are 64 groups and 256 expanded address/protocol/port matches per
-host, with a 16 MiB cap on feature-owned kernel maps. Reject configurations over
-limits before attachment. A packet stream cannot allocate new map keys. At zero
-enabled groups, close the monitor and stop its sampling timer. Share one Docker
-event subscription and a bounded 30-second reconciliation pass; inspect details
+host, with a 16 MiB cap on feature-owned kernel maps including the notification
+ring. Reject configurations over limits before attachment. A packet stream cannot
+allocate new map keys. At zero
+enabled groups, close the monitor, stop its reader, and stop its sampling timer.
+Share one Docker event subscription and a bounded 30-second reconciliation pass;
+inspect details
 only on changes and before transitions, not every second per group.
 
 Proposed release budgets, measured against the same Porty build with the feature
@@ -317,8 +375,12 @@ disabled and identical Docker networking, are:
   throughput and no more than 0.2 ms additional p99 round-trip latency or jitter.
   Report packet loss explicitly; feature-attributable loss at the baseline's
   sustainable offered load fails the gate.
-- Wake decision admission within two seconds at p99 on an otherwise idle host;
-  report Docker admission, container boot, and application readiness separately.
+- Threshold crossing to wake notification handling within 50 milliseconds at p99
+  on an otherwise idle host without notification loss. Notification-overflow
+  recovery must detect the latched request within two seconds at p99. Report
+  controller safety checks, coordinator/worker waits, Docker start submission,
+  container boot, and application readiness as separate timings. This is a
+  measured latency target, not a hard real-time or game-startup guarantee.
 - No sustained growth in descriptors, goroutines, or memory after churn tests.
 
 These are acceptance targets, not measured claims. Repeat A/B runs, disclose
@@ -337,7 +399,8 @@ address overlap requires semantic validation, not only a SQL unique index.
 Use sqlc only for selected stable reads, consistent with the current repository.
 
 Add a focused On demand section to stack settings: group name, selected services,
-TCP/UDP endpoints, idle timeout, advanced timeouts, enable, hold, and resume.
+TCP/UDP endpoints, wake packet threshold, counting window when threshold exceeds
+one, idle timeout, advanced timeouts, enable, hold, and resume.
 Show Sleeping separately from an unexplained stopped state, with startup,
 unavailable, and recovery reasons and links to operation history and alerts.
 Status must not claim stopped containers are running. Keep network implementation
@@ -394,13 +457,20 @@ amd64 and arm64; a version number alone does not prove BPF is enabled or permitt
    conntrack/NAT state must not leave a woken server unreachable. Do not silently
    add host conntrack deletion, forwarding rules, or sysctl changes to fix it.
    A failure blocks support for that path and requires revisiting the design.
-4. Measure the performance budgets above before building the full feature surface.
+4. Prove single-SYN and single-datagram triggers with no subsequent client traffic,
+   immediate threshold notification, multi-CPU window rollover, canonical packet
+   counting across bridge/loopback observations, and recovery of a latched request
+   after notification overflow. Include Minecraft Java and Bedrock smoke tests
+   that separate wake latency from boot time and demonstrate a successful retry.
+5. Measure the performance budgets above before building the full feature surface.
 
 Then add failing regression tests before behavior changes:
 
-- Pure controller tests with fake monotonic time: any traffic, incoming-only wake,
-  outgoing keepalive, timeout boundaries, minimum runtime, coalescing, fairness,
-  stale samples, disabled/held state, and traffic racing shutdown.
+- Pure controller tests with fake monotonic time: threshold one, configurable
+  thresholds/windows and exact expiry boundaries, incoming-only wake, outgoing
+  keepalive, timeout boundaries, minimum runtime, coalescing, fairness, stale
+  samples, delayed notifications from old generations, disabled/held state,
+  notification-loss recovery without further packets, and traffic racing shutdown.
 - Control/SDK tests: dependency order, readiness, exact IDs, partial failure,
   missing/recreated containers, policy revisions, self-protection, operation
   admission failures, deployment/update conflicts, and interrupted recovery.
