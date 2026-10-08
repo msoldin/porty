@@ -73,7 +73,9 @@ test("configures single-attempt wake and explicitly holds and resumes a group", 
     }
     if (path.endsWith("/on-demand/g1/resume")) {
       expect(request.postDataJSON()).toEqual({ expectedRevision: 2 });
-      groups = [{ ...groups[0], revision: 3, holdReason: undefined }];
+      groups = [
+        { ...groups[0], revision: 3, holdReason: undefined, phase: "sleeping" },
+      ];
       return route.fulfill({ json: groups[0] });
     }
     const responses: Record<string, unknown> = {
@@ -104,11 +106,30 @@ test("configures single-attempt wake and explicitly holds and resumes a group", 
         },
       ],
       "/stacks/s1/state": {
-        runtime: "running",
+        runtime: groups[0]?.phase === "sleeping" ? "sleeping" : "running",
         freshness: "current",
         hasDeployed: true,
       },
-      "/stacks/s1/containers": [],
+      "/stacks/s1/containers": [
+        {
+          id: "game-one",
+          name: "minecraft-game-1",
+          service: "game",
+          image: "itzg/minecraft-server:latest",
+          state: groups[0]?.phase === "sleeping" ? "exited" : "running",
+          onDemandSleeping: groups[0]?.phase === "sleeping",
+          health: "",
+          networks: ["minecraft_default"],
+          ports: [
+            {
+              host: "0.0.0.0",
+              targetPort: 25565,
+              publishedPort: 25565,
+              protocol: "tcp",
+            },
+          ],
+        },
+      ],
       "/stacks/s1/deployments": [],
       "/stacks/s1/environment": { keys: [] },
       "/stacks/s1/auto-update": {
@@ -130,7 +151,16 @@ test("configures single-attempt wake and explicitly holds and resumes a group", 
   ).toBeVisible();
   await panel.getByRole("button", { name: "Add on-demand group" }).click();
   await panel.getByLabel("Group name").fill("Minecraft");
-  await panel.getByLabel("Services", { exact: true }).fill("game");
+  await expect(
+    panel.getByRole("button", { name: "Save group" }),
+  ).toBeDisabled();
+  await panel.getByRole("checkbox", { name: /game/ }).check();
+  await expect(
+    panel.getByLabel("Sleep after inactivity (minutes)"),
+  ).toHaveValue("10");
+  await panel.getByText("Advanced timing", { exact: true }).click();
+  await expect(panel.getByLabel("Wake window (milliseconds)")).toBeVisible();
+  await panel.getByText("Advanced timing", { exact: true }).click();
   await expect(panel.getByLabel("Wake attempts")).toHaveValue("1");
   await panel.screenshot({
     path: join(tmpdir(), `porty-on-demand-form-${info.project.name}.png`),
@@ -153,6 +183,15 @@ test("configures single-attempt wake and explicitly holds and resumes a group", 
   await panel.screenshot({
     path: join(tmpdir(), `porty-on-demand-${info.project.name}.png`),
   });
+  await page.getByRole("tab", { name: "Overview", exact: true }).click();
+  await expect(page.getByText("SLEEPING", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("STOPPED", { exact: true })).toHaveCount(0);
+  await page.screenshot({
+    path: join(tmpdir(), `porty-sleeping-${info.project.name}.png`),
+    fullPage: true,
+  });
+  await page.getByRole("link", { name: "Open minecraft-game-1" }).click();
+  await expect(page.getByText("SLEEPING", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
   expect(await page.locator("vite-error-overlay").count()).toBe(0);
   expect(

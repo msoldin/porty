@@ -69,7 +69,11 @@ export function OverviewServices({
       (filter === "all" ||
         (filter === "running" && container.state === "running") ||
         (filter === "stopped" &&
+          !container.onDemandSleeping &&
           ["created", "exited"].includes(container.state)) ||
+        (filter === "sleeping" &&
+          container.state === "exited" &&
+          container.onDemandSleeping) ||
         (filter === "unhealthy" && container.health === "unhealthy")),
   );
   const selectable = visible.filter(
@@ -194,6 +198,7 @@ export function OverviewServices({
             <option value="all">All states</option>
             <option value="running">Running</option>
             <option value="stopped">Stopped</option>
+            <option value="sleeping">Sleeping</option>
             <option value="unhealthy">Unhealthy</option>
           </select>
         </div>

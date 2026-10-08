@@ -77,7 +77,11 @@ export function ContainerDetail({
     )
       void loadInspect();
   }, [tab, inspectKey, inspect.key, inspect.requestKey, container?.id]);
-  const state = containerStatePresentation(container?.state, container?.health);
+  const state = containerStatePresentation(
+    container?.state,
+    container?.health,
+    container?.onDemandSleeping,
+  );
   const available =
     !!container &&
     !busy &&

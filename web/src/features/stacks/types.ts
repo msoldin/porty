@@ -20,6 +20,7 @@ export type Container = {
   name: string;
   service: string;
   state: string;
+  onDemandSleeping?: boolean;
   health: string;
   image: string;
   networks: string[];

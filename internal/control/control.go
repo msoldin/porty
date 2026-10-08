@@ -136,7 +136,24 @@ func (c *ControlPlane) StackState(ctx context.Context, id portystack.StackID) (S
 	if err != nil {
 		return StackState{}, err
 	}
-	containers := parseContainerStates(status)
+	owned := make([]api.ContainerSummary, 0, len(status))
+	for _, row := range status {
+		if row.Project == stack.ComposeProjectName {
+			owned = append(owned, row)
+		}
+	}
+	containers := parseContainerStates(owned)
+	if stack.ArchivedAt == nil {
+		sleeping, err := c.sleepingContainerIDs(ctx, id, owned)
+		if err != nil {
+			return StackState{}, err
+		}
+		for i, row := range owned {
+			if sleeping[row.ID] {
+				containers[i] = ContainerSleeping
+			}
+		}
+	}
 	digest, err := c.runtime.Digest(ctx, request)
 	if err != nil {
 		return StackState{}, err

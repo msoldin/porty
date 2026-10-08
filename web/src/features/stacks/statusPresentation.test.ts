@@ -7,6 +7,25 @@ import {
   stackRuntimePresentation,
 } from "./statusPresentation";
 
+it("distinguishes sleeping from failures while keeping real running state", () => {
+  expect(stackRuntimePresentation("sleeping")).toEqual({
+    label: "SLEEPING",
+    tone: "blue",
+  });
+  expect(stackRuntimePresentation("on_demand")).toEqual({
+    label: "RUNNING · ON DEMAND",
+    tone: "blue",
+  });
+  expect(containerStatePresentation("exited", "unhealthy", true)).toEqual({
+    label: "SLEEPING",
+    tone: "blue",
+  });
+  expect(
+    containerStatePresentation("running", "unhealthy", true).healthTone,
+  ).toBe("danger");
+  expect(containerStatePresentation("exited", "", false).label).toBe("STOPPED");
+});
+
 it("shows every stack runtime with a clear label and tone", () => {
   expect(stackRuntimePresentation("running")).toEqual({
     label: "RUNNING",

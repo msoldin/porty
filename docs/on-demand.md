@@ -1,8 +1,17 @@
 # On-demand container groups
 
 Configure **Stack → Settings → On-demand containers** after deploying the stack.
-Add a named group with one to eight Compose service names. Each service must have
-one existing replica. Groups cannot share services or published endpoints.
+Add a named group and select one to eight deployed services from the list.
+Each service must have one existing replica. The selector shows images and ports
+and explains when a service is stopped, unhealthy, scaled, or already assigned.
+Groups cannot share services or published endpoints. Set the idle timeout in
+minutes; additional controls are under **Advanced timing**.
+
+Intentionally stopped containers show a blue **Sleeping** status. A stack whose
+services are all sleeping also shows **Sleeping**; a mix of running and sleeping
+services shows **Running · on demand**. Manual stops and held, disabled, or paused
+groups retain their normal Docker status. Start a sleeping group before changing
+its service membership; its timing settings can be edited while it sleeps.
 
 Porty fully stops the group's container processes after inactivity. Containers,
 their writable layers, and volumes remain. While stopped, ordinary TCP/UDP

@@ -39,6 +39,7 @@ type ContainerState string
 const (
 	ContainerRunning   ContainerState = "running"
 	ContainerStopped   ContainerState = "stopped"
+	ContainerSleeping  ContainerState = "sleeping"
 	ContainerUnhealthy ContainerState = "unhealthy"
 )
 
@@ -47,6 +48,8 @@ type RuntimeState string
 const (
 	RuntimeRunning   RuntimeState = "running"
 	RuntimeStopped   RuntimeState = "stopped"
+	RuntimeSleeping  RuntimeState = "sleeping"
+	RuntimeOnDemand  RuntimeState = "on_demand"
 	RuntimePartial   RuntimeState = "partial"
 	RuntimeUnhealthy RuntimeState = "unhealthy"
 )
@@ -55,7 +58,7 @@ func AggregateRuntime(containers []ContainerState) RuntimeState {
 	if len(containers) == 0 {
 		return RuntimeStopped
 	}
-	running := 0
+	running, sleeping := 0, 0
 	for _, state := range containers {
 		if state == ContainerUnhealthy {
 			return RuntimeUnhealthy
@@ -63,9 +66,21 @@ func AggregateRuntime(containers []ContainerState) RuntimeState {
 		if state == ContainerRunning {
 			running++
 		}
+		if state == ContainerSleeping {
+			sleeping++
+		}
 	}
 	if running == len(containers) {
 		return RuntimeRunning
+	}
+	if sleeping == len(containers) {
+		return RuntimeSleeping
+	}
+	if sleeping > 0 {
+		if running+sleeping == len(containers) {
+			return RuntimeOnDemand
+		}
+		return RuntimePartial
 	}
 	if running == 0 {
 		return RuntimeStopped

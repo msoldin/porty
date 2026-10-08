@@ -7,6 +7,10 @@ export function stackRuntimePresentation(value?: string): StatusPresentation {
   switch (value) {
     case "running":
       return { label: "RUNNING", tone: "success" };
+    case "sleeping":
+      return { label: "SLEEPING", tone: "blue" };
+    case "on_demand":
+      return { label: "RUNNING · ON DEMAND", tone: "blue" };
     case "stopped":
       return { label: "STOPPED", tone: "danger" };
     case "partial":
@@ -21,7 +25,10 @@ export function stackRuntimePresentation(value?: string): StatusPresentation {
 export function containerStatePresentation(
   state?: string,
   health?: string,
+  onDemandSleeping = false,
 ): StatusPresentation & { health?: string; healthTone?: StatusTone } {
+  if (state === "exited" && onDemandSleeping)
+    return { label: "SLEEPING", tone: "blue" };
   const base: StatusPresentation =
     state === "running"
       ? { label: "RUNNING", tone: "success" }

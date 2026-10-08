@@ -12,7 +12,11 @@ export function ServiceCells({
   href: string;
   onOpen: () => void;
 }) {
-  const state = containerStatePresentation(container.state, container.health);
+  const state = containerStatePresentation(
+    container.state,
+    container.health,
+    container.onDemandSleeping,
+  );
   return (
     <>
       <td>
@@ -35,6 +39,9 @@ export function ServiceCells({
           <Badge tone={state.tone} dot>
             {state.label}
           </Badge>
+          {container.state === "exited" && container.onDemandSleeping && (
+            <small>Stopped by on-demand automation</small>
+          )}
           {state.health && (
             <small class={"service-health " + state.healthTone}>
               {state.health}

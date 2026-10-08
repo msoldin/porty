@@ -51,6 +51,45 @@
   gap: 0.5rem;
   margin-top: 1rem;
 }
+.on-demand-form .on-demand-services {
+  margin-block: 1.25rem;
+}
+.on-demand-service {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-block: 0.5rem;
+}
+.on-demand-service:has(input:checked) {
+  border-color: var(--blue);
+}
+.on-demand-service input {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
+.on-demand-service span {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.on-demand-service small {
+  color: var(--muted);
+}
+.on-demand-service-reason {
+  font-style: italic;
+}
+.on-demand-advanced {
+  margin-block: 1rem;
+}
+.on-demand-advanced summary {
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
 @media (max-width: 600px) {
   .on-demand-fields {
     grid-template-columns: 1fr;

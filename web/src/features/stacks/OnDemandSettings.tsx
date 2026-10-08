@@ -1,12 +1,9 @@
 import { useState } from "preact/hooks";
 import { Notice } from "../../components/Feedback";
 import { useOnDemand } from "./useOnDemand";
-import { defaultOnDemandPolicy, groupPolicy } from "./onDemandTypes";
-import type {
-  OnDemandGroup,
-  OnDemandPolicy,
-  OnDemandUpdate,
-} from "./onDemandTypes";
+import { groupPolicy } from "./onDemandTypes";
+import { OnDemandForm } from "./OnDemandForm";
+import { useStackContainers } from "./useStackContainers";
 import "./onDemandSettings.css";
 
 export function OnDemandSettings({
@@ -18,6 +15,7 @@ export function OnDemandSettings({
 }) {
   const state = useOnDemand(stackId);
   const [editing, setEditing] = useState<string>();
+  const services = useStackContainers(stackId, Boolean(editing), "");
   return (
     <section class="on-demand-settings" aria-label="On-demand containers">
       <h2>On-demand containers</h2>
@@ -66,6 +64,9 @@ export function OnDemandSettings({
             <OnDemandForm
               key={`${group.id}:${group.revision}`}
               group={group}
+              groups={state.groups || []}
+              containers={services.containers}
+              servicesError={services.error}
               busy={state.busy || archived}
               save={async (value) => {
                 if (await state.save(group.id, value)) setEditing(undefined);
@@ -120,6 +121,9 @@ export function OnDemandSettings({
       {editing === "new" ? (
         <OnDemandForm
           key={stackId}
+          groups={state.groups || []}
+          containers={services.containers}
+          servicesError={services.error}
           busy={state.busy || archived}
           save={async (value) => {
             if (await state.save("", value)) setEditing(undefined);
@@ -147,144 +151,5 @@ export function OnDemandSettings({
         running containers up.
       </p>
     </section>
-  );
-}
-
-type NumberField =
-  | "wakeThreshold"
-  | "wakeWindowMs"
-  | "idleSeconds"
-  | "minRuntimeSeconds"
-  | "startupSeconds"
-  | "stopGraceSeconds";
-const fields: { key: NumberField; label: string; min: number; max: number }[] =
-  [
-    { key: "wakeThreshold", label: "Wake attempts", min: 1, max: 1000 },
-    {
-      key: "wakeWindowMs",
-      label: "Wake window (milliseconds)",
-      min: 10,
-      max: 60000,
-    },
-    {
-      key: "idleSeconds",
-      label: "Idle timeout (seconds)",
-      min: 60,
-      max: 86400,
-    },
-    {
-      key: "minRuntimeSeconds",
-      label: "Minimum runtime (seconds)",
-      min: 0,
-      max: 3600,
-    },
-    {
-      key: "startupSeconds",
-      label: "Startup timeout (seconds)",
-      min: 30,
-      max: 900,
-    },
-    {
-      key: "stopGraceSeconds",
-      label: "Stop grace per service (seconds)",
-      min: 10,
-      max: 120,
-    },
-  ];
-function OnDemandForm({
-  group,
-  busy,
-  save,
-  cancel,
-}: {
-  group?: OnDemandGroup;
-  busy: boolean;
-  save: (value: OnDemandUpdate) => Promise<void>;
-  cancel: () => void;
-}) {
-  const [policy, setPolicy] = useState<OnDemandPolicy>(() =>
-    group ? groupPolicy(group) : { ...defaultOnDemandPolicy },
-  );
-  const [members, setMembers] = useState(group?.members.join(", ") || "");
-  return (
-    <form
-      class="on-demand-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void save({
-          ...policy,
-          members: members
-            .split(",")
-            .map((value) => value.trim())
-            .filter(Boolean),
-          expectedRevision: group?.revision || 0,
-        });
-      }}
-    >
-      <fieldset disabled={busy}>
-        <legend>{group ? `Edit ${group.name}` : "New on-demand group"}</legend>
-        <div class="on-demand-fields">
-          <label>
-            Group name
-            <input
-              required
-              maxLength={64}
-              value={policy.name}
-              onInput={(event) =>
-                setPolicy({ ...policy, name: event.currentTarget.value })
-              }
-            />
-          </label>
-          <label>
-            Services
-            <input
-              required
-              placeholder="game, companion"
-              value={members}
-              onInput={(event) => setMembers(event.currentTarget.value)}
-            />
-          </label>
-          {fields.map((field) => (
-            <label key={field.key}>
-              {field.label}
-              <input
-                type="number"
-                required
-                min={field.min}
-                max={field.max}
-                step={1}
-                value={policy[field.key]}
-                onInput={(event) =>
-                  setPolicy({
-                    ...policy,
-                    [field.key]: event.currentTarget.valueAsNumber,
-                  })
-                }
-              />
-            </label>
-          ))}
-        </div>
-        <p class="muted">
-          Use Compose service names separated by commas. Attempts must arrive
-          within the wake window.
-        </p>
-        <label class="confirmation">
-          <input
-            type="checkbox"
-            checked={policy.enabled}
-            onChange={(event) =>
-              setPolicy({ ...policy, enabled: event.currentTarget.checked })
-            }
-          />
-          Enable automatic wake and sleep
-        </label>
-        <div class="on-demand-actions">
-          <button class="primary">Save group</button>
-          <button type="button" onClick={cancel}>
-            Cancel
-          </button>
-        </div>
-      </fieldset>
-    </form>
   );
 }

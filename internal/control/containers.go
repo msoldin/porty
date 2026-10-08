@@ -25,14 +25,15 @@ var (
 )
 
 type Container struct {
-	ID       string          `json:"id"`
-	Name     string          `json:"name"`
-	Service  string          `json:"service"`
-	State    string          `json:"state"`
-	Health   string          `json:"health"`
-	Image    string          `json:"image"`
-	Networks []string        `json:"networks"`
-	Ports    []ContainerPort `json:"ports"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	Service          string          `json:"service"`
+	State            string          `json:"state"`
+	Health           string          `json:"health"`
+	Image            string          `json:"image"`
+	Networks         []string        `json:"networks"`
+	Ports            []ContainerPort `json:"ports"`
+	OnDemandSleeping bool            `json:"onDemandSleeping,omitempty"`
 }
 
 func (c *ControlPlane) containerReadRequest(ctx context.Context, id portystack.StackID, containerID string) (portycompose.Request, error) {
@@ -95,9 +96,20 @@ func (c *ControlPlane) Containers(ctx context.Context, id portystack.StackID) ([
 		return nil, err
 	}
 	items := make([]Container, 0, len(rows))
+	owned := make([]api.ContainerSummary, 0, len(rows))
 	for _, row := range rows {
 		if row.Project == stack.ComposeProjectName {
+			owned = append(owned, row)
 			items = append(items, containerFromSummary(row))
+		}
+	}
+	if stack.ArchivedAt == nil {
+		sleeping, err := c.sleepingContainerIDs(ctx, id, owned)
+		if err != nil {
+			return nil, err
+		}
+		for i := range items {
+			items[i].OnDemandSleeping = sleeping[items[i].ID]
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {

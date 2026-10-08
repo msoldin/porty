@@ -84,6 +84,44 @@ const loaded: OverviewSnapshot = {
   loading: false,
 };
 
+it("filters intentionally sleeping services separately from stopped services", () => {
+  show({
+    rows: [
+      {
+        stackId: "one",
+        container: {
+          ...worker,
+          id: "sleeping",
+          name: "sleeping",
+          onDemandSleeping: true,
+        },
+      },
+      { stackId: "two", container: worker },
+    ],
+    errors: [],
+    loading: false,
+  });
+  expect(screen.getByText("SLEEPING")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Filter services state"), {
+    target: { value: "sleeping" },
+  });
+  expect(
+    screen.getByRole("link", { name: "Open sleeping" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "Open worker-1" }),
+  ).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Filter services state"), {
+    target: { value: "stopped" },
+  });
+  expect(
+    screen.getByRole("link", { name: "Open worker-1" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "Open sleeping" }),
+  ).not.toBeInTheDocument();
+});
+
 function show(snapshot: OverviewSnapshot = loaded, navigate = vi.fn()) {
   vi.mocked(useOverviewContainers).mockReturnValue(snapshot);
   return render(
