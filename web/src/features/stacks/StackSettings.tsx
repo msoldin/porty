@@ -1,4 +1,5 @@
 import { AutoUpdateSettings } from "./AutoUpdateSettings";
+import { OnDemandSettings } from "./OnDemandSettings";
 import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
 import {
@@ -43,6 +44,11 @@ export function StackSettings({
         archived={Boolean(stack.archivedAt)}
         onAlerts={onAlerts}
         openOperation={openOperation}
+      />
+      <OnDemandSettings
+        key={stack.id}
+        stackId={stack.id}
+        archived={Boolean(stack.archivedAt)}
       />
       <h2>Environment</h2>
       <p class="muted">

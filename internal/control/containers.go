@@ -197,7 +197,8 @@ func (c *ControlPlane) StartContainerAction(ctx context.Context, id portystack.S
 		return portyop.Operation{}, ErrContainerStateConflict
 	}
 	operation, err := c.startObserved(ctx, portyop.OperationRequest{
-		Kind: "container_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), StackName: stack.DirectoryName, AlertTargets: []alert.Key{containerAlertKey(string(id), action, *selected)},
+		AffectedServices: []string{selected.Service},
+		Kind:             "container_" + action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), StackName: stack.DirectoryName, AlertTargets: []alert.Key{containerAlertKey(string(id), action, *selected)},
 	}, func(jobCtx context.Context) (string, error) {
 		return "", c.runtime.ContainerAction(jobCtx, request, containerID, action)
 	}, func(jobCtx context.Context) bool {

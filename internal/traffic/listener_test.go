@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -51,6 +53,25 @@ func wakeWithin(t *testing.T, l *Listener) Wake {
 		return Wake{}
 	}
 }
+
+func sendWakeAttempt(t *testing.T, network, address string) {
+	t.Helper()
+	c, err := net.DialTimeout(network, address, time.Second)
+	// AcceptTCP immediately resets the connection. That reset may reach Dial
+	// before it returns, although the completed handshake was already accepted.
+	if err != nil {
+		if strings.HasPrefix(network, "tcp") && errors.Is(err, syscall.ECONNRESET) {
+			return
+		}
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if strings.HasPrefix(network, "udp") {
+		if _, err := c.Write([]byte("wake")); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 func TestListenerWakesOnOneDatagramWithoutMoreTraffic(t *testing.T) {
 	l, address := listenFixture(t, "udp4", 1, time.Second)
 	c, err := net.Dial("udp4", address)
@@ -76,36 +97,25 @@ func TestListenerWakesOnOneDatagramWithoutMoreTraffic(t *testing.T) {
 func TestListenerCountsCompletedTCPConnections(t *testing.T) {
 	l, address := listenFixture(t, "tcp4", 3, time.Second)
 	for range 2 {
-		c, err := net.Dial("tcp4", address)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c.Close()
+		sendWakeAttempt(t, "tcp4", address)
 	}
 	select {
 	case <-l.Events():
 		t.Fatal("woke below threshold")
 	case <-time.After(20 * time.Millisecond):
 	}
-	c, err := net.Dial("tcp4", address)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.Close()
+	sendWakeAttempt(t, "tcp4", address)
 	wakeWithin(t, l)
+	state, err := l.Snapshot()
+	if err != nil || state.Attempts != 3 {
+		t.Fatalf("completed connection count: %+v %v", state, err)
+	}
 }
 func TestListenerClosesBeforeNativeServerBinds(t *testing.T) {
 	for _, network := range []string{"tcp4", "udp4"} {
 		t.Run(network, func(t *testing.T) {
 			l, address := listenFixture(t, network, 1, time.Second)
-			c, err := net.Dial(network, address)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if network == "udp4" {
-				c.Write([]byte("x"))
-			}
-			c.Close()
+			sendWakeAttempt(t, network, address)
 			wakeWithin(t, l)
 			if err := l.Close(); err != nil {
 				t.Fatal(err)
@@ -184,11 +194,7 @@ func TestListenerAggregatesProtocolsForOneGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	tcp, err := net.Dial("tcp4", tcpAddress)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tcp.Close()
+	sendWakeAttempt(t, "tcp4", tcpAddress)
 	udp, err := net.Dial("udp4", udpAddress)
 	if err != nil {
 		t.Fatal(err)
@@ -212,14 +218,7 @@ func TestListenerIPv6Wake(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer l.Close()
-			c, err := net.Dial(network, address)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			if network == "udp6" {
-				c.Write([]byte("wake"))
-			}
+			sendWakeAttempt(t, network, address)
 			wakeWithin(t, l)
 		})
 	}

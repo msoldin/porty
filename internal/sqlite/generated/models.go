@@ -8,6 +8,44 @@ import (
 	"database/sql"
 )
 
+type Alert struct {
+	ID                 string
+	StackID            string
+	Problem            string
+	Target             string
+	StackName          string
+	Revision           int64
+	Episode            int64
+	OccurrenceCount    int64
+	Summary            string
+	OperationID        string
+	FirstAt            string
+	LatestAt           string
+	AcknowledgedAt     sql.NullString
+	AcknowledgedBy     string
+	ResolvedAt         sql.NullString
+	ResolvedBy         string
+	Resolution         string
+	CanResolveManually int64
+}
+
+type AlertEvent struct {
+	Sequence    int64
+	ID          string
+	AlertID     string
+	Episode     int64
+	Kind        string
+	ActorID     string
+	OccurredAt  string
+	Note        string
+	OperationID string
+}
+
+type AlertOccurrence struct {
+	AlertID      string
+	OccurrenceID string
+}
+
 type AppState struct {
 	ID                int64
 	SetupState        string
@@ -40,6 +78,28 @@ type AuthKey struct {
 	CreatedAt  string
 }
 
+type AutoUpdatePolicy struct {
+	StackID       string
+	Enabled       int64
+	Expression    string
+	Revision      int64
+	NextRunAt     int64
+	PausedReason  string
+	LastStartedAt int64
+}
+
+type AutoUpdateRun struct {
+	ID             string
+	StackID        string
+	StackName      string
+	PolicyRevision int64
+	ScheduledAt    int64
+	Phase          string
+	Outcome        string
+	Reason         string
+	OperationID    string
+}
+
 type Deployment struct {
 	ID            string
 	StackID       string
@@ -53,6 +113,34 @@ type Deployment struct {
 	CompletedAt   sql.NullString
 	DurationMs    sql.NullInt64
 	ErrorCode     sql.NullString
+}
+
+type DeploymentImage struct {
+	StackID         string
+	Service         string
+	SourceReference string
+	TargetReference string
+	Platform        string
+	ImageID         string
+}
+
+type OnDemandGroup struct {
+	ID              string
+	StackID         string
+	PolicyJson      string
+	Revision        int64
+	Phase           string
+	HoldReason      string
+	PausedReason    string
+	EvidenceJson    string
+	OperationID     sql.NullString
+	LastOperationID string
+}
+
+type OnDemandMember struct {
+	GroupID string
+	StackID string
+	Service string
 }
 
 type Operation struct {
@@ -69,6 +157,13 @@ type Operation struct {
 	OutputTail      []byte
 	OutputTruncated int64
 	InitiatedBy     sql.NullString
+}
+
+type OperationAlertContext struct {
+	OperationID string
+	TriggerKind string
+	StackName   string
+	TargetsJson string
 }
 
 type RefreshToken struct {
@@ -107,6 +202,16 @@ type StackEnvironment struct {
 	Value     []byte
 	UpdatedAt string
 	Secret    int64
+}
+
+type UpdateExecution struct {
+	RunID        string
+	OperationID  string
+	Phase        string
+	SourceDigest string
+	ChangesJson  string
+	BaselineJson string
+	ResultsJson  string
 }
 
 type User struct {

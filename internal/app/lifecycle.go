@@ -12,6 +12,8 @@ import (
 )
 
 type Application struct {
+	stopOnDemand  context.CancelFunc
+	onDemandDone  <-chan struct{}
 	scheduler     *autoupdate.Scheduler
 	handler       http.Handler
 	operations    *op.OperationService
@@ -26,6 +28,9 @@ type Application struct {
 func (a *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) { a.handler.ServeHTTP(w, r) }
 func (a *Application) Shutdown(ctx context.Context) error {
 	a.closeOnce.Do(func() {
+		if a.stopOnDemand != nil {
+			a.stopOnDemand()
+		}
 		if a.stopScheduler != nil {
 			a.stopScheduler()
 		}
@@ -35,6 +40,13 @@ func (a *Application) Shutdown(ctx context.Context) error {
 		if a.schedulerDone != nil {
 			select {
 			case <-a.schedulerDone:
+			case <-ctx.Done():
+				a.shutdownErr = errors.Join(a.shutdownErr, ctx.Err())
+			}
+		}
+		if a.onDemandDone != nil {
+			select {
+			case <-a.onDemandDone:
 			case <-ctx.Done():
 				a.shutdownErr = errors.Join(a.shutdownErr, ctx.Err())
 			}

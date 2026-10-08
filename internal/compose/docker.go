@@ -21,6 +21,7 @@ func NewDockerClient(ctx context.Context, timeout time.Duration) (*Client, io.Cl
 		return nil, nil, err
 	}
 	adapter := newWithContainerActions(service, sdk, timeout)
+	adapter.demand = sdk
 	adapter.updates = sdk
 	adapter.images = sdk
 	guard, guardErr := NewRuntimeGuard(sdk)

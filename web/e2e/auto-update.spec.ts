@@ -160,6 +160,7 @@ test("edits UTC policy and keeps acknowledgment separate from verified resume", 
       "/stacks/s1/containers": [],
       "/stacks/s1/deployments": [],
       "/stacks/s1/environment": { keys: [] },
+      "/stacks/s1/on-demand": [],
     };
     if (!(path in responses)) throw new Error(`Unexpected request ${path}`);
     return route.fulfill({ json: responses[path] });
@@ -173,11 +174,9 @@ test("edits UTC policy and keeps acknowledgment separate from verified resume", 
   await page.getByLabel("Enable automatic updates").check();
   await page.getByRole("button", { name: "Save schedule" }).click();
   await expect(page.getByText(/Next run.*28 Sept? 2026/)).toBeVisible();
-  await page
-    .locator(".auto-update-settings")
-    .screenshot({
-      path: join(tmpdir(), `porty-auto-update-panel-${info.project.name}.png`),
-    });
+  await page.locator(".auto-update-settings").screenshot({
+    path: join(tmpdir(), `porty-auto-update-panel-${info.project.name}.png`),
+  });
   status = {
     ...status,
     policy: {

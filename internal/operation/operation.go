@@ -22,25 +22,35 @@ type OperationPublisher interface {
 }
 
 type OperationRequest struct {
-	Timeout       time.Duration
-	ID            string
-	Kind          string
-	ScopeType     string
-	ScopeID       string
-	RequestKey    string
-	InitiatedBy   string
-	Secrets       []string
-	DiscardOutput bool
-	AlertTargets  []alert.Key
-	Trigger       string
-	StackName     string
+	AffectedServices []string
+	Timeout          time.Duration
+	ID               string
+	Kind             string
+	ScopeType        string
+	ScopeID          string
+	RequestKey       string
+	InitiatedBy      string
+	Secrets          []string
+	DiscardOutput    bool
+	AlertTargets     []alert.Key
+	Trigger          string
+	StackName        string
 }
 
 type Result struct {
-	Update *UpdateCompletion
-	Output string
-	Err    error
-	Alerts []alert.Change
+	OnDemand *OnDemandCompletion
+	Update   *UpdateCompletion
+	Output   string
+	Err      error
+	Alerts   []alert.Change
+}
+
+// OnDemandCompletion joins the group's terminal state to the operation and
+// alert transaction. Runtime identity is persisted before mutation separately.
+type OnDemandCompletion struct {
+	GroupID     string
+	Phase       string
+	PauseReason string
 }
 
 type trackedOperation struct {
@@ -86,7 +96,8 @@ func (s *OperationService) StartTracked(requestCtx context.Context, request Oper
 		operationID = NewOperationID()
 	}
 	operation := Operation{
-		ID: operationID, Kind: request.Kind, ScopeType: request.ScopeType, ScopeID: request.ScopeID,
+		AffectedServices: append([]string(nil), request.AffectedServices...),
+		ID:               operationID, Kind: request.Kind, ScopeType: request.ScopeType, ScopeID: request.ScopeID,
 		RequestKey: request.RequestKey, InitiatedBy: request.InitiatedBy, Status: OperationQueued,
 		AlertTargets: request.AlertTargets, Trigger: request.Trigger, StackName: request.StackName,
 	}

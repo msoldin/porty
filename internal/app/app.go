@@ -60,6 +60,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, erro
 	}()
 	application := &Application{docker: dockerClient}
 	var updateControl *portycontrol.ControlPlane
+	var demandControl *portycontrol.OnDemandService
 	if err := os.MkdirAll(repositoryRoot, 0o700); err == nil {
 		if files, err := portyfs.Open(repositoryRoot, portyfs.Limits{MaxEditableBytes: cfg.MaxEditableFileBytes, MaxDepth: 32, MaxEntries: 10_000}); err == nil {
 			stackStore := portysqlite.NewStackStore(db)
@@ -113,6 +114,8 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, erro
 			control := portycontrol.NewControlPlane(repositoryRoot, stackStore, environment, repositoryService, compose, operations, deployments, coordinator, deploymentStore, hub)
 			control.SetAlertReader(alertStore)
 			control.SetUpdateStore(updateStore)
+			demandControl = portycontrol.NewOnDemandService(control, portysqlite.NewOnDemandStore(db))
+			options.OnDemand = demandControl
 			updateControl = control
 			options.AutoUpdates = autoupdate.NewPolicyService(updateStore, control, func() {
 				if application.scheduler != nil {
@@ -151,6 +154,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, erro
 	application.handler = root
 	if updateControl != nil && options.RepositorySetup != nil {
 		application.startScheduler(ctx, updateStore, updateControl, compose, options.RepositorySetup.Ready)
+		application.startOnDemand(ctx, demandControl, options.RepositorySetup.Ready)
 	}
 	assembled = true
 	return application, nil

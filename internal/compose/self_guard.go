@@ -33,6 +33,7 @@ type RuntimeGuard struct {
 	docker              guardDockerAPI
 	path, token, daemon string
 	protected           map[string]bool
+	matchedContainers   []string
 }
 
 func NewRuntimeGuard(docker guardDockerAPI) (*RuntimeGuard, error) {
@@ -63,8 +64,13 @@ func (g *RuntimeGuard) Close() error {
 	return os.RemoveAll(filepath.Dir(g.path))
 }
 func (g *RuntimeGuard) CheckProject(parent context.Context, project string) error {
+	return g.checkProject(parent, project, false)
+}
+
+func (g *RuntimeGuard) checkProject(parent context.Context, project string, standalone bool) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.matchedContainers = nil
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	stat, err := os.Lstat(g.path)
@@ -89,6 +95,7 @@ func (g *RuntimeGuard) CheckProject(parent context.Context, project string) erro
 			return ErrProtectionUnavailable
 		}
 		matched := map[string]bool{}
+		var matchedContainers []string
 		changed := false
 		for _, row := range list.Items {
 			if row.State != "running" {
@@ -131,10 +138,11 @@ func (g *RuntimeGuard) CheckProject(parent context.Context, project string) erro
 				return ErrProtectionUnavailable
 			}
 			name := row.Labels[api.ProjectLabel]
-			if name == "" {
+			if name == "" && !standalone {
 				return ErrProtectionUnavailable
 			}
 			matched[name] = true
+			matchedContainers = append(matchedContainers, row.ID)
 		}
 		if changed {
 			continue
@@ -150,6 +158,7 @@ func (g *RuntimeGuard) CheckProject(parent context.Context, project string) erro
 		for name := range matched {
 			g.protected[name] = true
 		}
+		g.matchedContainers = matchedContainers
 		if g.protected[project] {
 			return ErrSelfProtected
 		}

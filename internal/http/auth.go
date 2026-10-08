@@ -32,6 +32,7 @@ const (
 )
 
 type RouterOptions struct {
+	OnDemand             OnDemandAPI
 	AutoUpdates          AutoUpdateAPI
 	Alerts               AlertAPI
 	AccessLogger         *slog.Logger

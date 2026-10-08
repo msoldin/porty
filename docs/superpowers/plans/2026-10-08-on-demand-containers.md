@@ -1,5 +1,21 @@
 # On Demand Container Groups Implementation Plan
 
+## Delivery status after the portable revision
+
+The portable implementation now includes sleeping TCP/UDP listeners, bounded
+activity sampling, exact-ID Docker start/stop, durable policy/hold/recovery state,
+coordinated operations, manual-action interlocks, authenticated API, and stack
+settings. The concrete API is `/api/v1/stacks/{id}/on-demand` and
+`/{group}`, with `/hold` and `/resume` actions. It uses no new dependencies.
+
+Real Docker TCP/UDP activation and same-socket UDP retries, backend race suites,
+frontend suites, and desktop/mobile settings journeys have passed. Resource
+probes and unresolved release measurements are recorded in
+[`docs/on-demand.md`](../../on-demand.md). The historical tasks below preserve
+the original plan; their kernel-specific mechanisms were superseded. Physical
+NIC, native-host/architecture, real Minecraft, and maximum running-group resource
+gates remain unverified and must not be described as release-complete.
+
 > **Backend revised during feasibility:** the user chose portable sleeping-port
 > listeners and native running traffic. Follow
 > `../specs/2026-10-08-on-demand-portable-revision.md` wherever this original

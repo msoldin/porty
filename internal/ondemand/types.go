@@ -48,11 +48,12 @@ type Group struct {
 	ID      string        `json:"id"`
 	StackID stack.StackID `json:"stackId"`
 	Policy
-	Revision     int64    `json:"revision"`
-	Phase        Phase    `json:"phase"`
-	HoldReason   string   `json:"holdReason,omitempty"`
-	PausedReason string   `json:"pausedReason,omitempty"`
-	Evidence     Evidence `json:"-"`
+	Revision          int64    `json:"revision"`
+	Phase             Phase    `json:"phase"`
+	HoldReason        string   `json:"holdReason,omitempty"`
+	PausedReason      string   `json:"pausedReason,omitempty"`
+	ObservationReason string   `json:"observationReason,omitempty"`
+	Evidence          Evidence `json:"-"`
 }
 type PolicyUpdate struct {
 	Policy
@@ -70,10 +71,11 @@ type Counters struct {
 	Sent     uint64
 }
 type Sample struct {
-	Phase      Phase
-	ObservedAt time.Time
-	Counters   map[string]Counters
-	Evidence   Evidence
+	RuntimeEpoch string
+	Phase        Phase
+	ObservedAt   time.Time
+	Counters     map[string]Counters
+	Evidence     Evidence
 }
 type Decision struct {
 	Action            Action

@@ -118,6 +118,22 @@ func TestAutoUpdateRevalidatesAfterPrepare(t *testing.T) {
 		t.Fatalf("stale plan applied: %+v", last)
 	}
 }
+
+func TestAutoUpdateDoesNotWakeGroupThatSleepsDuringPreparation(t *testing.T) {
+	c, s, r, run, _ := autoFixture(t)
+	r.prepare = func() {
+		rows := append([]compose.UpdateContainer(nil), r.snapshot.Containers...)
+		rows[0].State = "exited"
+		r.snapshot.Containers = rows
+	}
+	if err := c.CheckAndUpdate(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	last, _ := s.LatestRun(context.Background(), run.StackID)
+	if r.applied != 0 || last.Outcome != "skipped" {
+		t.Fatalf("sleeping group was mutated: %+v applies=%d", last, r.applied)
+	}
+}
 func TestAutoUpdateDefersBusyStack(t *testing.T) {
 	c, s, r, run, co := autoFixture(t)
 	release, err := co.Try(false, string(run.StackID))

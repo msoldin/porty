@@ -165,3 +165,21 @@ func TestTrackerWakesOnlyOwnedSleepAndPausesUnexpectedRuntime(t *testing.T) {
 		t.Fatalf("external stop treated as owned sleep: %+v", d)
 	}
 }
+
+func TestTrackerPausesAfterExternalRestartWithSameCounters(t *testing.T) {
+	now := time.Unix(1000, 0)
+	p := DefaultPolicy()
+	p.Enabled = true
+	p.IdleSeconds = 60
+	p.MinRuntimeSeconds = 0
+	g := Group{Policy: p, Revision: 1, Phase: Running}
+	s := Sample{Phase: Running, ObservedAt: now, RuntimeEpoch: "first", Counters: map[string]Counters{"id": {}}}
+	tracker := Tracker{}
+	tracker.Evaluate(g, s, false, now)
+	s.RuntimeEpoch = "restarted"
+	s.ObservedAt = now.Add(time.Minute)
+	d := tracker.Evaluate(g, s, false, s.ObservedAt)
+	if d.Action != "" || d.PauseReason == "" {
+		t.Fatalf("external restart inherited old idle window: %+v", d)
+	}
+}

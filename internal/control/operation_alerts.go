@@ -77,6 +77,9 @@ func (c *ControlPlane) startObserved(ctx context.Context, request op.OperationRe
 		return op.Operation{}, err
 	}
 	return c.operations.StartTracked(ctx, request, func(jobCtx context.Context) op.Result {
+		if err := c.releaseOnDemandHolds(jobCtx, request); err != nil {
+			return op.Result{Err: err}
+		}
 		output, err := run(jobCtx)
 		result := op.Result{Output: output, Err: err}
 		verified := false
@@ -156,12 +159,16 @@ func (c *ControlPlane) startContainerBatchObserved(ctx context.Context, request 
 	request.ID = op.NewOperationID()
 	for _, id := range ids {
 		request.AlertTargets = append(request.AlertTargets, containerAlertKey(request.ScopeID, action, owned[id]))
+		request.AffectedServices = append(request.AffectedServices, owned[id].Service)
 	}
 	revisions, err := c.previousAlerts(ctx, request.AlertTargets)
 	if err != nil {
 		return op.Operation{}, err
 	}
 	return c.operations.StartTracked(ctx, request, func(jobCtx context.Context) op.Result {
+		if err := c.releaseOnDemandHolds(jobCtx, request); err != nil {
+			return op.Result{Err: err}
+		}
 		var output strings.Builder
 		result := op.Result{}
 		for _, id := range ids {

@@ -25,6 +25,7 @@ import (
 )
 
 func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
+	registerOnDemandRoutes(mux, options)
 	registerAlertRoutes(mux, options)
 	registerAutoUpdateRoutes(mux, options)
 	if options.Stacks != nil {

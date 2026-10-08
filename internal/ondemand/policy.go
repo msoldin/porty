@@ -54,6 +54,7 @@ func ValidatePolicy(p Policy) error {
 // one controller worker at a time and never grants authority to mutate Docker;
 // the executor must revalidate durable policy and identity under the stack lock.
 type Tracker struct {
+	runtimeEpoch string
 	revision     int64
 	phase        Phase
 	runningSince time.Time
@@ -67,6 +68,7 @@ func (t *Tracker) Evaluate(g Group, s Sample, pending bool, now time.Time) Decis
 		t.revision = g.Revision
 		t.phase = g.Phase
 		t.runningSince = now
+		t.runtimeEpoch = s.RuntimeEpoch
 		t.Invalidate(now)
 	}
 	if !g.Enabled || g.HoldReason != "" || g.PausedReason != "" {
@@ -92,6 +94,9 @@ func (t *Tracker) Evaluate(g Group, s Sample, pending bool, now time.Time) Decis
 	if len(s.Counters) == 0 {
 		t.Invalidate(now)
 		return Decision{UnavailableReason: "Network activity could not be observed."}
+	}
+	if t.runtimeEpoch != s.RuntimeEpoch {
+		return Decision{PauseReason: "Container restarted outside the owned transition. Review and resume this group."}
 	}
 	if t.counters == nil {
 		t.lastActivity = now

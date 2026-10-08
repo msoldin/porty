@@ -1,0 +1,58 @@
+.on-demand-settings {
+  margin-block: 2rem;
+}
+.on-demand-group,
+.on-demand-form {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.on-demand-group header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.on-demand-group h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.on-demand-state {
+  text-transform: capitalize;
+  font-size: 0.85rem;
+}
+.on-demand-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.on-demand-fields label {
+  display: grid;
+  gap: 0.4rem;
+}
+.on-demand-fields input {
+  width: 100%;
+  min-width: 0;
+}
+.on-demand-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.on-demand-form legend {
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+.on-demand-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+@media (max-width: 600px) {
+  .on-demand-fields {
+    grid-template-columns: 1fr;
+  }
+}

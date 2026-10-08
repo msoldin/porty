@@ -1,5 +1,12 @@
 # Porty development
 
+On-demand activation architecture, deployment requirements, reproducible Docker
+gates and measured limitations are documented in [On-demand groups](on-demand.md).
+`internal/traffic` owns temporary sleeping listeners; `internal/ondemand` owns
+bounded observation/decision loops; `internal/control` owns coordinated exact-ID
+transitions. SQLite joins transition completion and alerts atomically. The
+portable backend uses the existing Docker SDK and adds no runtime dependencies.
+
 Porty requires Go 1.27.1+, Bun 1.4.2+, and Linux. The running service uses the Go Git and Docker Compose SDKs, so it needs access to a Docker daemon for stack actions but does not need `git` or `docker` executables. Docker is optional for contract tests and required for the live Compose and OCI gates.
 
 SQLite migrations run automatically at startup through goose using the embedded SQL files in `internal/sqlite/migrations/`. This development version does not upgrade databases created by the previous custom migration runner. Before starting this version with an existing local installation, stop Porty and remove or recreate the local `porty.db` file and its `-wal`/`-shm` companions in the configured data directory. Porty never deletes the database automatically.

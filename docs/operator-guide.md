@@ -17,6 +17,9 @@ Create the service account, install the binary and configuration, and enable the
 ```sh
 sudo useradd --system --home-dir /var/lib/porty --shell /usr/sbin/nologin --groups docker porty
 sudo install -o root -g root -m 0755 porty /usr/local/bin/porty
+sudo install -d -o porty -g porty -m 0700 /var/lib/porty /var/lib/porty/.docker
+printf '{}\n' | sudo -u porty tee /var/lib/porty/.docker/config.json >/dev/null
+sudo chmod 0600 /var/lib/porty/.docker/config.json
 sudo install -d -o root -g porty -m 0750 /etc/porty
 sudo install -o root -g porty -m 0640 deploy/porty.example.yaml /etc/porty/config.yaml
 sudo install -o root -g root -m 0644 deploy/systemd/porty.service /etc/systemd/system/porty.service
@@ -104,6 +107,10 @@ docker run --rm -p 127.0.0.1:8080:8080 \
 ```
 
 Do not expose port 8080 beyond a trusted network without TLS and an appropriate network boundary.
+
+For automatic wake and idle stop, see [On-demand container groups](on-demand.md).
+Containerized Porty needs host networking for that feature and an explicit
+loopback UI bind. Ordinary bridge-networked Porty can continue managing stacks.
 
 ## Alerts
 

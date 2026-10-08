@@ -40,6 +40,9 @@ func (s *OperationStore) CreateOperation(ctx context.Context, operation portyop.
 	if err != nil {
 		return err
 	}
+	if err := interlockOnDemand(ctx, tx, operation); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -163,6 +166,9 @@ func (s *OperationStore) CompleteOperation(ctx context.Context, o portyop.Operat
 	}
 	defer tx.Rollback()
 	if err := completeUpdate(ctx, tx, o, result.Update); err != nil {
+		return nil, err
+	}
+	if err := completeOnDemand(ctx, tx, o, result.OnDemand); err != nil {
 		return nil, err
 	}
 	if err := updateOperation(ctx, tx, o); err != nil {

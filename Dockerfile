@@ -11,7 +11,10 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S porty \
     && adduser -S -D -H -G porty porty \
-    && install -d -o porty -g porty -m 0700 /var/lib/porty
+    && install -d -o porty -g porty -m 0700 /var/lib/porty /home/porty /home/porty/.docker \
+    && printf '{}' > /home/porty/.docker/config.json \
+    && chown porty:porty /home/porty/.docker/config.json \
+    && chmod 0600 /home/porty/.docker/config.json
 COPY --from=build /out/porty /usr/local/bin/porty
 USER porty
 VOLUME ["/var/lib/porty"]

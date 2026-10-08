@@ -37,6 +37,7 @@ type RuntimeController interface {
 var ErrStackRuntimeActionUnavailable = errors.New("stack runtime action is unavailable")
 
 type ControlPlane struct {
+	onDemand       *OnDemandService
 	updateStore    UpdateStore
 	updatesBlocked atomic.Bool
 	root           string

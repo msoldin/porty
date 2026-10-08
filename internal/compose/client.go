@@ -13,6 +13,7 @@ import (
 )
 
 type Client struct {
+	demand      onDemandDocker
 	updateClock updateClock
 	images      imageDockerAPI
 	updates     updateDocker
