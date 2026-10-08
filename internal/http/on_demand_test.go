@@ -2,13 +2,28 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/msoldin/porty/internal/compose"
 	"github.com/msoldin/porty/internal/ondemand"
 	"github.com/msoldin/porty/internal/stack"
 )
+
+func TestOnDemandRoutesExplainNativeHostFailureWithoutPrivateDetails(t *testing.T) {
+	f := &fakeOnDemand{err: fmt.Errorf("%w: %w: /private/socket secret=value", compose.ErrOnDemandHostUnavailable, compose.ErrProtectionUnavailable)}
+	handler, session, csrf := authenticatedAPIRouter(t, RouterOptions{OnDemand: f})
+	response := doAuthenticatedRequest(handler, session, csrf, "POST", "/api/v1/stacks/s/on-demand", `{}`)
+	body := response.Body.String()
+	if response.Code != 409 || !strings.Contains(body, `"code":"OnDemandHostUnavailable"`) || !strings.Contains(body, "Docker Desktop") {
+		t.Fatalf("missing actionable host explanation: %d %s", response.Code, body)
+	}
+	if strings.Contains(body, "private/socket") || strings.Contains(body, "secret=value") {
+		t.Fatal("private host error details exposed")
+	}
+}
 
 type fakeOnDemand struct {
 	writes int

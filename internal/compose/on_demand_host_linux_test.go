@@ -3,11 +3,35 @@
 package compose
 
 import (
+	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+type proxiedDemandHostDocker struct {
+	*demandHostDocker
+	host string
+}
+
+func (d *proxiedDemandHostDocker) DaemonHost() string { return d.host }
+
+func TestOnDemandHostExplainsUnverifiableNativeSocketPeer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "docker.sock")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	g, d := newGuardFixture(t)
+	g.docker = &proxiedDemandHostDocker{demandHostDocker: &demandHostDocker{guardDocker: d}, host: "unix://" + path}
+	err = g.CheckOnDemandHost(context.Background(), "game")
+	if !errors.Is(err, ErrOnDemandHostUnavailable) || !errors.Is(err, ErrProtectionUnavailable) {
+		t.Fatalf("expected actionable host failure preserving protection failure, got %v", err)
+	}
+}
 
 func TestNativeHostProofFindsSocketInPeerNetworkNamespace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "peer.sock")

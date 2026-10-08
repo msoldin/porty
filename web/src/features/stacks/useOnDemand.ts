@@ -50,7 +50,9 @@ export function useOnDemand(id: string) {
     } catch (cause) {
       if (current === generation.current)
         setError(
-          cause instanceof APIError && cause.status === 409
+          cause instanceof APIError &&
+            cause.status === 409 &&
+            cause.code === "OnDemandConflict"
             ? "The group or runtime changed. Review the refreshed status before retrying."
             : message(cause),
         );

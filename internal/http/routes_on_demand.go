@@ -89,6 +89,8 @@ func writeOnDemandResult(w stdhttp.ResponseWriter, r *stdhttp.Request, result an
 		WriteError(w, r, 409, "OnDemandConflict", "The group or runtime changed. Refresh and review before retrying.", nil)
 	case errors.Is(err, ondemand.ErrInvalid):
 		WriteError(w, r, 400, "InvalidOnDemandPolicy", err.Error(), nil)
+	case errors.Is(err, compose.ErrOnDemandHostUnavailable):
+		WriteError(w, r, 409, "OnDemandHostUnavailable", "Cannot verify that Porty shares Docker's host network. Run Porty directly on the Linux Docker Engine host or in a host-networked container. Native WSL with Docker Desktop is not supported for on-demand wakeups.", nil)
 	case errors.Is(err, ondemand.ErrUnavailable), errors.Is(err, compose.ErrOnDemandIneligible), errors.Is(err, compose.ErrProtectionUnavailable), errors.Is(err, compose.ErrSelfProtected):
 		WriteError(w, r, 409, "OnDemandUnavailable", "Requires a deployed, healthy group with fixed bridge-network ports and local rootful Docker. Porty must share the host network; its own stack is protected.", nil)
 	case err != nil:

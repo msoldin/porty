@@ -86,6 +86,13 @@ The OCI image provides an empty private Docker SDK configuration. For a new
 native service account, create its private `.docker` directory and a `config.json`
 containing `{}` in its home directory; preserve any existing Docker credentials.
 
+Running `go run ./cmd/porty` in WSL against Docker Desktop does not place Porty
+on the Docker Engine host. Desktop's Unix socket is a proxy into its VM, so the
+native network check rejects this setup. For on-demand development, run Porty in
+a host-networked container (enable host networking in Docker Desktop), or run
+Porty alongside a native Linux Docker Engine. A reachable Docker API alone does
+not establish that wake listeners receive traffic on Docker's published ports.
+
 ## Holds, recovery and other operations
 
 **Hold** suspends both automatic wake and sleep without stopping running services.

@@ -2,11 +2,15 @@ package compose
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 
 	"github.com/moby/moby/client"
 )
+
+var ErrOnDemandHostUnavailable = errors.New("Porty's network could not be verified against the Docker host")
 
 func (c *Client) CheckOnDemandHost(ctx context.Context, project string) error {
 	guard, ok := c.guard.(interface {
@@ -54,5 +58,8 @@ func (g *RuntimeGuard) CheckOnDemandHost(ctx context.Context, project string) er
 		}
 		return nil
 	}
-	return verifyNativeDockerNetwork(ctx, strings.TrimPrefix(endpoint.DaemonHost(), "unix://"))
+	if err := verifyNativeDockerNetwork(ctx, strings.TrimPrefix(endpoint.DaemonHost(), "unix://")); err != nil {
+		return fmt.Errorf("%w: %w", ErrOnDemandHostUnavailable, err)
+	}
+	return nil
 }
