@@ -327,6 +327,11 @@ export function OverviewServices({
                     </div>
                   </td>
                   <ServiceCells
+                    onLogs={() =>
+                      navigate(
+                        containerRoute(row.stackId, row.container.id, "logs"),
+                      )
+                    }
                     container={row.container}
                     href={containerRoute(row.stackId, row.container.id)}
                     onOpen={() =>

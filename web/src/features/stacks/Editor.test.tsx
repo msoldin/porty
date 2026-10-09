@@ -4,7 +4,7 @@ import { expect, it, vi } from "vitest";
 import { Editor } from "./Editor";
 import { useStackEditor } from "./useStackEditor";
 import type { Stack } from "./types";
-import { createStackFile } from "./api";
+import { createStackFile, getDiff } from "./api";
 vi.mock("./api", () => ({
   listFiles: vi.fn().mockResolvedValue([]),
   getStackFile: vi.fn().mockResolvedValue({
@@ -118,5 +118,35 @@ it("retains edits when cancelling a file dialog and retains the path after a fai
   );
   expect(screen.getByRole("textbox", { name: "Relative path" })).toHaveValue(
     "config.yml",
+  );
+});
+
+it("distinguishes an unavailable diff from clean files and retries without losing edits", async () => {
+  vi.mocked(getDiff).mockRejectedValueOnce(new Error("Diff unavailable"));
+  function Fixture() {
+    const model = useStackEditor({
+      stackId: "one",
+      enabled: true,
+      onDirtyChange: () => {},
+      onSaved: () => {},
+    });
+    return (
+      <Editor
+        stack={{ id: "one", directoryName: "monitoring" } as Stack}
+        model={model}
+      />
+    );
+  }
+  render(<Fixture />);
+  await screen.findByText(/Diff unavailable/);
+  expect(screen.queryByText("No uncommitted changes.")).not.toBeInTheDocument();
+  fireEvent.input(screen.getByRole("textbox", { name: "File contents" }), {
+    target: { value: "local edits" },
+  });
+  vi.mocked(getDiff).mockResolvedValueOnce("+saved config");
+  fireEvent.click(screen.getByRole("button", { name: "Retry changes" }));
+  await screen.findByText("+saved config");
+  expect(screen.getByRole("textbox", { name: "File contents" })).toHaveValue(
+    "local edits",
   );
 });

@@ -65,3 +65,18 @@ it("counts unknown state separately and never treats sleeping as a failure", () 
     }).attention,
   ).toBe(1);
 });
+
+it("does not flag intentionally stopped or never-deployed stacks as incidents", () => {
+  const stopped = {
+    running: { runtime: "stopped", freshness: "current", hasDeployed: true },
+    sleeping: {
+      runtime: "stopped",
+      freshness: "never_deployed",
+      hasDeployed: false,
+    },
+  };
+  expect(inventorySummary(stacks, stopped).attention).toBe(0);
+  expect(
+    filterStacks(stacks, stopped, null, { ...filters, runtime: "attention" }),
+  ).toEqual([]);
+});

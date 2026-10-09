@@ -1,28 +1,73 @@
 .stack-top {
+  padding: 0 30px;
+  background: var(--page);
+  border: 0;
+}
+.detail-breadcrumbs {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-inline: -30px;
+  padding: 16px 30px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
-.stack-top .page-heading {
+.stack-top > .page-heading {
   gap: 1rem;
   flex-wrap: wrap;
+  margin: 28px 0 22px;
+}
+.stack-top .page-heading > div:first-child {
+  min-width: 0;
 }
 .stack-top h1 {
   overflow-wrap: anywhere;
   min-width: 0;
 }
-.state-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 2rem;
-  padding: 1rem 0;
+.stack-project {
+  margin: 5px 0 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
-.state-strip > div {
-  min-width: 9rem;
+.state-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  padding: 18px 0;
+  margin: 0 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+}
+.state-strip > div,
+.state-strip > div:first-child {
+  min-width: 0;
+  padding: 0 18px;
+  border-right: 1px solid var(--border);
+}
+.state-strip > div:last-child {
+  border-right: 0;
+}
+.state-label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.state-strip small {
+  font-size: 12px;
+  margin-top: 3px;
 }
 .stack-detail > .tabs {
-  background: var(--surface);
-  padding-inline: 1.5rem;
+  background: var(--page);
+  padding-inline: 30px;
   overflow-x: auto;
+}
+.stack-detail > .tabs button {
+  padding: 12px 0;
+  margin-right: 12px;
 }
 .stack-detail [role="tabpanel"] {
   min-width: 0;
@@ -35,7 +80,72 @@
   max-width: 15rem;
   color: var(--muted);
 }
+.action-reason {
+  color: var(--muted);
+  font-size: 12px;
+  margin: -8px 0 18px;
+}
+.pending-configuration {
+  margin: 20px 30px 0;
+  padding: 14px 18px;
+  background: var(--surface);
+  border-left: 3px solid var(--warning);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+.pending-configuration p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 3px 0 0;
+}
+.pending-configuration button {
+  flex-shrink: 0;
+}
+.last-deployment {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.last-deployment h2 {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 8px;
+  letter-spacing: normal;
+}
+.last-deployment p {
+  margin-bottom: 0;
+}
+.last-deployment .empty {
+  padding: 0;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 @media (max-width: 767px) {
+  .stack-top {
+    padding: 0 16px;
+  }
+  .detail-breadcrumbs {
+    margin-inline: -16px;
+    padding: 14px 16px;
+  }
+  .stack-top > .page-heading {
+    margin: 20px 0;
+  }
   .stack-top .page-heading .action-group {
     width: 100%;
   }
@@ -43,17 +153,36 @@
     flex: 1;
   }
   .state-strip {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    padding: 0;
   }
-  .state-strip > div {
-    min-width: 0;
+  .state-strip > div,
+  .state-strip > div:first-child {
+    padding: 12px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .state-strip > div:last-child {
+    border-bottom: 0;
+  }
+  .state-label {
+    margin-bottom: 5px;
   }
   .stack-detail > .tabs {
-    padding-inline: 1rem;
+    padding-inline: 16px;
+    gap: 16px;
+  }
+  .stack-detail > .tabs button {
+    margin-right: 0;
   }
   .stack-detail .action-group button {
+    min-height: 44px;
+  }
+  .pending-configuration {
+    margin: 16px 16px 0;
+    flex-wrap: wrap;
+  }
+  .pending-configuration button {
     min-height: 44px;
   }
 }

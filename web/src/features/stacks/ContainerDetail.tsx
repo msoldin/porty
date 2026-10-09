@@ -14,6 +14,7 @@ import "./containerDetail.css";
 export function ContainerDetail({
   stack,
   containerId,
+  initialTab = "Overview",
   operations,
   dirty,
   navigate,
@@ -21,6 +22,7 @@ export function ContainerDetail({
 }: {
   stack: Stack;
   containerId: string;
+  initialTab?: "Overview" | "Logs";
   operations: Operation[];
   dirty: boolean;
   navigate: (path: string) => void;
@@ -30,7 +32,7 @@ export function ContainerDetail({
   const [error, setError] = useState("");
   const [pendingAction, setPendingAction] = useState<ContainerAction>();
   const pendingTarget = useRef<{ id: string; stackId: string; name: string }>();
-  const [tab, setTab] = useState<"Overview" | "Logs" | "Inspect">("Overview");
+  const [tab, setTab] = useState<"Overview" | "Logs" | "Inspect">(initialTab);
   const [inspect, setInspect] = useState({
     key: "",
     requestKey: "",

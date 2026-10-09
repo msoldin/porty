@@ -278,7 +278,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await expect(
     page.getByRole("checkbox", { name: "Select web-2" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Containers" })).toBeVisible();
   await page.getByRole("button", { name: "Actions" }).click();
   await expect(page.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
     "aria-disabled",
@@ -343,7 +343,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     .getByRole("navigation", { name: "Breadcrumb" })
     .getByRole("link", { name: "paperless" })
     .click();
-  await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Containers" })).toBeVisible();
   await page.route("**/api/v1/stacks/*/containers/actions/restart", (route) =>
     route.fulfill({
       status: 202,
@@ -419,7 +419,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await expect(page.getByText("Waiting for container output…")).toBeVisible();
   await expect(page.getByRole("button", { name: "Load logs" })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("live-logs.png") });
-  await page.getByRole("tab", { name: "Editor" }).click();
+  await page.getByRole("tab", { name: "Compose & files" }).click();
   const editor = page.getByRole("textbox", { name: "File contents" });
   await editor.fill("services:\n  web:\n    image: nginx:alpine\n");
   await page.getByRole("button", { name: "Save file" }).click();
@@ -670,7 +670,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   });
   await page.getByRole("menu").press("Escape");
   await page.setViewportSize(initialViewport);
-  await page.getByRole("tab", { name: "Editor" }).click();
+  await page.getByRole("tab", { name: "Compose & files" }).click();
   await expect(page.locator(".cm-editor")).toBeVisible();
   expect(
     await page

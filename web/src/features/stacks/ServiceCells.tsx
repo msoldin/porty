@@ -7,10 +7,12 @@ export function ServiceCells({
   container,
   href,
   onOpen,
+  onLogs,
 }: {
   container: Container;
   href: string;
   onOpen: () => void;
+  onLogs: () => void;
 }) {
   const state = containerStatePresentation(
     container.state,
@@ -31,6 +33,17 @@ export function ServiceCells({
           >
             <strong>{container.service || container.name}</strong>
             <small title={container.name}>{container.name}</small>
+          </a>
+          <a
+            class="container-log-link"
+            href={`#${href}/logs`}
+            aria-label={`View logs for ${container.name}`}
+            onClick={(event) => {
+              event.preventDefault();
+              onLogs();
+            }}
+          >
+            View logs
           </a>
         </div>
       </td>

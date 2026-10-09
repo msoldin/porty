@@ -310,7 +310,7 @@ function requestsFor(path: string) {
 async function openEditor() {
   render(<App />);
   fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
-  fireEvent.click(await screen.findByRole("tab", { name: "Editor" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "Compose & files" }));
   return screen.findByRole("textbox", { name: "File contents" });
 }
 

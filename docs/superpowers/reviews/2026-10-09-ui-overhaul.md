@@ -25,7 +25,7 @@ Browser checks cover 1536×1024, 390×844, and 320 px widths in light and dark t
 
 Reproduction commands and API semantics are in [development.md](../../development.md#ui-overhaul-verification). Final screenshots are in `/tmp/porty-ui-review`, grouped by journey/device. They are intentionally not committed. The existing live Docker/OCI release gate still requires a disposable Docker-enabled builder.
 
-## Final review
+## Initial implementation review (superseded by follow-up)
 
 Self-review inline, as required by the repository's prohibition on subagents. This is not independent code review. Reviewed the deployment contract, coordinator lifetime, stale responses, buffer retention, selection scope, and the rendered screens against the specification.
 
@@ -48,3 +48,20 @@ No Critical or Important findings remain from this self-review. No minor finding
 - Kept the existing SVG icons and theme-preference implementation because their contracts already met the design. Cost if wrong: later visual adjustment.
 
 The managed worktree remains detached and preserved for review. Nothing has been merged, pushed, or deployed.
+
+
+## Follow-up: concept alignment corrections
+
+A second review of `9c2ba41..0ba6672` reproduced gaps that the initial tests missed. The subsequent corrections address all six findings and the requested Stacks repository-header adjustment:
+
+- Runtime and deployment remain readable together at 320 px. Mobile selection, including Select all, stays reachable. The separate cross-stack container table preserves its existing sticky stack context.
+- Failed diff and deployment-history reads are distinct from empty successful results, with explicit retry actions. Retrying changes preserves local edits.
+- Intentionally stopped and never-deployed stacks are not counted as incidents; stopped badges are neutral.
+- Disabled stack actions explain unsaved edits, active operations, and archived state accurately.
+- Stack detail uses the labeled Runtime / Deployment / Git panel, Compose & files and Deployments labels, Validate config, the Review files notice, and contained last-deployment information.
+- Both container inventories provide direct View logs links, retaining existing detail URLs and adding an exact optional `/logs` section.
+- Repository context is a compact note below the stack table, matching the approved reference. Local repositories are labeled explicitly, remote comparison uses last-fetched wording, and the unsupported last-fetch timestamp placeholder is removed. New stack sits beside the page title and bulk controls appear with selection.
+
+Verification for this correction: 208 frontend tests and 26 desktop/mobile browser tests passed; TypeScript, frontend production build, application build, packaging contract checks, and whitespace checks passed. Screenshots in `/tmp/porty-concept-final` cover both themes at desktop, 390 px, and 320 px. The final browser run also preserves setup, alerts, automation, editor, container inspection, batch actions, and account flows. Live OCI verification remains skipped; backend behavior and dependencies were not changed.
+
+Reviewed inline under the no-subagents rule. GitNexus was refreshed and the full structured change result was checked before commit; the index retains documented bounded-flow limitations. The original checkout remains unchanged.

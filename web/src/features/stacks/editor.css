@@ -65,3 +65,10 @@
     min-height: 44px;
   }
 }
+
+.diff-output > .notice,
+.diff-output > .diff-message {
+  white-space: normal;
+  min-width: 0;
+  padding: 12px;
+}

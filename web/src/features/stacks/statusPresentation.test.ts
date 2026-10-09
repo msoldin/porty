@@ -33,7 +33,7 @@ it("shows every stack runtime with a clear label and tone", () => {
   });
   expect(stackRuntimePresentation("stopped")).toEqual({
     label: "Stopped",
-    tone: "danger",
+    tone: "neutral",
   });
   expect(stackRuntimePresentation("partial")).toEqual({
     label: "Partially running",
@@ -65,7 +65,7 @@ it("keeps Docker health visible beside the container state", () => {
     healthTone: "danger",
   });
   expect(containerStatePresentation("created").label).toBe("Stopped");
-  expect(containerStatePresentation("exited").tone).toBe("danger");
+  expect(containerStatePresentation("exited").tone).toBe("neutral");
   expect(containerStatePresentation("paused").label).toBe("Unknown");
 });
 

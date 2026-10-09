@@ -403,3 +403,26 @@ it("updates each stack row after an external Docker state change", async () => {
   expect(alpha.getByText("Stopped")).toBeInTheDocument();
   expect(beta.getByText("Running")).toBeInTheDocument();
 });
+
+it("describes a local repository without implying a fetched remote", () => {
+  render(
+    <Dashboard
+      stacks={[]}
+      repo={{
+        configured: true,
+        branch: "main",
+        dirty: false,
+        ahead: 0,
+        behind: 0,
+        paths: [],
+      }}
+      operations={[]}
+      navigate={vi.fn()}
+      refresh={vi.fn()}
+      onOperationsAccepted={vi.fn()}
+    />,
+  );
+  const summary = screen.getByRole("region", { name: "Repository summary" });
+  expect(summary).toHaveTextContent("Local repository");
+  expect(summary).not.toHaveTextContent("fetch");
+});

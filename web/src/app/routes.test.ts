@@ -20,3 +20,13 @@ it("rejects malformed or ambiguous container hashes", () => {
   ])
     expect(parseStackRoute(route)).toBeNull();
 });
+
+it("opens logs for the named container without changing existing route identities", () => {
+  expect(parseStackRoute("/stacks/one/containers/two/logs")).toEqual({
+    stackId: "one",
+    containerId: "two",
+    containerSection: "logs",
+  });
+  expect(parseStackRoute("/stacks/one/logs")).toBeNull();
+  expect(parseStackRoute("/stacks/one/containers/two/other")).toBeNull();
+});

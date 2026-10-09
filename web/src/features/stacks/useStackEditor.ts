@@ -17,6 +17,8 @@ type EditorState = {
   file?: FileContent;
   content: string;
   diff: string;
+  diffStatus: "loading" | "ready" | "error";
+  diffError: string;
   dirty: boolean;
   busy: boolean;
   error: string;
@@ -35,6 +37,8 @@ const initial: EditorState = {
   file: undefined,
   content: "",
   diff: "",
+  diffStatus: "loading",
+  diffError: "",
   dirty: false,
   busy: false,
   error: "",
@@ -84,14 +88,13 @@ export function useStackEditor(options: Options) {
         file: file.status === "fulfilled" ? file.value : undefined,
         content: file.status === "fulfilled" ? file.value.content : "",
         diff: diff.status === "fulfilled" ? diff.value : "",
+        diffStatus: diff.status === "fulfilled" ? "ready" : "error",
+        diffError: diff.status === "rejected" ? message(diff.reason) : "",
         error: [tree, file]
           .filter((value) => value.status === "rejected")
           .map((value) => message((value as PromiseRejectedResult).reason))
           .join(" · "),
-        notice:
-          diff.status === "rejected"
-            ? `Changes could not be loaded: ${message(diff.reason)}`
-            : "",
+        notice: "",
         editorKey: current.current.editorKey + 1,
       });
     });
@@ -134,14 +137,30 @@ export function useStackEditor(options: Options) {
     }
   }
   async function refreshDiff(version: number, success: string) {
+    update({ diffStatus: "loading", diffError: "" });
     try {
       const diff = await getDiff(stackId);
-      if (version === generation.current) update({ diff, notice: success });
+      if (version === generation.current)
+        update({ diff, diffStatus: "ready", diffError: "", notice: success });
     } catch (error) {
       if (version === generation.current)
         update({
-          notice: `${success} Changes could not be refreshed: ${message(error)}`,
+          diffStatus: "error",
+          diffError: message(error),
+          notice: success
+            ? `${success} Changes could not be refreshed: ${message(error)}`
+            : "",
         });
+    }
+  }
+  async function retryDiff() {
+    if (current.current.busy) return;
+    const version = generation.current;
+    update({ busy: true });
+    try {
+      await refreshDiff(version, "");
+    } finally {
+      if (version === generation.current) update({ busy: false });
     }
   }
   async function save(): Promise<boolean> {
@@ -174,7 +193,13 @@ export function useStackEditor(options: Options) {
   }
   async function commit(): Promise<boolean> {
     const value = current.current;
-    if (value.busy || value.dirty || !value.commitMessage.trim() || !value.diff)
+    if (
+      value.busy ||
+      value.dirty ||
+      value.diffStatus !== "ready" ||
+      !value.commitMessage.trim() ||
+      !value.diff
+    )
       return false;
     const version = generation.current;
     update({ busy: true, error: "", notice: "" });
@@ -260,5 +285,6 @@ export function useStackEditor(options: Options) {
     save,
     commit,
     mutateFile,
+    retryDiff,
   };
 }

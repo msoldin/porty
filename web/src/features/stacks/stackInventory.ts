@@ -24,9 +24,7 @@ export function filterStacks(
           .includes(filters.search.toLowerCase()) &&
         (filters.runtime === "all" ||
           (filters.runtime === "attention" &&
-            ["unhealthy", "partial", "stopped"].includes(
-              state?.runtime || "",
-            )) ||
+            ["unhealthy", "partial"].includes(state?.runtime || "")) ||
           (state?.runtime || "unknown") === filters.runtime) &&
         (filters.deployment === "all" ||
           (state?.freshness || "unknown") === filters.deployment) &&
@@ -55,9 +53,7 @@ export function inventorySummary(
   return {
     total: active.length,
     attention: active.filter((stack) =>
-      ["unhealthy", "partial", "stopped"].includes(
-        states[stack.id]?.runtime || "",
-      ),
+      ["unhealthy", "partial"].includes(states[stack.id]?.runtime || ""),
     ).length,
     unknown: active.filter(
       (stack) =>

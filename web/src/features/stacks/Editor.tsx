@@ -225,7 +225,18 @@ export function Editor({ stack, model }: { stack: Stack; model: StackEditor }) {
             Changes <span class="muted">Uncommitted changes</span>
           </div>
           <div class="diff-output">
-            {diff ? (
+            {model.diffStatus === "loading" ? (
+              <p class="diff-message" role="status">
+                Loading changes…
+              </p>
+            ) : model.diffStatus === "error" ? (
+              <Notice>
+                Changes could not be loaded: {model.diffError}
+                <button disabled={busy} onClick={() => void model.retryDiff()}>
+                  Retry changes
+                </button>
+              </Notice>
+            ) : diff ? (
               diff.split("\n").map((line, i) => (
                 <div
                   key={i}
@@ -269,7 +280,13 @@ export function Editor({ stack, model }: { stack: Stack; model: StackEditor }) {
             <div class="commit-footer">
               <span>Save writes files. Commit records their Git history.</span>
               <button
-                disabled={busy || dirty || !commitMessage.trim() || !diff}
+                disabled={
+                  busy ||
+                  dirty ||
+                  model.diffStatus !== "ready" ||
+                  !commitMessage.trim() ||
+                  !diff
+                }
               >
                 <Icon name="Repository" />
                 Commit stack

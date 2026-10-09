@@ -1,7 +1,8 @@
 export function parseStackRoute(
   route: string,
-): { stackId: string; containerId?: string } | null {
-  const match = /^\/stacks\/([^/]+)(?:\/containers\/([^/]+))?$/.exec(route);
+): { stackId: string; containerId?: string; containerSection?: "logs" } | null {
+  const match =
+    /^\/stacks\/([^/]+)(?:\/containers\/([^/]+)(?:\/(logs))?)?$/.exec(route);
   if (!match) return null;
   try {
     const stackId = decodeURIComponent(match[1]);
@@ -9,7 +10,11 @@ export function parseStackRoute(
     if (!stackId || stackId.includes("/") || (!containerId && match[2]))
       return null;
     if (containerId?.includes("/")) return null;
-    return { stackId, ...(containerId ? { containerId } : {}) };
+    return {
+      stackId,
+      ...(containerId ? { containerId } : {}),
+      ...(match[3] ? { containerSection: "logs" as const } : {}),
+    };
   } catch {
     return null;
   }

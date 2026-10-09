@@ -10,6 +10,7 @@ import { StackDetail } from "./StackDetail";
 import {
   getStackState,
   listStackContainers,
+  listDeployments,
   runContainerBatchAction,
   runStackAction,
 } from "./api";
@@ -30,6 +31,16 @@ vi.mock("./api", () => ({
   getStackState: vi.fn(),
   listStackContainers: vi.fn(),
   listDeployments: vi.fn().mockResolvedValue([]),
+  listFiles: vi.fn().mockResolvedValue([]),
+  getStackFile: vi
+    .fn()
+    .mockResolvedValue({
+      path: "docker-compose.yml",
+      content: "",
+      hash: "hash",
+      size: 0,
+    }),
+  getDiff: vi.fn().mockResolvedValue(""),
   runStackAction: vi.fn(),
   runContainerBatchAction: vi.fn(),
 }));
@@ -81,8 +92,10 @@ it("moves keyboard focus between tabs and labels the active panel", async () => 
   fireEvent.click(logs);
   logs.focus();
   fireEvent.keyDown(logs, { key: "ArrowRight" });
-  expect(screen.getByRole("tab", { name: "History" })).toHaveFocus();
-  expect(screen.getByRole("tabpanel", { name: "History" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Deployments" })).toHaveFocus();
+  expect(
+    screen.getByRole("tabpanel", { name: "Deployments" }),
+  ).toBeInTheDocument();
 });
 
 it("keeps whole-stack Actions separate from selected Services actions", async () => {
@@ -126,8 +139,12 @@ it("keeps whole-stack Actions separate from selected Services actions", async ()
   expect(
     await screen.findByRole("checkbox", { name: "Select app-2" }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Services" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Validate" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Containers" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Validate config" }),
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Actions" }));
   expect(
     screen.getByRole("button", { name: "Deploy stack…" }),
@@ -444,4 +461,59 @@ it("keeps output visible during reconnect, gap, and action errors", () => {
     />,
   );
   expect(useStackLogs).toHaveBeenLastCalledWith("two", true);
+});
+
+it("guides pending saved changes into Compose & files", async () => {
+  vi.mocked(getStackState).mockResolvedValue({
+    runtime: "running",
+    freshness: "changes_pending",
+    hasDeployed: true,
+  });
+  showStack();
+  fireEvent.click(await screen.findByRole("button", { name: "Review files" }));
+  expect(screen.getByRole("tab", { name: "Compose & files" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(screen.getByRole("tab", { name: "Deployments" })).toBeInTheDocument();
+  expect(screen.queryByText("Repository remote")).not.toBeInTheDocument();
+});
+it("explains unsaved edits as the blocker for a running stack", async () => {
+  vi.mocked(getStackState).mockResolvedValue({
+    runtime: "running",
+    freshness: "current",
+    hasDeployed: true,
+  });
+  showStack(stack, { dirty: true });
+  await screen.findByText("Running", { selector: ".state-strip .badge" });
+  expect(
+    screen.getByRole("button", { name: "Validate config" }),
+  ).toHaveAccessibleDescription(/Save or discard/);
+  fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+  expect(
+    screen.getByRole("menuitem", { name: "Restart" }),
+  ).toHaveAccessibleDescription(/Save or discard/);
+});
+it("keeps loading and failed deployment history distinct from an empty history", async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(listDeployments).mockImplementationOnce(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  showStack();
+  await screen.findByText("Loading deployment history…");
+  expect(
+    screen.queryByText("No deployments recorded."),
+  ).not.toBeInTheDocument();
+  await act(async () => reject(new Error("History unavailable")));
+  await screen.findByText(/History unavailable/);
+  expect(
+    screen.queryByText("No deployments recorded."),
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Retry deployment history" }),
+  );
+  await screen.findByText("No deployments recorded.");
 });

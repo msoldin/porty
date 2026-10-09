@@ -80,3 +80,164 @@
     min-height: 44px;
   }
 }
+
+.dashboard {
+  padding-top: 28px;
+}
+.dashboard .page-heading {
+  margin-bottom: 20px;
+}
+.dashboard .page-heading p {
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.dashboard .inventory-summary {
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.repository-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.repository-note svg {
+  width: 15px;
+  height: 15px;
+}
+.repository-note strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.repository-note > a {
+  margin-left: auto;
+}
+.container-log-link {
+  font-size: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 767px) {
+  .dashboard .page-heading {
+    align-items: flex-start;
+  }
+  .dashboard .page-heading .action-group {
+    flex-shrink: 0;
+  }
+  .dashboard .stack-table {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .dashboard .stack-table thead {
+    display: block;
+  }
+  .dashboard .stack-table thead tr {
+    display: flex;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-soft);
+  }
+  .dashboard .stack-table thead th:first-child {
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+  }
+  .dashboard .stack-table thead th:first-child::after {
+    content: "Select all visible stacks";
+    font-weight: 400;
+  }
+  .dashboard .stack-table thead th:not(:first-child) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .dashboard .stack-table tbody {
+    display: block;
+  }
+  .dashboard .stack-table tbody tr {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px 8px;
+    padding: 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dashboard .stack-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .dashboard .stack-table tbody tr > td {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    background: transparent;
+  }
+  .dashboard .stack-table tbody tr.selected-row {
+    background: var(--accent-soft);
+  }
+  .dashboard .stack-table .select-column {
+    grid-row: 1 / 4;
+    grid-column: 1;
+  }
+  .dashboard .stack-table tr > :nth-child(2) {
+    grid-column: 2 / 4;
+  }
+  .dashboard .stack-table tr > :nth-child(3) {
+    grid-column: 2;
+  }
+  .dashboard .stack-table tr > :nth-child(4) {
+    grid-column: 3;
+  }
+  .dashboard .stack-table tr > :nth-child(5) {
+    grid-column: 2 / 4;
+  }
+  .dashboard .stack-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .dashboard .stack-table .stack-name-link {
+    max-width: 100%;
+    font-size: 15px;
+  }
+  .dashboard .stack-table .stack-name-cell {
+    gap: 6px;
+  }
+  .dashboard .stack-table .badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .dashboard .stack-table .deployment-time {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    font-size: 12px;
+  }
+  .repository-note > a {
+    margin-left: 0;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .container-log-link {
+    min-height: 44px;
+    justify-content: center;
+  }
+}

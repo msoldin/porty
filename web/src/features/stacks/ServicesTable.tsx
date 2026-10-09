@@ -95,8 +95,8 @@ export function ServicesTable({
       )}
       <div class="services-heading">
         <div>
-          <h2>Services</h2>
-          <p class="muted">Docker container state updates automatically.</p>
+          <h2>Containers</h2>
+          <p class="muted">Actions here affect selected containers only.</p>
         </div>
         <label class="search service-search">
           <Icon name="Search" />
@@ -225,6 +225,9 @@ export function ServicesTable({
                   container={container}
                   href={containerRoute(stackId, container.id)}
                   onOpen={() => navigate(containerRoute(stackId, container.id))}
+                  onLogs={() =>
+                    navigate(containerRoute(stackId, container.id, "logs"))
+                  }
                 />
               </tr>
             ))}

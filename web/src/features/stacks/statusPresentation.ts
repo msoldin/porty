@@ -12,7 +12,7 @@ export function stackRuntimePresentation(value?: string): StatusPresentation {
     case "on_demand":
       return { label: "Running · on demand", tone: "blue" };
     case "stopped":
-      return { label: "Stopped", tone: "danger" };
+      return { label: "Stopped", tone: "neutral" };
     case "partial":
       return { label: "Partially running", tone: "warning" };
     case "unhealthy":
@@ -33,7 +33,7 @@ export function containerStatePresentation(
     state === "running"
       ? { label: "Running", tone: "success" }
       : state === "created" || state === "exited"
-        ? { label: "Stopped", tone: "danger" }
+        ? { label: "Stopped", tone: "neutral" }
         : { label: "Unknown", tone: "neutral" };
   if (!health)
     return { ...base, health: "No health check", healthTone: "neutral" };

@@ -153,25 +153,6 @@ export function Workspace({
         onCancel={() => setSignOutPending(false)}
         onConfirm={() => void signOutAction()}
       />
-      {route === "/" && (
-        <div class="repository-summary">
-          <a
-            href="#/repository"
-            onClick={(event) => {
-              event.preventDefault();
-              navigate("/repository");
-            }}
-          >
-            Repository: {repo?.branch || "Unavailable"}
-          </a>
-          <span>
-            {repo
-              ? `${repo.ahead} ahead · ${repo.behind} behind`
-              : "Status unavailable"}
-          </span>
-          <span>Last fetched: unavailable</span>
-        </div>
-      )}
       {error && (
         <Notice>
           {error} <button onClick={refresh}>Retry</button>
@@ -217,7 +198,10 @@ export function Workspace({
           </Notice>
         ) : selectedStack && stackRoute?.containerId ? (
           <ContainerDetail
-            key={`${selectedStack.id}:${stackRoute.containerId}`}
+            key={`${selectedStack.id}:${stackRoute.containerId}:${stackRoute.containerSection || "overview"}`}
+            initialTab={
+              stackRoute.containerSection === "logs" ? "Logs" : "Overview"
+            }
             stack={selectedStack}
             containerId={stackRoute.containerId}
             operations={operations}
@@ -240,6 +224,7 @@ export function Workspace({
           />
         ) : route === "/" ? (
           <Dashboard
+            remoteEnabled={remoteEnabled}
             stacks={stacks}
             repo={configuredRepo}
             operations={operations}

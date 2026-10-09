@@ -54,6 +54,7 @@ function deploymentTime(
 export function Dashboard({
   stacks,
   repo,
+  remoteEnabled = false,
   operations,
   navigate,
   refresh,
@@ -61,6 +62,7 @@ export function Dashboard({
 }: {
   stacks: Stack[];
   repo: Repository | null;
+  remoteEnabled?: boolean;
   operations: Operation[];
   navigate: (path: string) => void;
   refresh: () => void;
@@ -136,7 +138,18 @@ export function Dashboard({
     <section class="dashboard">
       <StackBatchDialog model={batch} />
       <div class="page-heading">
-        <h1>Stacks</h1>
+        <div>
+          <h1>Stacks</h1>
+          <p class="muted">
+            Manage your applications and their saved configuration.
+          </p>
+        </div>
+        <div class="action-group">
+          <button class="primary" onClick={() => setCreating(!creating)}>
+            <Icon name="Plus" />
+            New stack
+          </button>
+        </div>
       </div>
       <div class="inventory-summary" role="status" aria-label="Stack summary">
         <button
@@ -189,39 +202,6 @@ export function Dashboard({
       {observation.errors.length > 0 && (
         <Notice>Incomplete status: {observation.errors.join(" · ")}</Notice>
       )}
-      <div class="services-heading">
-        <h2>Stacks</h2>
-        <div class="action-group">
-          <button class="primary" onClick={() => setCreating(!creating)}>
-            <Icon name="Plus" />
-            New stack
-          </button>
-          <ActionMenu
-            label="Actions"
-            items={[
-              {
-                id: "deploy",
-                label: "Deploy",
-                disabled: !canDeploy,
-                reason: "Select up to 20 available stacks",
-              },
-              {
-                id: "restart",
-                label: "Restart",
-                disabled: !canRun,
-                reason: "Select running, previously deployed stacks",
-              },
-              {
-                id: "stop",
-                label: "Stop",
-                disabled: !canRun,
-                reason: "Select running, previously deployed stacks",
-              },
-            ]}
-            onSelect={(kind) => void batch.request(kind)}
-          />
-        </div>
-      </div>
       {creating && (
         <form
           class="create-stack inline-form"
@@ -370,6 +350,30 @@ export function Dashboard({
           >
             Clear selection
           </button>
+          <ActionMenu
+            label="Actions"
+            items={[
+              {
+                id: "deploy",
+                label: "Deploy",
+                disabled: !canDeploy,
+                reason: "Select up to 20 available stacks",
+              },
+              {
+                id: "restart",
+                label: "Restart",
+                disabled: !canRun,
+                reason: "Select running, previously deployed stacks",
+              },
+              {
+                id: "stop",
+                label: "Stop",
+                disabled: !canRun,
+                reason: "Select running, previously deployed stacks",
+              },
+            ]}
+            onSelect={(kind) => void batch.request(kind)}
+          />
         </div>
       )}
       <div
@@ -451,6 +455,39 @@ export function Dashboard({
             : "No stacks yet. Create your first stack to get started."}
         </Empty>
       )}
+      <div
+        class="repository-note"
+        role="region"
+        aria-label="Repository summary"
+      >
+        <Icon name="Repository" />
+        <span>
+          {repo ? (
+            <>
+              {remoteEnabled ? "Repository" : "Local repository"} ·{" "}
+              <strong>{repo.branch}</strong>
+              {remoteEnabled && (
+                <>
+                  {" "}
+                  · {repo.ahead} ahead · {repo.behind} behind{" "}
+                  <span class="muted">compared with last-fetched remote</span>
+                </>
+              )}
+            </>
+          ) : (
+            "Repository status unavailable"
+          )}
+        </span>
+        <a
+          href="#/repository"
+          onClick={(event) => {
+            event.preventDefault();
+            navigate("/repository");
+          }}
+        >
+          View repository <span aria-hidden="true">→</span>
+        </a>
+      </div>
       <OverviewServices
         stacks={stacks}
         operations={operations}
@@ -522,17 +559,17 @@ function StackRow({
           )}
         </div>
       </td>
-      <td>
+      <td data-label="Runtime">
         <Badge tone={runtime.tone} dot>
           {runtime.label}
         </Badge>
       </td>
-      <td>
+      <td data-label="Deployment">
         <Badge tone={deploymentTone(freshness)}>
           {deploymentLabel(freshness)}
         </Badge>
       </td>
-      <td>
+      <td data-label="Last deployment">
         {time ? (
           <div class="deployment-time">
             <time dateTime={stack.lastDeploymentAt}>{time.absolute}</time>

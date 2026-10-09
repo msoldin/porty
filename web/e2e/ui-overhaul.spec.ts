@@ -296,7 +296,7 @@ test("reviews saved edits, rejects stale confirmation, and follows real operatio
 }, info) => {
   const { state, errors, sendStatus } = await fixture(page);
   await page.goto(`${baseURL}/#/stacks/monitoring`);
-  await page.getByRole("tab", { name: "Editor", exact: true }).click();
+  await page.getByRole("tab", { name: "Compose & files", exact: true }).click();
   const editor = page.getByRole("textbox", { name: "File contents" });
   await expect(editor).toContainText("nginx:alpine");
   await editor.fill("services:\n  web:\n    image: nginx:latest\n");
@@ -389,7 +389,7 @@ test("keeps long names, editor, repository and settings usable across themes and
     .getByRole("navigation", { name: "Breadcrumb" })
     .getByRole("link", { name: "monitoring", exact: true })
     .click();
-  await page.getByRole("tab", { name: "Editor", exact: true }).click();
+  await page.getByRole("tab", { name: "Compose & files", exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "File contents" }),
   ).toContainText("nginx:alpine");
@@ -424,7 +424,9 @@ test("keeps long names, editor, repository and settings usable across themes and
       .click();
     await page.getByRole("tab", { name: "Settings", exact: true }).click();
     await capture(page, info, "stack-settings-320");
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
+    await page
+      .getByRole("tab", { name: "Compose & files", exact: true })
+      .click();
     await expect(
       page.getByRole("textbox", { name: "File contents" }),
     ).toContainText("nginx:alpine");
@@ -499,7 +501,7 @@ test("keeps the mobile Save control unobscured and the dark alert count readable
   );
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto(`${baseURL}/#/stacks/monitoring`);
-  await page.getByRole("tab", { name: "Editor", exact: true }).click();
+  await page.getByRole("tab", { name: "Compose & files", exact: true }).click();
   await page.getByRole("textbox", { name: "File contents" }).fill("edited");
   const save = page.getByRole("button", { name: "Save file" });
   await save.scrollIntoViewIfNeeded();
@@ -583,4 +585,51 @@ test("preserves theme through registration setup and password-change sign out", 
   await expect(
     page.getByRole("heading", { name: "Settings", level: 1 }),
   ).toBeVisible();
+});
+
+test("keeps runtime and deployment readable at 320px and opens container logs directly", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto(baseURL);
+  const table = page.getByRole("region", { name: "Stacks table" });
+  for (const text of ["Sleeping", "Current", "Never deployed"]) {
+    const badge = table.getByText(text, { exact: true });
+    await badge.scrollIntoViewIfNeeded();
+    expect(
+      await badge.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          r.x + r.width / 2,
+          r.y + r.height / 2,
+        );
+        return (
+          r.left >= 0 && r.right <= innerWidth && !!hit && el.contains(hit)
+        );
+      }),
+    ).toBe(true);
+  }
+  await page
+    .getByRole("checkbox", { name: "Select all visible stacks" })
+    .check();
+  await expect(
+    page.getByText("3 stacks selected", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear selection" }).click();
+  const summary = page.getByRole("region", { name: "Repository summary" });
+  expect(
+    await summary.evaluate(
+      (el) =>
+        el.getBoundingClientRect().top >
+        document.querySelector(".stack-table")!.getBoundingClientRect().bottom,
+    ),
+  ).toBe(true);
+  await page
+    .getByRole("link", { name: "View logs for monitoring-web-1" })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Logs", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText(/Upstream connection refused/)).toBeVisible();
 });
