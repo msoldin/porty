@@ -184,14 +184,14 @@ test("configures single-attempt wake and explicitly holds and resumes a group", 
     path: join(tmpdir(), `porty-on-demand-${info.project.name}.png`),
   });
   await page.getByRole("tab", { name: "Overview", exact: true }).click();
-  await expect(page.getByText("SLEEPING", { exact: true })).toHaveCount(2);
-  await expect(page.getByText("STOPPED", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Sleeping", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Stopped", { exact: true })).toHaveCount(0);
   await page.screenshot({
     path: join(tmpdir(), `porty-sleeping-${info.project.name}.png`),
     fullPage: true,
   });
   await page.getByRole("link", { name: "Open minecraft-game-1" }).click();
-  await expect(page.getByText("SLEEPING", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sleeping", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
   expect(await page.locator("vite-error-overlay").count()).toBe(0);
   expect(

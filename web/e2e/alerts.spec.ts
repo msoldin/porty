@@ -145,7 +145,11 @@ test("reviews alerts globally and on a stack without changing runtime state", as
   await expect(
     page.getByRole("heading", { name: "Alerts", exact: true }),
   ).toBeVisible();
+  if (info.project.name === "mobile")
+    await page.getByRole("button", { name: "Navigation", exact: true }).click();
   await expect(page.getByLabel("1 unacknowledged alerts")).toBeVisible();
+  if (info.project.name === "mobile")
+    await page.getByRole("button", { name: "Navigation", exact: true }).click();
   await expect(page.getByText("Resolved", { exact: true })).toBeVisible();
   await page.screenshot({
     path: join(tmpdir(), `porty-alerts-${info.project.name}.png`),

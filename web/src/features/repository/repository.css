@@ -33,6 +33,9 @@
   display: flex;
   flex-wrap: wrap;
 }
+.repository-page .repository-actions button {
+  display: inline-flex;
+}
 @media (max-width: 767px) {
   .repository-page {
     padding: 1rem;

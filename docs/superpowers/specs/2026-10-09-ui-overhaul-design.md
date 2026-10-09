@@ -164,4 +164,4 @@ Run affected frontend suites, then `bun run test`, `bun run typecheck`, `bun run
 
 ## Current status
 
-Conversational design decisions are approved. This written specification is ready for user review. The implementation plan and production changes are not yet started.
+The specification and implementation plan were reviewed and approved. The 12-task implementation is complete in a separate worktree. See the [implementation review and verification record](../reviews/2026-10-09-ui-overhaul.md).

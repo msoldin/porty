@@ -127,6 +127,11 @@ test("edits UTC policy and keeps acknowledgment separate from verified resume", 
         },
       });
     const responses: Record<string, unknown> = {
+      "/stacks/s1/deployment-review": {
+        stackId: "s1",
+        sourceRevision: "a".repeat(64),
+        uncommittedChanges: false,
+      },
       "/session": { username: "admin", csrfToken: "csrf" },
       "/repository/setup/status": {
         state: "ready",
@@ -198,8 +203,13 @@ test("edits UTC policy and keeps acknowledgment separate from verified resume", 
   await expect(page.getByText(/Acknowledged by admin/)).toBeVisible();
   await page.getByRole("tab", { name: "Settings" }).click();
   await expect(page.getByText(/Automatic updates paused/)).toBeVisible();
-  await page.getByRole("button", { name: "Actions", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Deploy", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Deploy stack…", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Deploy stack", exact: true })
+    .click();
   await expect(page.getByText("Recovered manually")).toBeVisible();
   await page.getByRole("button", { name: "Close operation" }).click();
   await page

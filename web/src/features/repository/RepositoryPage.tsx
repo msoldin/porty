@@ -57,6 +57,19 @@ export function RepositoryPage({
         }}
       />
       <div class="repository-explanation">
+        {!remoteEnabled && (
+          <p>
+            Fetch, Pull, and Push require a managed remote. Add one in Settings.
+          </p>
+        )}
+        {remoteEnabled && !repo && (
+          <p>
+            Repository status is unavailable. Refresh it before synchronizing.
+          </p>
+        )}
+        {remoteEnabled && repo?.ahead === 0 && (
+          <p>There are no local commits waiting to be pushed.</p>
+        )}
         <p>
           <strong>Fetch</strong> updates remote information.{" "}
           <strong>Pull</strong> fast-forwards local files to the remote branch.{" "}

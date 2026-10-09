@@ -37,6 +37,8 @@
 }
 .stack-name-link {
   overflow-wrap: anywhere;
+  white-space: normal;
+  min-width: 0;
 }
 .badge.success {
   color: var(--success);

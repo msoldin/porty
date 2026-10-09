@@ -40,6 +40,21 @@ The SDK uses a new normalized Compose digest. A stack deployed before this migra
 
 Tests that open an HTTP listener, run processes, or use a browser may require permission in restricted sandboxes. Never commit generated Playwright reports, traces, or screenshots.
 
+## UI overhaul verification
+
+The UI browser suite covers reviewed deployment, stale review rejection, Save/Discard/Cancel, operation streaming, partial batch acceptance, keyboard focus, long names, and 1536/390/320 px layouts. It also captures both themes for inventory, stack detail, editor, repository, settings, operation details, registration/setup, and loading/error/empty states:
+
+```sh
+rtk bun run --cwd web build
+rtk go build -o /tmp/porty-e2e ./cmd/porty
+cd web
+rtk env PORTY_E2E_BINARY=/tmp/porty-e2e bun run test:e2e -- --output=/tmp/porty-ui-review
+```
+
+Screenshots are under the chosen output directory, grouped by test and device. Authentication, local repository setup, file writes, commits, and password-change sign-out use the real server in the critical/setup journeys. Runtime scenarios use deterministic browser fixtures. Actual revision validation and continuous coordinator ownership are covered by the Go deployment-review tests; browser fixtures alone do not establish backend safety.
+
+`GET /api/v1/stacks/{id}/deployment-review` returns an opaque process-local revision. The UI sends it as a quoted `If-Match` value on the existing deploy POST. A changed source returns 412 and requires fresh confirmation. Legacy deploy requests without that header retain their existing behavior. Revisions expire on process restart and do not promise an immutable snapshot of direct host edits or live bind mounts.
+
 ## Shared alerts
 
 `internal/alert` owns the alert lifecycle contract. SQLite persists deduplication occurrences, revisions, episodes, and actor history. Operation completion and its alert changes commit together; WebSocket `alerts` events publish only after commit. HTTP reads are authoritative after reconnect. A stale recovery cannot resolve a newer failure, and stale user mutations return 409.

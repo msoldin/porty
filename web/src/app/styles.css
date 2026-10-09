@@ -31,16 +31,16 @@ button {
   gap: 9px;
   min-height: 40px;
   padding: 8px 15px;
-  border: 1px solid light-dark(#cdd6e5, #46536c);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   background: var(--surface);
-  color: light-dark(#20314e, #e0e9fb);
+  color: var(--text);
   cursor: pointer;
   font-weight: 500;
 }
 button:hover:not(:disabled) {
   background: light-dark(#f1f5ff, #263a5d);
-  border-color: light-dark(#a0b7ed, #7094d8);
+  border-color: var(--blue);
 }
 button:disabled {
   opacity: 0.45;
@@ -120,16 +120,16 @@ h4 {
 input,
 select,
 textarea {
-  border: 1px solid light-dark(#d7deea, #46536c);
+  border: 1px solid var(--control-border);
   border-radius: 5px;
   background: var(--surface);
   padding: 10px 12px;
-  color: light-dark(#15203b, #e4ebfa);
+  color: var(--text);
   min-width: 0;
 }
 input::placeholder,
 textarea::placeholder {
-  color: light-dark(#7b8aa1, #9facbf);
+  color: var(--muted);
 }
 label {
   display: flex;
@@ -1488,8 +1488,8 @@ td > a {
 .alert-count {
   margin-left: auto;
   border-radius: 1rem;
-  background: var(--danger, #a52b35);
-  color: white;
+  background: var(--danger-soft);
+  color: var(--danger);
   padding: 0.1rem 0.5rem;
   font-size: 0.75rem;
 }

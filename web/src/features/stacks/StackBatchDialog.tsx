@@ -38,7 +38,7 @@ export function StackBatchDialog({
       )}
       {model.error && <Notice>{model.error}</Notice>}
       <div class="dialog-actions">
-        <button disabled={model.pending} onClick={model.cancel}>
+        <button disabled={model.submitting} onClick={model.cancel}>
           Cancel
         </button>
         <button

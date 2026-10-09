@@ -9,6 +9,10 @@
 .editor-layout > * {
   min-width: 0;
 }
+.editor-layout .pane-title {
+  height: auto;
+  min-height: 43px;
+}
 .editor-pane .pane-title,
 .diff-pane .pane-title {
   flex-wrap: wrap;

@@ -31,3 +31,23 @@ it("explains fast-forward pull and confirms repository-wide publication", async 
   fireEvent.click(screen.getByRole("button", { name: "Push commits" }));
   await waitFor(() => expect(runRepositoryAction).toHaveBeenCalledWith("push"));
 });
+it("explains why remote actions are unavailable", () => {
+  render(
+    <RepositoryPage
+      repo={{
+        configured: true,
+        branch: "main",
+        ahead: 0,
+        behind: 0,
+        dirty: false,
+        paths: [],
+      }}
+      commits={[]}
+      remoteEnabled={false}
+      dirty={false}
+      onAccepted={vi.fn()}
+    />,
+  );
+  expect(screen.getByText(/require a managed remote/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Fetch" })).toBeDisabled();
+});

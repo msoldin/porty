@@ -185,6 +185,7 @@ export function useStackBatchActions(options: Options) {
     selectedIds,
     setSelectedIds,
     pending,
+    submitting: pending && !!captured.current,
     error,
     outcomes,
     review,

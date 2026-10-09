@@ -55,7 +55,9 @@ async function register(page: Page) {
   );
   await page.getByLabel("Initial branch").fill("stacks");
   await page.getByRole("button", { name: "Create repository" }).click();
-  await expect(page.getByRole("heading", { name: "Stacks" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Stacks", level: 1 }),
+  ).toBeVisible();
 }
 
 test("appearance follows the operating system and a saved override", async ({
@@ -63,7 +65,9 @@ test("appearance follows the operating system and a saved override", async ({
 }, testInfo) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto(baseURL);
-  await expect(page.getByRole("heading", { name: "Porty" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Set up Porty" }),
+  ).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -251,6 +255,15 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
       },
     });
   });
+  await page.route("**/api/v1/stacks/*/deployment-review", (route) =>
+    route.fulfill({
+      json: {
+        stackId: route.request().url().split("/").at(-2),
+        sourceRevision: "a".repeat(64),
+        uncommittedChanges: false,
+      },
+    }),
+  );
   await register(page);
   await page.getByRole("button", { name: "New stack" }).click();
   await page.getByLabel("Stack name").fill("paperless");
@@ -297,6 +310,9 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     "**/api/v1/stacks/*/containers/full-id-b/actions/restart",
   );
   await page.getByRole("button", { name: "Restart", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Restart container", exact: true })
+    .click();
   await singleRestart;
   await expect(page.getByLabel("Operation details")).toBeVisible();
   await page.getByRole("button", { name: "Close operation" }).click();
@@ -354,12 +370,17 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await page.getByRole("checkbox", { name: "Select web-1" }).check();
   await page.getByRole("checkbox", { name: "Select web-2" }).check();
   await page.getByRole("button", { name: "Restart selected" }).click();
+  await page
+    .getByRole("button", { name: "Restart containers", exact: true })
+    .click();
   expect((await restartRequest).postDataJSON()).toEqual({
     containerIds: ["full-id-a", "full-id-b"],
   });
   await expect(page.getByLabel("Operation details")).toBeVisible();
   await page.getByRole("button", { name: "Close operation" }).click();
-  await page.getByRole("checkbox", { name: "Select web-1" }).uncheck();
+  await expect(
+    page.getByRole("checkbox", { name: "Select web-1" }),
+  ).not.toBeChecked();
   const containerRequest = page.waitForRequest(
     "**/api/v1/stacks/*/containers/actions/stop",
   );
@@ -370,8 +391,10 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     fullPage: true,
   });
   await page.getByRole("menu").press("Escape");
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Stop selected" }).click();
+  await page
+    .getByRole("button", { name: "Stop containers", exact: true })
+    .click();
   expect((await containerRequest).postDataJSON()).toEqual({
     containerIds: ["full-id-b"],
   });
@@ -403,19 +426,24 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.getByLabel("Commit message").fill("Add paperless stack");
   await page.getByRole("button", { name: "Commit stack" }).click();
-  await expect(page.getByRole("status")).toContainText("Committed paperless");
-  await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("menuitem", { name: "Deploy" }).click();
+  await expect(page.getByRole("status")).toContainText("Committed stack files");
+  await page
+    .getByRole("button", { name: "Deploy stack…", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Deploy stack", exact: true })
+    .click();
   await expect(page.getByLabel("Operation details")).toBeVisible();
   await expect(page.getByLabel("Operation details")).toContainText(
-    /succeeded|running/,
+    /Succeeded|Running/,
   );
   await page.getByRole("button", { name: "Close operation" }).click();
-  await page.locator("main").getByRole("link", { name: "Overview" }).click();
+  await page.locator("main").getByRole("link", { name: "Stacks" }).click();
   await page.getByRole("button", { name: "New stack" }).click();
   await page.getByLabel("Stack name").fill("monitoring");
   await page.getByRole("button", { name: "Create stack", exact: true }).click();
-  await page.locator("main").getByRole("link", { name: "Overview" }).click();
+  await page.locator("main").getByRole("link", { name: "Stacks" }).click();
   stoppedStackId = (await page
     .getByRole("region", { name: "Stacks table" })
     .getByRole("link", { name: "monitoring" })
@@ -452,7 +480,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   await expect(page.getByText("full-id-a")).toBeVisible();
   await page
     .getByRole("navigation", { name: "Breadcrumb" })
-    .getByRole("link", { name: "Overview" })
+    .getByRole("link", { name: "Stacks" })
     .click();
   await allServices
     .getByRole("checkbox", { name: "Select paperless web-1" })
@@ -469,6 +497,9 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     ),
   ]);
   await page.getByRole("button", { name: "Restart selected" }).click();
+  await page
+    .getByRole("button", { name: "Restart containers", exact: true })
+    .click();
   const overviewRequests = await overviewRestart;
   expect(
     overviewRequests.map((request) => request.postDataJSON()),
@@ -483,7 +514,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     stackTable
       .getByRole("link", { name: "monitoring" })
       .locator("xpath=ancestor::tr"),
-  ).toContainText("STOPPED");
+  ).toContainText("Stopped");
   await stackTable.getByRole("checkbox", { name: "Select paperless" }).check();
   await stackTable.getByRole("checkbox", { name: "Select monitoring" }).check();
   await page.getByRole("button", { name: "Actions" }).click();
@@ -496,6 +527,9 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     "true",
   );
   await page.getByRole("menuitem", { name: "Deploy" }).click();
+  await page
+    .getByRole("button", { name: "Deploy stacks", exact: true })
+    .click();
   await expect(page.locator(".dashboard > .selection-feedback")).toContainText(
     "paperless: accepted",
   );
@@ -520,6 +554,9 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     path: testInfo.outputPath("stacks-selected-light-320.png"),
     fullPage: true,
   });
+  await page
+    .getByRole("region", { name: "Stacks table" })
+    .scrollIntoViewIfNeeded();
   await page
     .getByRole("region", { name: "Stacks table" })
     .evaluate((element) => {
@@ -570,6 +607,8 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
   ).toBeInViewport();
   await page.getByRole("menu").press("Escape");
   await page.setViewportSize(initialViewport);
+  if (initialViewport.width < 768)
+    await page.getByRole("button", { name: "Navigation", exact: true }).click();
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("button", { name: "Add remote" })).toBeVisible();
   await page.getByLabel("Theme").selectOption("dark");
@@ -584,9 +623,11 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     path: testInfo.outputPath("dark-settings.png"),
     fullPage: false,
   });
+  if (initialViewport.width < 768)
+    await page.getByRole("button", { name: "Navigation", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("link", { name: "Overview" })
+    .getByRole("link", { name: "Stacks" })
     .click();
   await page
     .getByRole("region", { name: "Stacks table" })
@@ -635,7 +676,7 @@ test("administrator creates, edits, commits, and deploys a stack", async ({
     await page
       .locator(".cm-editor")
       .evaluate((element) => getComputedStyle(element).backgroundColor),
-  ).toBe("rgb(25, 34, 53)");
+  ).toBe("rgb(33, 49, 66)");
   await page.screenshot({
     path: testInfo.outputPath("dark-editor.png"),
     fullPage: false,
