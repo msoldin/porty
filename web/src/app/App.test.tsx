@@ -331,6 +331,12 @@ describe("Porty administration interface", () => {
     expect(
       await screen.findByRole("link", { name: "paperless" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Fetch" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("link", { name: "Repository", exact: true }),
+    );
     expect(screen.getByRole("button", { name: "Fetch" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Pull" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Push" })).toBeDisabled();
@@ -342,6 +348,9 @@ describe("Porty administration interface", () => {
     expect(
       await screen.findByRole("link", { name: "paperless" }),
     ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("link", { name: "Repository", exact: true }),
+    );
     expect(screen.getByRole("button", { name: "Pull" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("link", { name: "Settings" }));
@@ -350,8 +359,13 @@ describe("Porty administration interface", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Pull" })).toBeDisabled(),
+      expect(requestsFor("/repository/remote")).toHaveLength(1),
     );
+    await screen.findByRole("button", { name: "Add remote" });
+    fireEvent.click(
+      screen.getByRole("link", { name: "Repository", exact: true }),
+    );
+    expect(screen.getByRole("button", { name: "Pull" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Fetch" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Push" })).toBeDisabled();
     expect(requestsFor("/repository/remote")).toHaveLength(1);
@@ -466,6 +480,9 @@ describe("Porty administration interface", () => {
     await edit(await openEditor());
     vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel", exact: true }),
+    );
     expect(
       screen.getByRole("textbox", { name: "File contents" }),
     ).toHaveTextContent("nginx");
@@ -477,9 +494,17 @@ describe("Porty administration interface", () => {
   });
   it("blocks repository actions and browser unload while the editor is unsaved", async () => {
     await edit(await openEditor());
-    fireEvent.click(screen.getByRole("button", { name: "Fetch" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Save or discard editor changes",
+    expect(
+      screen.queryByRole("button", { name: "Fetch" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("link", { name: "Repository", exact: true }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Discard unsaved edits?" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel", exact: true }),
     );
     expect(
       writes.filter((value) => value.path === "/repository/actions/fetch"),
@@ -507,6 +532,9 @@ describe("Porty administration interface", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.click(
       within(screen.getByRole("main")).getByRole("link", { name: "Stacks" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel", exact: true }),
     );
     expect(
       screen.getByRole("textbox", { name: "File contents" }),

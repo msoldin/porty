@@ -6,14 +6,13 @@ import { useHashRoute } from "./useHashRoute";
 import { parseStackRoute } from "./routes";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { WorkspaceShell } from "./WorkspaceShell";
-import { RepositoryHeader } from "../features/repository/RepositoryHeader";
-import { RepositoryHistory } from "../features/repository/RepositoryHistory";
+import { RepositoryPage } from "../features/repository/RepositoryPage";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Audit } from "../features/audit/Audit";
 import { message } from "../lib/http";
 import type { Session } from "../features/auth/types";
 import type { RepositorySetupStatus } from "../features/repository/types";
 import type { Operation } from "../features/operations/types";
-import { runRepositoryAction } from "../features/repository/api";
 import { signOut } from "../features/auth/api";
 import { Dashboard } from "../features/stacks/Dashboard";
 import { StackDetail } from "../features/stacks/StackDetail";
@@ -34,7 +33,15 @@ export function Workspace({
   onRepositoryChange: (status: RepositorySetupStatus) => void;
   logout: () => void;
 }) {
-  const { route, navigate, dirty, setDirty } = useHashRoute();
+  const {
+    route,
+    navigate,
+    dirty,
+    setDirty,
+    pendingRoute,
+    confirmNavigation,
+    cancelNavigation,
+  } = useHashRoute();
   const {
     stacks,
     repo,
@@ -54,7 +61,8 @@ export function Workspace({
   const operationRequest = useRef(0);
   const [linkedOperation, setLinkedOperation] = useState<Operation>();
   const [selectedOperation, setSelectedOperation] = useState<string>();
-  const [busy, setBusy] = useState(false);
+  const [signOutPending, setSignOutPending] = useState(false);
+  const [signOutBusy, setSignOutBusy] = useState(false);
   const remoteEnabled = Boolean(repositoryStatus.managedRemote);
   async function openOperation(id: string) {
     const request = ++operationRequest.current;
@@ -74,25 +82,6 @@ export function Workspace({
     addOperation(operation);
     setSelectedOperation(operation.id);
   }
-  async function repoAction(action: string) {
-    if (dirty) {
-      setError(
-        "Save or discard editor changes before changing the repository.",
-      );
-      return;
-    }
-    if (action === "push" && !confirm("Push committed changes to origin?"))
-      return;
-    setBusy(true);
-    setError("");
-    try {
-      onAction(await runRepositoryAction(action));
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setBusy(false);
-    }
-  }
   const stackRoute = parseStackRoute(route);
   const selectedStack = stacks.find(
     (stack) => stack.id === stackRoute?.stackId,
@@ -102,12 +91,14 @@ export function Workspace({
     (linkedOperation?.id === selectedOperation ? linkedOperation : undefined);
   const configuredRepo = repo?.configured ? repo : null;
   async function signOutAction(): Promise<void> {
-    if (dirty && !confirm("Discard unsaved changes and sign out?")) return;
+    setSignOutBusy(true);
     try {
       await signOut();
       logout();
     } catch (error) {
       setError(message(error));
+    } finally {
+      setSignOutBusy(false);
     }
   }
   return (
@@ -119,7 +110,10 @@ export function Workspace({
       operationOpen={Boolean(operation)}
       connection={stream.connection}
       navigate={navigate}
-      onSignOut={signOutAction}
+      onSignOut={() => {
+        if (dirty) setSignOutPending(true);
+        else void signOutAction();
+      }}
       drawer={
         operation && (
           <OperationDrawer
@@ -132,13 +126,45 @@ export function Workspace({
         )
       }
     >
-      <RepositoryHeader
-        repo={repo}
-        commits={commits}
-        remoteEnabled={remoteEnabled}
-        busy={busy}
-        onAction={repoAction}
+      <ConfirmDialog
+        open={!!pendingRoute}
+        title="Discard unsaved edits?"
+        description="Your unsaved editor changes will be lost when you leave this stack. Saved files are retained."
+        confirmLabel="Discard and leave"
+        destructive
+        onCancel={cancelNavigation}
+        onConfirm={confirmNavigation}
       />
+      <ConfirmDialog
+        open={signOutPending}
+        title="Discard edits and sign out?"
+        description="Unsaved editor changes will be lost. Saved files are retained."
+        confirmLabel="Discard and sign out"
+        destructive
+        busy={signOutBusy}
+        error={error}
+        onCancel={() => setSignOutPending(false)}
+        onConfirm={() => void signOutAction()}
+      />
+      {route === "/" && (
+        <div class="repository-summary">
+          <a
+            href="#/repository"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("/repository");
+            }}
+          >
+            Repository: {repo?.branch || "Unavailable"}
+          </a>
+          <span>
+            {repo
+              ? `${repo.ahead} ahead · ${repo.behind} behind`
+              : "Status unavailable"}
+          </span>
+          <span>Last fetched: unavailable</span>
+        </div>
+      )}
       {error && (
         <Notice>
           {error} <button onClick={refresh}>Retry</button>
@@ -215,7 +241,13 @@ export function Workspace({
             onOperationsAccepted={addOperations}
           />
         ) : route === "/repository" ? (
-          <RepositoryHistory repo={configuredRepo} commits={commits} />
+          <RepositoryPage
+            repo={configuredRepo}
+            commits={commits}
+            remoteEnabled={remoteEnabled}
+            dirty={dirty}
+            onAccepted={onAction}
+          />
         ) : route === "/operations" ? (
           <Operations
             operations={operations}

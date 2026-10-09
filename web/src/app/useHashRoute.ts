@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 export function useHashRoute() {
   const [route, setRoute] = useState(location.hash.slice(1) || "/");
   const [dirty, setDirty] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<string>();
+  const pending = useRef<string>();
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const routeRef = useRef(route);
@@ -11,8 +13,10 @@ export function useHashRoute() {
     function hashChanged() {
       const next = location.hash.slice(1) || "/";
       if (next === routeRef.current) return;
-      if (dirtyRef.current && !confirm("Discard unsaved changes?")) {
+      if (dirtyRef.current) {
         history.replaceState(null, "", `#${routeRef.current}`);
+        pending.current = next;
+        setPendingRoute(next);
         return;
       }
       setDirty(false);
@@ -32,11 +36,36 @@ export function useHashRoute() {
     };
   }, []);
   function navigate(path: string) {
-    if (dirty && !confirm("Discard unsaved changes?")) return;
+    if (path === routeRef.current) return;
+    if (dirtyRef.current) {
+      pending.current = path;
+      setPendingRoute(path);
+      return;
+    }
     setDirty(false);
     setRoute(path);
     routeRef.current = path;
     location.hash = path;
   }
-  return { route, navigate, dirty, setDirty };
+  function cancelNavigation() {
+    pending.current = undefined;
+    setPendingRoute(undefined);
+  }
+  function confirmNavigation() {
+    const next = pending.current;
+    if (!next) return;
+    dirtyRef.current = false;
+    setDirty(false);
+    cancelNavigation();
+    navigate(next);
+  }
+  return {
+    route,
+    navigate,
+    dirty,
+    setDirty,
+    pendingRoute,
+    confirmNavigation,
+    cancelNavigation,
+  };
 }

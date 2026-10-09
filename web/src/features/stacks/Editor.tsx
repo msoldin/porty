@@ -1,9 +1,11 @@
-import { useMemo } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type { Stack } from "./types";
 import type { StackEditor } from "./useStackEditor";
 import { CodeEditor } from "./CodeEditor";
 import { Icon } from "../../components/Icon";
 import { Empty, Notice } from "../../components/Feedback";
+import { Dialog } from "../../components/Dialog";
+import "./editor.css";
 
 export function Editor({ stack, model }: { stack: Stack; model: StackEditor }) {
   const {
@@ -22,29 +24,104 @@ export function Editor({ stack, model }: { stack: Stack; model: StackEditor }) {
   } = model;
   // Preserve the buffer across tab visits without recreating CodeMirror on every keystroke.
   const initial = useMemo(() => content, [model.editorKey]);
+  const [intent, setIntent] = useState<
+    "open" | "create" | "directory" | "move" | "delete"
+  >();
+  const [path, setPath] = useState("");
   async function open(path: string) {
     if (dirty) {
-      if (!confirm("Discard unsaved changes?")) return;
-      model.discard();
+      setPath(path);
+      setIntent("open");
+      return;
     }
     await model.open(path);
   }
   async function mutateFile(kind: "create" | "directory" | "move" | "delete") {
-    const path =
-      kind === "delete"
-        ? file?.path
-        : prompt(kind === "move" ? "New relative path" : "Relative path");
-    if (!path) return;
-    if (kind === "delete" && !confirm(`Delete ${path}?`)) return;
-    if (dirty) {
-      if (!confirm("Discard unsaved changes?")) return;
-      model.discard();
-    }
-    await model.mutateFile(kind, path);
+    setPath(kind === "move" || kind === "delete" ? file?.path || "" : "");
+    setIntent(kind);
+  }
+  const intentLabel =
+    intent === "open"
+      ? "Open file"
+      : intent === "directory"
+        ? "Create directory"
+        : intent === "move"
+          ? "Move file"
+          : intent === "delete"
+            ? "Delete file"
+            : "Create file";
+  async function applyIntent() {
+    if (!intent || !path || busy) return;
+    if (dirty) model.discard();
+    const success =
+      intent === "open"
+        ? await model.open(path)
+        : await model.mutateFile(intent, path);
+    if (success) setIntent(undefined);
   }
   return (
     <>
-      {error && (
+      <Dialog
+        open={!!intent}
+        title={intentLabel}
+        onClose={() => {
+          if (!busy) setIntent(undefined);
+        }}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void applyIntent();
+          }}
+        >
+          {intent === "open" || intent === "delete" ? (
+            <p>
+              {intentLabel}: <strong>{path}</strong>
+            </p>
+          ) : (
+            <label>
+              Relative path
+              <input
+                aria-label="Relative path"
+                value={path}
+                required
+                onInput={(event) => setPath(event.currentTarget.value)}
+                disabled={busy}
+              />
+            </label>
+          )}
+          {dirty && (
+            <Notice>
+              Your unsaved edits will be discarded if you continue.
+            </Notice>
+          )}
+          {intent === "delete" && (
+            <p>
+              This removes the file from the working tree. Existing Git history
+              is retained.
+            </p>
+          )}
+          {error && <Notice>{error}</Notice>}
+          <div class="dialog-actions">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setIntent(undefined)}
+            >
+              Cancel
+            </button>
+            <button
+              class={intent === "delete" ? "danger" : "primary"}
+              disabled={busy || !path}
+            >
+              {dirty
+                ? `Discard edits and ${intentLabel.toLowerCase()}`
+                : intentLabel}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+      {error && !intent && (
         <Notice>
           {error}{" "}
           {file && (

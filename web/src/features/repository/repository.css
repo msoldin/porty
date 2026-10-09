@@ -1,0 +1,54 @@
+.repository-page {
+  padding: 1.5rem;
+}
+.repository-page .repository-header {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  height: auto;
+  flex-wrap: wrap;
+}
+.repository-explanation {
+  color: var(--muted);
+  max-width: 65rem;
+  margin: 1.5rem 0;
+  line-height: 1.7;
+}
+.repository-summary {
+  margin: 1.5rem 2rem 0;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.repository-page .repository-header strong,
+.repository-page .repository-header .last-fetch {
+  display: block;
+}
+.repository-page .repository-actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+@media (max-width: 767px) {
+  .repository-page {
+    padding: 1rem;
+  }
+  .repository-summary {
+    margin: 1rem;
+  }
+  .repository-page .repository-header {
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .repository-page .repository-actions {
+    width: 100%;
+  }
+  .repository-page .repository-actions button {
+    flex: 1;
+    min-height: 44px;
+  }
+}

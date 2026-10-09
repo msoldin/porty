@@ -1,0 +1,63 @@
+.editor-layout {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.7fr) minmax(20rem, 2fr) minmax(
+      17rem,
+      1.2fr
+    );
+  background: var(--surface);
+}
+.editor-layout > * {
+  min-width: 0;
+}
+.editor-pane .pane-title,
+.diff-pane .pane-title {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.editor-status {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.commit-form {
+  border-top: 1px solid var(--border);
+}
+.diff-output {
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--mono);
+}
+.file-tree {
+  background: var(--surface-soft);
+}
+.app-dialog input {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+@media (max-width: 1100px) {
+  .editor-layout {
+    grid-template-columns: minmax(10rem, 0.5fr) minmax(0, 2fr);
+  }
+  .diff-pane {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 767px) {
+  .editor-layout {
+    display: flex;
+    flex-direction: column;
+  }
+  .editor-layout .file-tree {
+    display: block;
+    max-height: 14rem;
+    overflow: auto;
+  }
+  .editor-layout .editor-pane {
+    min-height: 24rem;
+  }
+  .editor-layout .diff-pane {
+    display: block;
+  }
+  .editor-layout button {
+    min-height: 44px;
+  }
+}
