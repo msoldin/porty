@@ -56,6 +56,7 @@ function DeviceSelector({
       <span>{label}</span>
       <select
         aria-label={label}
+        disabled={devices.length === 0}
         title={devices.find((device) => device.id === value)?.name}
         value={value ?? ""}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -203,7 +204,11 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           </p>
         </div>
         <div class="dashboard-toolbar">
-          <div class="monitoring-freshness" data-stale={stale}>
+          <div
+            class="monitoring-freshness"
+            data-stale={stale}
+            data-active={!disabled && !loading && !!state}
+          >
             <strong>
               {disabled
                 ? "Monitoring disabled"
@@ -366,10 +371,9 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             />
           }
           value={
-            <>
-              {value(disk, "disk_read_rate", "bytes_per_second")}
-              <small> read</small>
-            </>
+            value(disk, "disk_read_rate", "bytes_per_second") === "—"
+              ? "—"
+              : value(disk, "disk_read_rate", "bytes_per_second") + " read"
           }
           source={
             value(disk, "disk_write_rate", "bytes_per_second") +
@@ -603,8 +607,8 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         />
       </div>
       <div class="dashboard-time-note">
-        <span>Charts: last 5 minutes · focus or tap to inspect</span>
-        <span>Now</span>
+        <span>Open a tile for details</span>
+        <span>Charts show the last 5 minutes</span>
       </div>
     </section>
   );

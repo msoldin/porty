@@ -116,6 +116,22 @@ beforeEach(() => {
   vi.mocked(useMonitoring).mockReturnValue(fixture());
 });
 afterEach(() => vi.restoreAllMocks());
+it("disables device choices when no matching hardware is available", () => {
+  const value = fixture();
+  value.state.inventory.devices = value.state.inventory.devices.filter(
+    (device) => device.kind !== "sensor" && device.kind !== "gpu",
+  );
+  vi.mocked(useMonitoring).mockReturnValue(value);
+  render(<Dashboard onUnauthorized={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
+  expect(
+    screen.getByRole("combobox", { name: "Temperature sensor" }),
+  ).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "GPU device" })).toBeDisabled();
+  expect(
+    screen.getByRole("combobox", { name: "Network interface" }),
+  ).toBeEnabled();
+});
 it("keeps general monitoring problems in customization without exposing internal source names", () => {
   const value = fixture();
   value.state.coverage = [
@@ -204,14 +220,12 @@ it("keeps customization in one dialog and gives each selected disk its own gauge
   expect(
     screen.getByRole("meter", { name: "/data disk fullness" }),
   ).toHaveAttribute("aria-valuenow", "10");
-  expect(
-    within(screen.getByRole("article", { name: "Download" })).getByText(
-      "4 MB/s",
-    ),
-  ).toBeVisible();
-  expect(
-    within(screen.getByRole("article", { name: "Upload" })).getByText("3 MB/s"),
-  ).toBeVisible();
+  expect(screen.getByRole("article", { name: "Download" })).toHaveTextContent(
+    "4 MB/s",
+  );
+  expect(screen.getByRole("article", { name: "Upload" })).toHaveTextContent(
+    "3 MB/s",
+  );
 });
 it("opens tile details without leaving the dashboard and retains CPU history there", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
@@ -286,14 +300,12 @@ it("uses the same selected interface for upload and download", () => {
     { target: { value: "eth1" } },
   );
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  expect(
-    within(screen.getByRole("article", { name: "Download" })).getByText(
-      "4 MB/s",
-    ),
-  ).toBeVisible();
-  expect(
-    within(screen.getByRole("article", { name: "Upload" })).getByText("3 MB/s"),
-  ).toBeVisible();
+  expect(screen.getByRole("article", { name: "Download" })).toHaveTextContent(
+    "4 MB/s",
+  );
+  expect(screen.getByRole("article", { name: "Upload" })).toHaveTextContent(
+    "3 MB/s",
+  );
 });
 it("does not hide a full filesystem in an average", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
@@ -364,7 +376,7 @@ it("keeps selections functional when browser storage is denied", () => {
     },
   );
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  expect(
-    within(screen.getByRole("article", { name: "Upload" })).getByText("3 MB/s"),
-  ).toBeVisible();
+  expect(screen.getByRole("article", { name: "Upload" })).toHaveTextContent(
+    "3 MB/s",
+  );
 });

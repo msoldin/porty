@@ -367,6 +367,10 @@ test("keeps the compact grid and details readable across themes and screen sizes
   expect(left!.y).toBe(right!.y);
   expect(right!.x).toBeGreaterThan(left!.x);
   expect(left!.height).toBeLessThan(170);
+  const heading = await page.locator(".host-dashboard-heading").boundingBox();
+  const grid = await page.locator(".host-metric-grid").boundingBox();
+  expect(heading!.x).toBe(grid!.x);
+  expect(heading!.width).toBe(grid!.width);
   await expect(page.getByRole("combobox")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
     await page.evaluate(
@@ -522,6 +526,11 @@ test("explains unavailable temperature inside its details without a technical me
   );
   await expect(page.getByText("No device detected")).toHaveCount(0);
   const temperature = page.getByRole("article", { name: "Temperature" });
+  const temperatureBox = await temperature.boundingBox();
+  const ioBox = await page
+    .getByRole("article", { name: "Disk I/O" })
+    .boundingBox();
+  expect(temperatureBox!.height).toBe(ioBox!.height);
   await expect(
     temperature.getByText("Unavailable", { exact: true }),
   ).toBeVisible();
@@ -537,6 +546,7 @@ test("explains unavailable temperature inside its details without a technical me
     dialog.getByText("No temperature sensors are exposed to this environment."),
   ).toBeVisible();
   await expect(dialog).toBeInViewport();
+  await expect(dialog.getByText("—", { exact: true })).toHaveCount(0);
   await page.screenshot({
     path: info.outputPath("temperature-explanation.png"),
     fullPage: true,

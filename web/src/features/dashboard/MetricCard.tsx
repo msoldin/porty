@@ -5,6 +5,18 @@ import type { State } from "./types";
 import { ReadingStatus } from "./ReadingStatus";
 import { MetricGauge } from "./MetricGauge";
 
+function MetricValue({ value }: { value: ComponentChildren }) {
+  const parts =
+    typeof value === "string" ? value.match(/^(-?[\d.,]+)\s+(.+)$/) : null;
+  return parts ? (
+    <>
+      {parts[1]} <small>{parts[2]}</small>
+    </>
+  ) : (
+    <>{value}</>
+  );
+}
+
 export function MetricCard({
   label,
   value,
@@ -60,7 +72,9 @@ export function MetricCard({
           {label}
         </h2>
         {!gauge && value !== undefined && (
-          <div class="host-metric-value">{value}</div>
+          <div class="host-metric-value">
+            <MetricValue value={value} />
+          </div>
         )}
         {source && (
           <div
@@ -76,7 +90,11 @@ export function MetricCard({
       </div>
       <Dialog open={open} title={detailLabel} onClose={() => setOpen(false)}>
         <div class="host-metric-details">
-          <div class="metric-detail-current">{value}</div>
+          {value != null && value !== "—" && (
+            <div class="metric-detail-current">
+              <MetricValue value={value} />
+            </div>
+          )}
           {source && <p>{source}</p>}
           <ReadingStatus state={state} lastSuccessAt={lastSuccessAt} />
           {note && <p class="muted">{note}</p>}
