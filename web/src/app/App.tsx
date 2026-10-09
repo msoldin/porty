@@ -5,7 +5,6 @@ import type { Session } from "../features/auth/types";
 import { getRepositorySetupStatus } from "../features/repository/api";
 import type { RepositorySetupStatus } from "../features/repository/types";
 import { Auth } from "../features/auth/Auth";
-import { RepositorySetup } from "../features/repository/RepositorySetup";
 import { Notice } from "../components/Feedback";
 import { Workspace } from "./Workspace";
 
@@ -16,6 +15,8 @@ export function App() {
   const [repositoryStatus, setRepositoryStatus] =
     useState<RepositorySetupStatus | null>(null);
   const [repositoryLoading, setRepositoryLoading] = useState(false);
+  const [repositoryError, setRepositoryError] = useState("");
+  const [repositoryAttempt, setRepositoryAttempt] = useState(0);
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
@@ -57,12 +58,17 @@ export function App() {
     }
     let active = true;
     setRepositoryLoading(true);
+    setRepositoryError("");
     getRepositorySetupStatus()
       .then((status) => {
         if (active) setRepositoryStatus(status);
       })
       .catch((failure) => {
-        if (active) setError(message(failure));
+        if (!active) return;
+        if (failure instanceof APIError && failure.status === 401) {
+          setCSRF("");
+          setSession(null);
+        } else setRepositoryError(message(failure));
       })
       .finally(() => {
         if (active) setRepositoryLoading(false);
@@ -70,7 +76,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [session, repositoryAttempt]);
   if (loading)
     return (
       <main class="auth" role="status">
@@ -85,25 +91,15 @@ export function App() {
         <button onClick={() => location.reload()}>Retry</button>
       </main>
     );
-  if (session) {
-    if (repositoryLoading || !repositoryStatus)
-      return (
-        <main class="auth" role="status">
-          Loading repository setup…
-        </main>
-      );
-    if (repositoryStatus.state !== "ready")
-      return (
-        <RepositorySetup
-          status={repositoryStatus}
-          onReady={setRepositoryStatus}
-        />
-      );
-  }
   return session ? (
     <Workspace
       session={session}
-      repositoryStatus={repositoryStatus!}
+      repositoryStatus={repositoryStatus}
+      repositoryLoading={
+        repositoryLoading || (!repositoryStatus && !repositoryError)
+      }
+      repositoryError={repositoryError}
+      retryRepository={() => setRepositoryAttempt((value) => value + 1)}
       onRepositoryChange={setRepositoryStatus}
       logout={() => {
         setCSRF("");

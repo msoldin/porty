@@ -19,3 +19,7 @@ export function parseStackRoute(
     return null;
   }
 }
+
+export function requiresRepository(route: string): boolean {
+  return !["/", "/settings", "/alerts"].includes(route);
+}

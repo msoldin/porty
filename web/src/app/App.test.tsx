@@ -7,6 +7,7 @@ import {
 } from "@testing-library/preact";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { snapshotFixture } from "../features/dashboard/testFixtures";
 import { EnvironmentRow } from "../features/stacks/EnvironmentRow";
 
 const stack = {
@@ -37,6 +38,7 @@ let environmentReadResponse: (() => Promise<Response>) | undefined;
 let environmentUpdateFails = false;
 let operationReadResponse: (() => Promise<Response>) | undefined;
 let auditFails = false;
+let repositorySetupResponse: (() => Promise<Response>) | undefined;
 beforeEach(() => {
   alertRecord = {
     id: "alert1",
@@ -53,7 +55,7 @@ beforeEach(() => {
   };
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
-  location.hash = "";
+  location.hash = "#/stacks";
   writes = [];
   stale = false;
   delaySave = false;
@@ -81,11 +83,16 @@ beforeEach(() => {
   environmentUpdateFails = false;
   operationReadResponse = undefined;
   auditFails = false;
+  repositorySetupResponse = undefined;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       const path = String(url).replace("/api/v1", "");
       const method = init?.method || "GET";
+      if (path.startsWith("/monitoring"))
+        return Response.json(snapshotFixture());
+      if (path === "/repository/setup/status" && repositorySetupResponse)
+        return repositorySetupResponse();
       if (method !== "GET") writes.push({ path, init });
       if (path === "/session" && method === "GET" && !authenticated)
         return Response.json(
@@ -396,7 +403,7 @@ describe("Porty administration interface", () => {
       await screen.findByRole("button", { name: "Create local repository" }),
     ).toBeInTheDocument();
     expect(requestsFor("/stacks")).toHaveLength(0);
-    expect(sockets).toBe(0);
+    expect(sockets).toBe(1);
   });
 
   it.each([
@@ -423,7 +430,7 @@ describe("Porty administration interface", () => {
       ).toBeInTheDocument();
       expect(requestsFor("/repository/setup/status")).toHaveLength(1);
       expect(requestsFor("/stacks")).toHaveLength(0);
-      expect(sockets).toBe(0);
+      expect(sockets).toBe(1);
     },
   );
   it("keeps repository actions disabled when status is unconfigured", async () => {
@@ -853,3 +860,63 @@ it("shows failed audit loading instead of an empty log", async () => {
     screen.queryByText("No audit events recorded."),
   ).not.toBeInTheDocument();
 });
+
+it("opens host metrics before repository setup", async () => {
+  location.hash = "#/";
+  repositoryReady = false;
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "Dashboard" }),
+  ).toBeVisible();
+  expect(await screen.findByText("25%")).toBeVisible();
+  expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+    "href",
+    "#/",
+  );
+  expect(screen.getByRole("link", { name: "Stacks" })).toHaveAttribute(
+    "href",
+    "#/stacks",
+  );
+  expect(requestsFor("/stacks")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("link", { name: "Stacks" }));
+  expect(
+    await screen.findByRole("button", { name: "Create local repository" }),
+  ).toBeVisible();
+  expect(screen.getAllByRole("main")).toHaveLength(1);
+});
+it.each(["pending", "failed"])(
+  "keeps Dashboard usable when repository status is %s",
+  async (state) => {
+    location.hash = "#/";
+    repositorySetupResponse = () =>
+      state === "pending"
+        ? new Promise(() => {})
+        : Promise.resolve(
+            Response.json(
+              { error: { message: "Repository unavailable" } },
+              { status: 503 },
+            ),
+          );
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", { name: "Dashboard" }),
+    ).toBeVisible();
+    expect(await screen.findByText("25%")).toBeVisible();
+    expect(screen.queryByText("Loading stacks…")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Repository unavailable"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Settings" }));
+    expect(
+      await screen.findByRole("heading", { name: "Change password" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("link", { name: "Stacks" }));
+    expect(
+      await screen.findByText(
+        state === "pending"
+          ? "Loading repository setup…"
+          : "Repository unavailable",
+      ),
+    ).toBeVisible();
+  },
+);

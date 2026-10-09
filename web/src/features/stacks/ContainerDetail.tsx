@@ -175,10 +175,10 @@ export function ContainerDetail({
     <section class="container-detail">
       <nav class="container-breadcrumbs" aria-label="Breadcrumb">
         <a
-          href="#/"
+          href="#/stacks"
           onClick={(event) => {
             event.preventDefault();
-            navigate("/");
+            navigate("/stacks");
           }}
         >
           Stacks

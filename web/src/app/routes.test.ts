@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { parseStackRoute } from "./routes";
+import { parseStackRoute, requiresRepository } from "./routes";
 
 it("parses stack and exact container routes with separately decoded IDs", () => {
   expect(parseStackRoute("/stacks/stack%20one")).toEqual({
@@ -29,4 +29,17 @@ it("opens logs for the named container without changing existing route identitie
   });
   expect(parseStackRoute("/stacks/one/logs")).toBeNull();
   expect(parseStackRoute("/stacks/one/containers/two/other")).toBeNull();
+});
+
+it("gates only repository-dependent destinations", () => {
+  for (const route of ["/", "/settings", "/alerts"])
+    expect(requiresRepository(route)).toBe(false);
+  for (const route of [
+    "/stacks",
+    "/stacks/one/containers/two",
+    "/repository",
+    "/operations",
+    "/audit",
+  ])
+    expect(requiresRepository(route)).toBe(true);
 });

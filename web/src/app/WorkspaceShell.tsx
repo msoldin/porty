@@ -4,7 +4,8 @@ import { Icon } from "../components/Icon";
 import portySidebar from "../assets/porty-sidebar.png";
 
 const nav = [
-  { name: "Stacks", icon: "Stacks", path: "/" },
+  { name: "Dashboard", path: "/" },
+  { name: "Stacks", icon: "Stacks", path: "/stacks" },
   { name: "Repository", path: "/repository" },
   { name: "Operations", path: "/operations", group: "Monitor" },
   { name: "Alerts", path: "/alerts" },
@@ -39,11 +40,13 @@ export function WorkspaceShell({
   const navigationToggle = useRef<HTMLButtonElement>(null);
   useEffect(() => setNavigationOpen(false), [route]);
   const connectionLabel =
-    connection === "Connected"
-      ? "Live updates connected"
-      : connection === "Reconnecting"
-        ? "Reconnecting · data may be stale"
-        : "Updates unavailable · data may be stale";
+    connection === "Disabled"
+      ? "Stack updates start after setup"
+      : connection === "Connected"
+        ? "Live updates connected"
+        : connection === "Reconnecting"
+          ? "Reconnecting · data may be stale"
+          : "Updates unavailable · data may be stale";
   function selectPage(path: string) {
     navigate(path);
     if (navigationOpen) {
@@ -97,12 +100,14 @@ export function WorkspaceShell({
                 <a
                   href={`#${item.path}`}
                   aria-current={
-                    route === item.path || (item.path === "/" && stackSelected)
+                    route === item.path ||
+                    (item.path === "/stacks" && stackSelected)
                       ? "page"
                       : undefined
                   }
                   class={
-                    route === item.path || (item.path === "/" && stackSelected)
+                    route === item.path ||
+                    (item.path === "/stacks" && stackSelected)
                       ? "active"
                       : ""
                   }

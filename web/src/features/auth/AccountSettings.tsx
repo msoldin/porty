@@ -17,7 +17,7 @@ export function AccountSettings({
   onRepositoryChange,
 }: {
   onLogout: () => void;
-  repositoryStatus: RepositorySetupStatus;
+  repositoryStatus: RepositorySetupStatus | null;
   onRepositoryChange: (status: RepositorySetupStatus) => void;
 }) {
   const [error, setError] = useState("");
@@ -48,10 +48,12 @@ export function AccountSettings({
           </select>
         </label>
       </section>
-      <RepositorySettings
-        status={repositoryStatus}
-        onChange={onRepositoryChange}
-      />
+      {repositoryStatus?.state === "ready" && (
+        <RepositorySettings
+          status={repositoryStatus}
+          onChange={onRepositoryChange}
+        />
+      )}
       <section class="account-card" aria-label="Account">
         <h2>Change password</h2>
         <p class="muted">Changing your password signs out every session.</p>

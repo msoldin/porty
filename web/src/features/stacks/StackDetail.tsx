@@ -186,11 +186,11 @@ export function StackDetail({
       <div class="stack-top">
         <nav class="detail-breadcrumbs" aria-label="Breadcrumb">
           <a
-            href="#/"
+            href="#/stacks"
             aria-label="Stacks"
             onClick={(event) => {
               event.preventDefault();
-              navigate("/");
+              navigate("/stacks");
             }}
           >
             Stacks

@@ -10,6 +10,7 @@ export function useTopicStream(
   topic: string,
   onEvent: (event: TopicEvent) => void,
   refresh: () => void,
+  enabled = true,
 ) {
   const callback = useRef(onEvent);
   callback.current = onEvent;
@@ -18,6 +19,11 @@ export function useTopicStream(
   const [connection, setConnection] = useState("Connecting");
   const [gap, setGap] = useState(false);
   useEffect(() => {
+    if (!enabled) {
+      setConnection("Disabled");
+      setGap(false);
+      return;
+    }
     let stopped = false;
     let sequence = 0;
     let socket: WebSocket;
@@ -28,6 +34,7 @@ export function useTopicStream(
         `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/v1/stream`,
       );
       socket.onopen = () => {
+        if (stopped) return;
         attempts = 0;
         setConnection("Connected");
         socket.send(
@@ -41,6 +48,7 @@ export function useTopicStream(
         refreshRef.current();
       };
       socket.onmessage = (event) => {
+        if (stopped) return;
         try {
           const value = JSON.parse(event.data) as TopicEvent;
           if (value.subscriptionId !== topic) return;
@@ -82,6 +90,6 @@ export function useTopicStream(
       clearTimeout(timer);
       socket.close();
     };
-  }, [topic]);
+  }, [topic, enabled]);
   return { connection, gap };
 }

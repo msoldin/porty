@@ -3,6 +3,7 @@ import type { Operation } from "./types";
 export function useOperationStream(
   onOperation: (operation: Operation) => void,
   refresh: () => void,
+  enabled = true,
 ) {
   return useTopicStream(
     "operations",
@@ -11,5 +12,6 @@ export function useOperationStream(
         onOperation(event.payload as unknown as Operation);
     },
     refresh,
+    enabled,
   );
 }

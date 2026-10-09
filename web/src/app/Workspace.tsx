@@ -3,7 +3,7 @@ import { useAlerts } from "../features/alerts/useAlerts";
 import { getOperation } from "../features/operations/api";
 import { useRef, useState } from "preact/hooks";
 import { useHashRoute } from "./useHashRoute";
-import { parseStackRoute } from "./routes";
+import { parseStackRoute, requiresRepository } from "./routes";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { WorkspaceShell } from "./WorkspaceShell";
 import { RepositoryPage } from "../features/repository/RepositoryPage";
@@ -14,7 +14,9 @@ import type { Session } from "../features/auth/types";
 import type { RepositorySetupStatus } from "../features/repository/types";
 import type { Operation } from "../features/operations/types";
 import { signOut } from "../features/auth/api";
-import { Dashboard } from "../features/stacks/Dashboard";
+import { StackInventory } from "../features/stacks/StackInventory";
+import { Dashboard } from "../features/dashboard/Dashboard";
+import { RepositorySetup } from "../features/repository/RepositorySetup";
 import { StackDetail } from "../features/stacks/StackDetail";
 import { ContainerDetail } from "../features/stacks/ContainerDetail";
 import { AccountSettings } from "../features/auth/AccountSettings";
@@ -25,11 +27,17 @@ import { Empty, Notice } from "../components/Feedback";
 export function Workspace({
   session,
   repositoryStatus,
+  repositoryLoading,
+  repositoryError,
+  retryRepository,
   onRepositoryChange,
   logout,
 }: {
   session: Session;
-  repositoryStatus: RepositorySetupStatus;
+  repositoryStatus: RepositorySetupStatus | null;
+  repositoryLoading: boolean;
+  repositoryError: string;
+  retryRepository: () => void;
   onRepositoryChange: (status: RepositorySetupStatus) => void;
   logout: () => void;
 }) {
@@ -56,7 +64,7 @@ export function Workspace({
     stream,
     addOperation,
     addOperations,
-  } = useWorkspaceData(logout);
+  } = useWorkspaceData(logout, repositoryStatus?.state === "ready");
   const alerts = useAlerts();
   const operationRequest = useRef(0);
   const [linkedOperation, setLinkedOperation] = useState<Operation>();
@@ -64,7 +72,9 @@ export function Workspace({
   const [operationLoading, setOperationLoading] = useState(false);
   const [signOutPending, setSignOutPending] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
-  const remoteEnabled = Boolean(repositoryStatus.managedRemote);
+  const [signOutError, setSignOutError] = useState("");
+  const repositoryRoute = requiresRepository(route);
+  const remoteEnabled = Boolean(repositoryStatus?.managedRemote);
   async function openOperation(id: string) {
     const request = ++operationRequest.current;
     setOperationLoading(true);
@@ -98,11 +108,12 @@ export function Workspace({
   const configuredRepo = repo?.configured ? repo : null;
   async function signOutAction(): Promise<void> {
     setSignOutBusy(true);
+    setSignOutError("");
     try {
       await signOut();
       logout();
     } catch (error) {
-      setError(message(error));
+      setSignOutError(message(error));
     } finally {
       setSignOutBusy(false);
     }
@@ -149,30 +160,52 @@ export function Workspace({
         confirmLabel="Discard and sign out"
         destructive
         busy={signOutBusy}
-        error={error}
+        error={signOutError}
         onCancel={() => setSignOutPending(false)}
         onConfirm={() => void signOutAction()}
       />
-      {error && (
+      {signOutError && <Notice>{signOutError}</Notice>}
+      {repositoryRoute && error && (
         <Notice>
           {error} <button onClick={refresh}>Retry</button>
         </Notice>
       )}
-      {Object.values(resources).some((resource) => resource.stale) && (
-        <Notice role="status">
-          Some information could not be refreshed. Previously loaded records may
-          be out of date.
-        </Notice>
-      )}
-      {stream.gap && (
+      {repositoryRoute &&
+        Object.values(resources).some((resource) => resource.stale) && (
+          <Notice role="status">
+            Some information could not be refreshed. Previously loaded records
+            may be out of date.
+          </Notice>
+        )}
+      {repositoryRoute && stream.gap && (
         <Notice>
           Stream interrupted; some output may be missing. Operation records have
           been refreshed.
         </Notice>
       )}
       <main>
-        {route === "/alerts" ? (
+        {route === "/" ? (
+          <Dashboard onUnauthorized={logout} />
+        ) : route === "/settings" ? (
+          <AccountSettings
+            onLogout={logout}
+            repositoryStatus={repositoryStatus}
+            onRepositoryChange={onRepositoryChange}
+          />
+        ) : route === "/alerts" ? (
           <Alerts navigate={navigate} openOperation={openOperation} />
+        ) : repositoryError ? (
+          <Notice>
+            {repositoryError}{" "}
+            <button onClick={retryRepository}>Retry repository setup</button>
+          </Notice>
+        ) : repositoryLoading || !repositoryStatus ? (
+          <Empty>Loading repository setup…</Empty>
+        ) : repositoryStatus.state !== "ready" ? (
+          <RepositorySetup
+            status={repositoryStatus}
+            onReady={onRepositoryChange}
+          />
         ) : loading ? (
           <Empty>Loading stacks…</Empty>
         ) : route === "/audit" &&
@@ -182,7 +215,7 @@ export function Workspace({
             Audit log could not be loaded.{" "}
             <button onClick={refresh}>Retry audit log</button>
           </Notice>
-        ) : route === "/" &&
+        ) : route === "/stacks" &&
           !resources.stacks.loaded &&
           resources.stacks.error ? (
           <Notice>
@@ -222,8 +255,8 @@ export function Workspace({
             refresh={refresh}
             onAction={onAction}
           />
-        ) : route === "/" ? (
-          <Dashboard
+        ) : route === "/stacks" ? (
+          <StackInventory
             remoteEnabled={remoteEnabled}
             stacks={stacks}
             repo={configuredRepo}
@@ -245,18 +278,12 @@ export function Workspace({
             operations={operations}
             open={(operation) => setSelectedOperation(operation.id)}
           />
-        ) : route === "/settings" ? (
-          <AccountSettings
-            onLogout={logout}
-            repositoryStatus={repositoryStatus}
-            onRepositoryChange={onRepositoryChange}
-          />
         ) : route === "/audit" ? (
           <Audit events={audit} />
         ) : (
           <div class="detail-content">
             <h1>Stack not found</h1>
-            <button onClick={() => navigate("/")}>Back to stacks</button>
+            <button onClick={() => navigate("/stacks")}>Back to stacks</button>
           </div>
         )}
       </main>

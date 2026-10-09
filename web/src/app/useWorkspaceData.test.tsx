@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/preact";
 import { expect, it, vi } from "vitest";
 import { useWorkspaceData } from "./useWorkspaceData";
+import { listStacks } from "../features/stacks/api";
 import { listAudit } from "../features/audit/api";
 vi.mock("../features/stacks/api", () => ({
   listStacks: vi.fn().mockResolvedValue([]),
@@ -43,4 +44,37 @@ it("reports an initial audit failure instead of an empty log and marks retained 
       loaded: true,
     }),
   );
+});
+
+it("suppresses repository refreshes until setup completes", async () => {
+  vi.mocked(listStacks).mockClear();
+  vi.mocked(listAudit).mockResolvedValue([]);
+  const view = renderHook(({ enabled }) => useWorkspaceData(vi.fn(), enabled), {
+    initialProps: { enabled: false },
+  });
+  await act(async () => view.result.current.refresh());
+  expect(listStacks).not.toHaveBeenCalled();
+  view.rerender({ enabled: true });
+  await waitFor(() => expect(listStacks).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(view.result.current.loading).toBe(false));
+  view.rerender({ enabled: false });
+  await act(async () => view.result.current.refresh());
+  expect(listStacks).toHaveBeenCalledTimes(1);
+});
+
+it("ignores a repository response that arrives after setup becomes unavailable", async () => {
+  let resolve!: (value: never[]) => void;
+  vi.mocked(listStacks).mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  vi.mocked(listAudit).mockResolvedValue([]);
+  const view = renderHook(({ enabled }) => useWorkspaceData(vi.fn(), enabled), {
+    initialProps: { enabled: true },
+  });
+  view.rerender({ enabled: false });
+  await act(async () => resolve([{ id: "late" } as never]));
+  expect(view.result.current.stacks).toEqual([]);
 });

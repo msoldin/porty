@@ -25,7 +25,7 @@ const resourceNames = [
 ] as const;
 type Resources = Record<(typeof resourceNames)[number], ReadStatus>;
 
-export function useWorkspaceData(logout: () => void) {
+export function useWorkspaceData(logout: () => void, enabled = true) {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [repo, setRepo] = useState<Repository | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -34,6 +34,8 @@ export function useWorkspaceData(logout: () => void) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const request = useRef(0);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
   const [resources, setResources] = useState<Resources>(
     () =>
       Object.fromEntries(
@@ -45,6 +47,7 @@ export function useWorkspaceData(logout: () => void) {
   );
 
   async function refresh(): Promise<void> {
+    if (!enabledRef.current) return;
     const generation = ++request.current;
     setResources(
       (current) =>
@@ -62,7 +65,7 @@ export function useWorkspaceData(logout: () => void) {
       listOperations(),
       listAudit(),
     ]);
-    if (generation !== request.current) return;
+    if (!enabledRef.current || generation !== request.current) return;
     if (
       result.some(
         (value) =>
@@ -108,17 +111,22 @@ export function useWorkspaceData(logout: () => void) {
     return () => {
       request.current++;
     };
-  }, []);
-  const stream = useOperationStream((operation) => {
-    setOperations((values) =>
-      [operation, ...values.filter((value) => value.id !== operation.id)].slice(
-        0,
-        50,
-      ),
-    );
-    if (["succeeded", "failed", "cancelled"].includes(operation.status))
-      refresh();
-  }, refresh);
+  }, [enabled]);
+  const stream = useOperationStream(
+    (operation) => {
+      if (!enabledRef.current) return;
+      setOperations((values) =>
+        [
+          operation,
+          ...values.filter((value) => value.id !== operation.id),
+        ].slice(0, 50),
+      );
+      if (["succeeded", "failed", "cancelled"].includes(operation.status))
+        refresh();
+    },
+    refresh,
+    enabled,
+  );
 
   function addOperations(accepted: Operation[]): void {
     const ids = new Set(accepted.map((operation) => operation.id));

@@ -257,3 +257,23 @@ it("does not show one container's inspect when the selected ID changes", async (
   expect(await screen.findByText('{"Name":"web-1"}')).toBeInTheDocument();
   expect(screen.queryByText('{"Name":"web-2"}')).toBeNull();
 });
+
+it("returns from a container to Stacks", async () => {
+  vi.mocked(listStackContainers).mockResolvedValue([running]);
+  const navigate = vi.fn();
+  render(
+    <ContainerDetail
+      stack={stack}
+      containerId={running.id}
+      operations={[]}
+      dirty={false}
+      navigate={navigate}
+      onAction={vi.fn()}
+    />,
+  );
+  await screen.findByRole("heading", { name: "web-2" });
+  const link = screen.getByRole("link", { name: "Stacks" });
+  expect(link).toHaveAttribute("href", "#/stacks");
+  fireEvent.click(link);
+  expect(navigate).toHaveBeenCalledWith("/stacks");
+});

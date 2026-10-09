@@ -29,6 +29,7 @@ it("opens every destination from mobile navigation and closes after selection", 
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   for (const name of [
+    "Dashboard",
     "Stacks",
     "Repository",
     "Operations",
@@ -49,7 +50,7 @@ it("marks the current stack section and retains account access", () => {
   const { onSignOut } = showShell("/stacks/monitoring", true);
   expect(screen.getByRole("link", { name: "Stacks" })).toHaveAttribute(
     "href",
-    "#/",
+    "#/stacks",
   );
   expect(screen.getByRole("link", { name: "Stacks" })).toHaveAttribute(
     "aria-current",

@@ -130,7 +130,7 @@ export function RepositorySetup({
 
   if (!mode) {
     return (
-      <main class="setup-page">
+      <section class="setup-page">
         <div class="setup-heading">
           <div class="auth-brand">
             <img src={portySidebar} alt="" width="48" height="48" /> Porty
@@ -164,12 +164,12 @@ export function RepositorySetup({
             );
           })}
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main class="setup-page setup-form-page">
+    <section class="setup-page setup-form-page">
       <button class="text-button" onClick={() => setMode(null)}>
         ← Back to choices
       </button>
@@ -334,6 +334,6 @@ export function RepositorySetup({
                 : "Use mounted repository"}
         </button>
       </form>
-    </main>
+    </section>
   );
 }

@@ -87,3 +87,32 @@ it("preserves operation filtering and deduplicates replayed revisions", () => {
     status: "failed",
   });
 });
+
+it("opens no disabled stream and ignores callbacks after disabling", () => {
+  vi.stubGlobal("WebSocket", Socket);
+  const event = vi.fn(),
+    refresh = vi.fn();
+  const view = renderHook(
+    ({ enabled }) => useTopicStream("operations", event, refresh, enabled),
+    { initialProps: { enabled: false } },
+  );
+  expect(Socket.instances).toHaveLength(0);
+  view.rerender({ enabled: true });
+  const socket = Socket.instances[0];
+  act(() => socket.onopen());
+  expect(refresh).toHaveBeenCalledTimes(1);
+  view.rerender({ enabled: false });
+  expect(socket.close).toHaveBeenCalled();
+  act(() => {
+    socket.onopen();
+    socket.onmessage({
+      data: JSON.stringify({
+        subscriptionId: "operations",
+        sequence: 1,
+        type: "operation",
+      }),
+    });
+  });
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(event).not.toHaveBeenCalled();
+});

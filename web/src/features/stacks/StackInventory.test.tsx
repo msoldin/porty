@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/preact";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Dashboard } from "./Dashboard";
+import { StackInventory } from "./StackInventory";
 import { getStackState, listStackContainers, runStackAction } from "./api";
 import {
   getDeploymentReview,
@@ -62,7 +62,7 @@ afterEach(() => {
 
 function showDashboard(onOperationsAccepted = vi.fn()) {
   return render(
-    <Dashboard
+    <StackInventory
       stacks={stacks}
       repo={null}
       operations={[]}
@@ -297,7 +297,7 @@ it("limits select-all to twenty visible stacks", () => {
     directoryName: "stack-" + index,
   }));
   render(
-    <Dashboard
+    <StackInventory
       stacks={many}
       repo={null}
       operations={[]}
@@ -334,7 +334,7 @@ it("shows archived stacks but never submits them for stack actions", async () =>
     archivedAt: "2026-09-01T00:00:00Z",
   };
   render(
-    <Dashboard
+    <StackInventory
       stacks={[...stacks, archived]}
       repo={null}
       operations={[]}
@@ -376,7 +376,7 @@ it("updates each stack row after an external Docker state change", async () => {
     };
   });
   render(
-    <Dashboard
+    <StackInventory
       stacks={stacks}
       repo={null}
       operations={[]}
@@ -406,7 +406,7 @@ it("updates each stack row after an external Docker state change", async () => {
 
 it("describes a local repository without implying a fetched remote", () => {
   render(
-    <Dashboard
+    <StackInventory
       stacks={[]}
       repo={{
         configured: true,

@@ -51,7 +51,7 @@ function deploymentTime(
   };
 }
 
-export function Dashboard({
+export function StackInventory({
   stacks,
   repo,
   remoteEnabled = false,
