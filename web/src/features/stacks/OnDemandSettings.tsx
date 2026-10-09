@@ -51,6 +51,10 @@ export function OnDemandSettings({
             </span>
           </header>
           <p class="muted">
+            Saved policy: {group.enabled ? "Enabled" : "Disabled"} · Runtime:{" "}
+            {group.phase.replaceAll("_", " ")}
+          </p>
+          <p class="muted">
             {group.members.join(", ")} · Idle timeout: {group.idleSeconds / 60}{" "}
             min · Wake after {group.wakeThreshold} attempt
             {group.wakeThreshold === 1 ? "" : "s"}

@@ -91,3 +91,29 @@ it("does not enable after stale policy response", async () => {
   expect(await screen.findByText(/policy changed/i)).toBeInTheDocument();
   expect(screen.getByLabelText("Enable automatic updates")).not.toBeChecked();
 });
+it("distinguishes enabled policy from paused execution", async () => {
+  vi.mocked(getAutoUpdate).mockResolvedValue({
+    ...status,
+    policy: {
+      ...status.policy,
+      enabled: true,
+      pausedReason: "recovery_required",
+    },
+  });
+  render(<AutoUpdateSettings stackId="s" />);
+  expect(await screen.findByText("Saved policy: Enabled")).toBeInTheDocument();
+  expect(screen.getByText("Execution: Paused")).toBeInTheDocument();
+  expect(resumeAutoUpdate).not.toHaveBeenCalled();
+});
+it("explains ineligibility without implying the policy is disabled", async () => {
+  vi.mocked(getAutoUpdate).mockResolvedValue({
+    ...status,
+    policy: { ...status.policy, enabled: true },
+  });
+  render(<AutoUpdateSettings stackId="s" />);
+  expect(await screen.findByText("Saved policy: Enabled")).toBeInTheDocument();
+  expect(
+    screen.getByText("Execution: Not currently eligible"),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Stack is stopped")).toBeInTheDocument();
+});

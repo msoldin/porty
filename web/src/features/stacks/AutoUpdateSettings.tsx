@@ -58,6 +58,31 @@ export function AutoUpdateSettings({
           <span>{enabled ? "Enabled" : "Disabled"}</span>
         </label>
       </header>
+      {policy && (
+        <div class="automation-summary" aria-label="Automatic update status">
+          <strong>
+            Saved policy: {policy.enabled ? "Enabled" : "Disabled"}
+          </strong>
+          <span>
+            Execution:{" "}
+            {policy.pausedReason
+              ? "Paused"
+              : !state.status?.available
+                ? "Unavailable"
+                : !policy.enabled
+                  ? "Disabled"
+                  : state.status.eligible
+                    ? "Ready"
+                    : "Not currently eligible"}
+          </span>
+        </div>
+      )}
+      {policy &&
+        (enabled !== policy.enabled || expression !== policy.expression) && (
+          <p role="status" class="muted">
+            Unsaved schedule changes. Save schedule to apply them.
+          </p>
+        )}
       {state.error && (
         <Notice>
           {state.error}

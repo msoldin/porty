@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { message } from "../../lib/http";
 import { Notice } from "../../components/Feedback";
 import {
@@ -21,6 +22,7 @@ export function EnvironmentRow({
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const generation = useRef(0);
 
@@ -50,6 +52,37 @@ export function EnvironmentRow({
 
   return (
     <div class="environment-row">
+      <ConfirmDialog
+        open={deleting}
+        title={`Delete ${name}?`}
+        description={
+          <>
+            Remove the managed environment value <strong>{name}</strong>. Deploy
+            saved configuration to apply this change to containers.
+          </>
+        }
+        confirmLabel="Delete value"
+        destructive
+        busy={busy}
+        error={error}
+        onCancel={() => setDeleting(false)}
+        onConfirm={async () => {
+          const request = ++generation.current;
+          setBusy(true);
+          setError("");
+          try {
+            await deleteEnvironmentValue(stackId, name);
+            if (request === generation.current) {
+              setDeleting(false);
+              reload();
+            }
+          } catch (error) {
+            if (request === generation.current) setError(message(error));
+          } finally {
+            if (request === generation.current) setBusy(false);
+          }
+        }}
+      />
       <form
         onSubmit={async (event) => {
           event.preventDefault();
@@ -106,26 +139,13 @@ export function EnvironmentRow({
           type="button"
           disabled={loading || busy}
           aria-label={`Delete ${name}`}
-          onClick={async () => {
-            if (!confirm(`Delete environment value ${name}?`)) return;
-            const request = ++generation.current;
-            setBusy(true);
-            setError("");
-            try {
-              await deleteEnvironmentValue(stackId, name);
-              if (request === generation.current) reload();
-            } catch (error) {
-              if (request === generation.current) setError(message(error));
-            } finally {
-              if (request === generation.current) setBusy(false);
-            }
-          }}
+          onClick={() => setDeleting(true)}
         >
           Delete
         </button>
       </form>
       {loading && <span class="muted">Loading value…</span>}
-      {error && <Notice>{error}</Notice>}
+      {error && !deleting && <Notice>{error}</Notice>}
     </div>
   );
 }

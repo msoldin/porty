@@ -11,6 +11,8 @@ import {
 } from "./api";
 import { EnvironmentRow } from "./EnvironmentRow";
 import type { Stack } from "./types";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import "./stackSettings.css";
 import { Notice } from "../../components/Feedback";
 
 export function StackSettings({
@@ -28,6 +30,7 @@ export function StackSettings({
   const [keys, setKeys] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [newSecret, setNewSecret] = useState(false);
   const [name, setName] = useState(stack.directoryName);
   const reload = () =>
@@ -38,7 +41,36 @@ export function StackSettings({
     reload();
   }, [root]);
   return (
-    <div class="settings-content">
+    <div class="settings-content stack-settings">
+      <ConfirmDialog
+        open={deleting}
+        title={`Delete ${stack.directoryName}?`}
+        description={
+          <>
+            This stops <strong>{stack.directoryName}</strong>, removes its files
+            in <strong>{stack.directoryName}/</strong>, and archives its
+            metadata. Docker volumes are retained.
+          </>
+        }
+        confirmLabel="Delete stack"
+        destructive
+        busy={busy}
+        error={error}
+        onCancel={() => setDeleting(false)}
+        onConfirm={async () => {
+          setBusy(true);
+          setError("");
+          try {
+            await deleteStack(stack.id);
+            setDeleting(false);
+            onChanged();
+          } catch (error) {
+            setError(message(error));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
       <AutoUpdateSettings
         stackId={stack.id}
         archived={Boolean(stack.archivedAt)}
@@ -50,97 +82,105 @@ export function StackSettings({
         stackId={stack.id}
         archived={Boolean(stack.archivedAt)}
       />
-      <h2>Environment</h2>
-      <p class="muted">
-        Saved values can be edited in place. Choose Secret value when adding a
-        key to mask it by default. To change that choice, delete and recreate
-        the key.
-      </p>
-      {error && <Notice>{error}</Notice>}
-      {keys.map((key) => (
-        <EnvironmentRow
-          key={key}
-          name={key}
-          stackId={stack.id}
-          reload={reload}
-        />
-      ))}
-      <form
-        class="inline-form"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          const data = new FormData(form);
-          setBusy(true);
-          setError("");
-          try {
-            await setEnvironmentValue(
-              stack.id,
-              String(data.get("key")),
-              data.get("value"),
-              data.has("secret"),
-            );
-            form.reset();
-            setNewSecret(false);
-            await reload();
-          } catch (error) {
-            setError(message(error));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <label>
-          New key
-          <input
-            name="key"
-            pattern="[A-Za-z_][A-Za-z0-9_]*"
-            required
-            placeholder="API_TOKEN"
+      <section class="settings-card">
+        <h2>Environment</h2>
+        <p class="muted">
+          Saved values can be edited in place. Choose Secret value when adding a
+          key to mask it by default. To change that choice, delete and recreate
+          the key.
+        </p>
+        {error && !deleting && <Notice>{error}</Notice>}
+        {keys.map((key) => (
+          <EnvironmentRow
+            key={key}
+            name={key}
+            stackId={stack.id}
+            reload={reload}
           />
-        </label>
-        <label>
-          New value
-          <input name="value" type={newSecret ? "password" : "text"} />
-        </label>
-        <label class="confirmation environment-secret-choice">
-          <input
-            name="secret"
-            type="checkbox"
-            checked={newSecret}
-            onChange={(event) => setNewSecret(event.currentTarget.checked)}
-          />
-          Secret value for new key
-        </label>
-        <button disabled={busy}>Add value</button>
-      </form>
-      <h2>Stack settings</h2>
-      <form
-        class="inline-form"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setBusy(true);
-          setError("");
-          try {
-            await renameStack(stack.id, name);
-            onChanged();
-          } catch (error) {
-            setError(message(error));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <label>
-          Stack name
-          <input
-            value={name}
-            onInput={(event) => setName(event.currentTarget.value)}
-            required
-          />
-        </label>
-        <button disabled={busy}>Rename stack</button>
-      </form>
+        ))}
+        <form
+          class="inline-form"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const data = new FormData(form);
+            setBusy(true);
+            setError("");
+            try {
+              await setEnvironmentValue(
+                stack.id,
+                String(data.get("key")),
+                data.get("value"),
+                data.has("secret"),
+              );
+              form.reset();
+              setNewSecret(false);
+              await reload();
+            } catch (error) {
+              setError(message(error));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label>
+            New key
+            <input
+              name="key"
+              pattern="[A-Za-z_][A-Za-z0-9_]*"
+              required
+              placeholder="API_TOKEN"
+            />
+          </label>
+          <label>
+            New value
+            <input name="value" type={newSecret ? "password" : "text"} />
+          </label>
+          <label class="confirmation environment-secret-choice">
+            <input
+              name="secret"
+              type="checkbox"
+              checked={newSecret}
+              onChange={(event) => setNewSecret(event.currentTarget.checked)}
+            />
+            Secret value for new key
+          </label>
+          <button disabled={busy}>Add value</button>
+        </form>
+      </section>
+      <section class="settings-card">
+        <h2>Stack identity</h2>
+        <p class="muted">
+          Rename the stack directory. The Compose project remains{" "}
+          {stack.composeProjectName}.
+        </p>
+        <form
+          class="inline-form"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setBusy(true);
+            setError("");
+            try {
+              await renameStack(stack.id, name);
+              onChanged();
+            } catch (error) {
+              setError(message(error));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label>
+            Stack name
+            <input
+              value={name}
+              onInput={(event) => setName(event.currentTarget.value)}
+              required
+            />
+          </label>
+          <button disabled={busy}>Rename stack</button>
+        </form>
+      </section>
       <section class="danger-zone">
         <h3>Delete stack</h3>
         <p>
@@ -150,24 +190,7 @@ export function StackSettings({
         <button
           class="danger"
           disabled={busy}
-          onClick={async () => {
-            if (
-              !confirm(
-                `Stop and delete ${stack.directoryName}? Files will be removed. Volumes will be retained.`,
-              )
-            )
-              return;
-            setBusy(true);
-            setError("");
-            try {
-              await deleteStack(stack.id);
-              onChanged();
-            } catch (error) {
-              setError(message(error));
-            } finally {
-              setBusy(false);
-            }
-          }}
+          onClick={() => setDeleting(true)}
         >
           Delete stack
         </button>
