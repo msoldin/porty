@@ -31,6 +31,9 @@ type LinuxSources struct {
 	sources         map[string]Source
 	closeOnce       sync.Once
 	closeErr        error
+	gpus            map[string]Source
+	gpuEpoch        uint64
+	nvidia          gpuDiscovery
 }
 
 func OpenLinuxSources(options LinuxOptions) (*LinuxSources, error) {
@@ -98,6 +101,28 @@ func (o *LinuxSources) Discover(ctx context.Context) ([]Source, error) {
 		}
 	}
 	status := &discoverySource{coverage: coverage}
+	gpus, gpuCoverage, gpuErr := o.discoverDRM()
+	if gpuErr != nil {
+		if !errors.Is(gpuErr, os.ErrNotExist) {
+			coverage = append(coverage, Coverage{Source: "gpu", Partial: true, Reason: sourceReason(gpuErr)})
+		}
+		for _, source := range o.gpus {
+			gpus = append(gpus, source)
+		}
+	}
+	coverage = append(coverage, gpuCoverage...)
+	for _, source := range gpus {
+		next[source.ID()] = source
+	}
+	if o.nvidia == nil {
+		o.nvidia = newNVIDIA()
+	}
+	nvidia, nvidiaCoverage := o.nvidia.Discover(ctx)
+	coverage = append(coverage, nvidiaCoverage...)
+	for _, source := range nvidia {
+		next[source.ID()] = source
+	}
+	status.coverage = coverage
 	next[status.ID()] = status
 	o.sources = next
 	result := make([]Source, 0, len(next))
@@ -136,6 +161,9 @@ func (o *LinuxSources) Host(ctx context.Context) HostInfo {
 }
 func (o *LinuxSources) Close() error {
 	o.closeOnce.Do(func() {
+		if o.nvidia != nil {
+			o.closeErr = errors.Join(o.closeErr, o.nvidia.Close())
+		}
 		for _, root := range []*os.Root{o.proc, o.sys, o.root} {
 			if root != nil {
 				o.closeErr = errors.Join(o.closeErr, root.Close())

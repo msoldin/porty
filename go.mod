@@ -3,10 +3,12 @@ module github.com/msoldin/porty
 go 1.27.1
 
 require (
+	github.com/NVIDIA/go-nvml v0.13.4-1
 	github.com/coder/websocket v1.8.15
 	github.com/compose-spec/compose-go/v2 v2.15.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/containerd/platforms v1.0.0-rc.5
+	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.7.2+incompatible
 	github.com/docker/compose/v5 v5.5.1
 	github.com/docker/go-sdk/client v0.1.0-alpha013
@@ -46,7 +48,6 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/ttrpc v1.2.9 // indirect
 	github.com/containerd/typeurl/v2 v2.3.0 // indirect
-	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/docker-credential-helpers v0.9.8 // indirect
 	github.com/docker/go-connections v0.8.1 // indirect
 	github.com/docker/go-sdk/config v0.1.0-alpha013 // indirect
