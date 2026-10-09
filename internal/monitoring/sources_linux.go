@@ -240,6 +240,23 @@ func collecting(now time.Time) Reading {
 // Immutable discovery reports get new identities when capabilities change.
 type discoverySource struct{ coverage []Coverage }
 
+// InitialSources does no hardware discovery, so a delayed driver cannot postpone
+// CPU, memory, network, disk and temperature collection.
+func (o *LinuxSources) InitialSources() []Source {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.options.Mode == "disabled" {
+		return nil
+	}
+	if o.sources["disks"] == nil {
+		o.sources["disks"] = &diskSource{owner: o}
+	}
+	if o.sources["sensors"] == nil {
+		o.sources["sensors"] = &sensorSource{owner: o}
+	}
+	return []Source{o.sources["cpu"], o.sources["memory"], o.sources["network"], o.sources["disks"], o.sources["sensors"]}
+}
+
 func (s *discoverySource) ID() string {
 	data, _ := json.Marshal(s.coverage)
 	return stableID("discovery", string(data))

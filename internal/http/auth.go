@@ -32,6 +32,7 @@ const (
 )
 
 type RouterOptions struct {
+	Monitoring           MonitoringAPI
 	OnDemand             OnDemandAPI
 	AutoUpdates          AutoUpdateAPI
 	Alerts               AlertAPI

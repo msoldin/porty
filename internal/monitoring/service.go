@@ -15,6 +15,7 @@ import (
 )
 
 type ServiceOptions struct {
+	Disabled bool
 	Host     HostInfo
 	Sources  []Source
 	Discover func(context.Context) ([]Source, error)
@@ -65,6 +66,9 @@ func NewService(options ServiceOptions) (*Service, error) {
 	service.host.OS = safeLabel(service.host.OS)
 	service.replaceSourcesLocked(options.Sources)
 	service.rebuildLocked()
+	if options.Disabled {
+		service.coverage = []Coverage{{Source: "monitoring", Reason: "disabled"}}
+	}
 	return service, nil
 }
 

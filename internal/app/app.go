@@ -146,6 +146,10 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, erro
 		return nil, err
 	}
 	options.Audit = portysqlite.NewAuditStore(db)
+	if err := application.startMonitoring(ctx, cfg.Monitoring); err != nil {
+		return nil, err
+	}
+	options.Monitoring = application.monitoring
 	api := httpapi.NewRouter(options)
 	root := http.NewServeMux()
 	root.Handle("/healthz", api)

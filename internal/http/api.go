@@ -25,6 +25,7 @@ import (
 )
 
 func registerAPIRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
+	registerMonitoringRoutes(mux, options)
 	registerOnDemandRoutes(mux, options)
 	registerAlertRoutes(mux, options)
 	registerAutoUpdateRoutes(mux, options)
