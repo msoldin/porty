@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositorySettings } from "./RepositorySettings";
 import { RemoteInspection, RepositorySetupStatus } from "./types";
@@ -213,6 +219,14 @@ describe("repository remote settings", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<RepositorySettings status={managedStatus} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Remove remote" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "Remove repository remote?",
+    });
+    expect(requests).toHaveLength(0);
+    expect(dialog).toHaveTextContent("https://example.com/team/repo.git");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Remove remote" }),
+    );
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(localStatus));
     expect(requests.at(-1)).toMatchObject({

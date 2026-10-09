@@ -368,6 +368,11 @@ describe("Porty administration interface", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Remove remote" }),
     );
+    fireEvent.click(
+      within(
+        screen.getByRole("dialog", { name: "Remove repository remote?" }),
+      ).getByRole("button", { name: "Remove remote" }),
+    );
 
     await waitFor(() =>
       expect(requestsFor("/repository/remote")).toHaveLength(1),

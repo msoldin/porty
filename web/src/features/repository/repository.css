@@ -52,3 +52,30 @@
     min-height: 44px;
   }
 }
+.setup-choice,
+.setup-section {
+  background: var(--surface);
+  border-radius: 12px;
+}
+.setup-choice h2 {
+  font-size: 18px;
+}
+.setup-form-page input,
+.setup-form-page select {
+  min-width: 0;
+}
+.setup-heading h1 {
+  letter-spacing: -0.5px;
+}
+@media (max-width: 767px) {
+  .setup-page {
+    margin: 24px auto;
+    padding: 16px;
+  }
+  .setup-section {
+    padding: 16px;
+  }
+  .setup-choice button {
+    white-space: normal;
+  }
+}

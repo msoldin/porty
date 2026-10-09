@@ -13,6 +13,7 @@ import {
   type RepositorySetupStatus,
 } from "./types";
 import { RemoteAuthenticationFields } from "./RepositoryRemoteFields";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Notice } from "../../components/Feedback";
 
 type Action = "configure" | "authentication" | null;
@@ -32,6 +33,7 @@ export function RepositorySettings({
   const [inspection, setInspection] = useState<RemoteInspection | null>(null);
   const [branch, setBranch] = useState(status.branch || "");
   const [replaceUnmanaged, setReplaceUnmanaged] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -124,7 +126,7 @@ export function RepositorySettings({
           ← Back to repository settings
         </button>
         <h2>{saveLabel}</h2>
-        {error && <Notice>{error}</Notice>}
+        {error && !removing && <Notice>{error}</Notice>}
         {configuring ? (
           <label>
             Remote URL
@@ -225,8 +227,36 @@ export function RepositorySettings({
 
   return (
     <section class="repository-settings">
+      <ConfirmDialog
+        open={removing}
+        title="Remove repository remote?"
+        description={
+          <>
+            Disconnect <strong>{status.managedRemote?.url}</strong>. Local
+            commits, stack files, and history are retained. Fetch, Pull, and
+            Push will become unavailable.
+          </>
+        }
+        confirmLabel="Remove remote"
+        destructive
+        busy={busy}
+        error={error}
+        onCancel={() => setRemoving(false)}
+        onConfirm={async () => {
+          setBusy(true);
+          setError("");
+          try {
+            onChange(await removeRepositoryRemote());
+            setRemoving(false);
+          } catch (failure) {
+            setError(message(failure));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
       <h2>Repository remote</h2>
-      {error && <Notice>{error}</Notice>}
+      {error && !removing && <Notice>{error}</Notice>}
       {status.managedRemote ? (
         <>
           <p>
@@ -240,23 +270,7 @@ export function RepositorySettings({
             <button
               class="danger"
               disabled={busy}
-              onClick={async () => {
-                if (
-                  !confirm(
-                    "Remove Porty's managed remote? Local commits, stacks, and history will remain.",
-                  )
-                )
-                  return;
-                setBusy(true);
-                setError("");
-                try {
-                  onChange(await removeRepositoryRemote());
-                } catch (failure) {
-                  setError(message(failure));
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              onClick={() => setRemoving(true)}
             >
               Remove remote
             </button>

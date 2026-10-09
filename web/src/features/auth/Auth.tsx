@@ -4,6 +4,7 @@ import { signIn } from "./api";
 import { type Session } from "./types";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Feedback";
+import "./auth.css";
 export function Auth({
   registered,
   onSession,
@@ -23,7 +24,7 @@ export function Auth({
       <p>
         {registered
           ? "Sign in to manage your stacks."
-          : "Create the administrator account, then configure the fixed stack repository."}
+          : "Create your administrator account, then choose where your stack configuration comes from."}
       </p>
       {error && <Notice>{error}</Notice>}
       <form
@@ -59,9 +60,15 @@ export function Auth({
             type="password"
             autoComplete={registered ? "current-password" : "new-password"}
             minLength={registered ? undefined : 12}
+            aria-describedby={!registered ? "password-requirement" : undefined}
             required
           />
         </label>
+        {!registered && (
+          <p id="password-requirement" class="form-hint">
+            Use at least 12 characters.
+          </p>
+        )}
         <button class="primary" disabled={busy}>
           {busy
             ? "Please wait…"

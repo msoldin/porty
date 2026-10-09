@@ -12,6 +12,7 @@ import {
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Feedback";
 import { RemoteAuthenticationFields } from "./RepositoryRemoteFields";
+import "./repository.css";
 
 const choices: Array<{
   mode: RepositorySetupMode;
@@ -135,7 +136,10 @@ export function RepositorySetup({
             <Icon name="Stacks" /> Porty
           </div>
           <h1>Configure the stack repository</h1>
-          <p>Choose how Porty should prepare its fixed repository location.</p>
+          <p>
+            Stack files and their Git history live in one repository. Create one
+            locally or connect an existing repository to continue.
+          </p>
         </div>
         <div class="setup-choices">
           {choices.map((choice) => {
