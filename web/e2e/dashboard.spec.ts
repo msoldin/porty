@@ -548,6 +548,38 @@ test("explains unavailable temperature inside its details without a technical me
   ).toBeFocused();
 });
 
+test("shows download hover readings only where a sample exists", async ({
+  page,
+}, info) => {
+  const snapshot = metrics();
+  snapshot.samples![81].readings["eth0.network_receive_rate"].value = 0;
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  await register(page);
+  const chart = page.getByRole("group", { name: "Download history" });
+  await chart.scrollIntoViewIfNeeded();
+  const box = (await chart.boundingBox())!;
+  const inspect = async (index: number) => {
+    const x = box.x + (box.width * index) / 150,
+      y = box.y + box.height / 2;
+    if (info.project.use.hasTouch) await page.touchscreen.tap(x, y);
+    else await page.mouse.move(x, y);
+  };
+  await inspect(100);
+  await expect(chart.locator("output")).toContainText("Download:");
+  await inspect(80);
+  await expect(chart.locator("output")).toHaveCount(0);
+  await inspect(81);
+  await expect(chart.locator("output")).toContainText("Download: 0 B/s");
+  await chart.focus();
+  await chart.press("Home");
+  for (let i = 0; i < 80; i++) await chart.press("ArrowRight");
+  await expect(chart.locator("output")).toHaveCount(0);
+  await chart.press("ArrowRight");
+  await expect(chart.locator("output")).toContainText("Download: 0 B/s");
+});
+
 test("clears metrics on logout and after session expiry", async ({ page }) => {
   await page.route("**/api/v1/monitoring*", (r) =>
     r.fulfill({ json: metrics() }),

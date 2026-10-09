@@ -48,6 +48,9 @@ export function MetricChart({
   const label = series.map((item) => item.label).join(" / ");
   const index =
     selected === undefined ? undefined : Math.min(selected, points.length - 1);
+  const hasSelectedReading =
+    index !== undefined &&
+    series.some((item) => item.points[index]?.value != null);
   function inspect(clientX: number, element: HTMLDivElement) {
     if (!points.length) return;
     const rect = element.getBoundingClientRect();
@@ -99,7 +102,9 @@ export function MetricChart({
         );
       }}
       onPointerMove={(event) => inspect(event.clientX, event.currentTarget)}
-      onPointerLeave={() => setSelected(undefined)}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== "touch") setSelected(undefined);
+      }}
       onPointerDown={(event) => {
         event.currentTarget.focus();
         inspect(event.clientX, event.currentTarget);
@@ -150,7 +155,7 @@ export function MetricChart({
           ))}
         </div>
       )}
-      {index !== undefined && points[index] && (
+      {hasSelectedReading && index !== undefined && points[index] && (
         <output class="chart-inspection" aria-live="off">
           <time>{new Date(points[index].time).toLocaleTimeString()}</time>
           {" · "}
@@ -159,7 +164,9 @@ export function MetricChart({
               (item) =>
                 item.label +
                 ": " +
-                formatMetric(item.points[index]?.value, unit),
+                (item.points[index]?.value == null
+                  ? "No reading"
+                  : formatMetric(item.points[index].value, unit)),
             )
             .join(" · ")}
         </output>
