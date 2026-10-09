@@ -397,6 +397,74 @@ test("keeps selected device details readable on mobile and across themes", async
   ).toHaveValue("eth1");
   expect(errors).toEqual([]);
 });
+test("remembers a disk subset and exposes device choices without opening details", async ({
+  page,
+}, info) => {
+  const snapshot = metrics();
+  snapshot.inventory!.devices.push({
+    id: "backup",
+    kind: "filesystem",
+    name: "/backup",
+    default: false,
+  });
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  await register(page);
+  const disks = page.getByRole("article", { name: "Disk fullness" });
+  const picker = disks.getByRole("button", { name: "Choose disks" });
+  const dataPath = "/srv/very-long-filesystem-path-for-application-storage";
+  await expect(disks.getByRole("progressbar")).toHaveCount(1);
+  await picker.click();
+  await disks.getByRole("checkbox", { name: dataPath, exact: true }).check();
+  await expect(
+    disks.getByRole("checkbox", { name: "/backup", exact: true }),
+  ).not.toBeChecked();
+  await expect(picker).toHaveText("Disks: 2 of 3");
+  await page.screenshot({
+    path: info.outputPath("disk-picker.png"),
+    fullPage: true,
+  });
+  await disks.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(picker).toBeFocused();
+  await expect(disks.getByRole("progressbar")).toHaveCount(2);
+  await expect(
+    disks.getByRole("button", { name: "Filesystem details" }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await page
+    .getByLabel("Download interface", { exact: true })
+    .selectOption("eth1");
+  await expect(
+    page.getByLabel("Upload interface", { exact: true }),
+  ).toHaveValue("eth1");
+  await page.reload();
+  await expect(disks.getByRole("progressbar")).toHaveCount(2);
+  await expect(picker).toHaveText("Disks: 2 of 3");
+  await expect(
+    page.getByLabel("Download interface", { exact: true }),
+  ).toHaveValue("eth1");
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+  await page.screenshot({
+    path: info.outputPath("selected-disks.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 320, height: 844 });
+  await picker.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+  await disks.getByRole("checkbox", { name: dataPath, exact: true }).focus();
+  await page.keyboard.press("Escape");
+  await expect(picker).toBeFocused();
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+});
+
 test("clears metrics on logout and after session expiry", async ({ page }) => {
   await page.route("**/api/v1/monitoring*", (r) =>
     r.fulfill({ json: metrics() }),

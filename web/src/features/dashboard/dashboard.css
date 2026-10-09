@@ -165,6 +165,85 @@
   font-size: 12px;
   padding: 7px;
 }
+.host-metric-source .metric-selector {
+  margin: 0;
+}
+.host-metric-source .metric-selector select {
+  padding: 5px 7px;
+  font-size: 11px;
+}
+.disk-picker-toggle {
+  width: 100%;
+  justify-content: space-between;
+  padding: 6px 9px;
+  min-height: 32px;
+  font-size: 11px;
+}
+.disk-picker-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+.disk-picker-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.disk-picker {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  font-size: 11px;
+}
+.disk-picker fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.disk-picker legend {
+  font-weight: 600;
+}
+.disk-picker p,
+.disk-selection-note {
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.disk-picker-options {
+  max-height: 230px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+.disk-picker-options label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 5px 0;
+  cursor: pointer;
+}
+.disk-picker-options input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--blue);
+}
+.disk-picker-options label > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.disk-picker-options small {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.disk-picker > button {
+  width: 100%;
+  font-size: 11px;
+  min-height: 32px;
+}
 .metric-chart {
   position: absolute;
   bottom: 0;

@@ -3,6 +3,7 @@ import { useMonitoring } from "./useMonitoring";
 import { MetricCard } from "./MetricCard";
 import { MetricChart } from "./MetricChart";
 import { ReadingStatus } from "./ReadingStatus";
+import { DiskFullnessCard } from "./DiskFullnessCard";
 import {
   chartSeries,
   currentReading,
@@ -49,9 +50,9 @@ function DeviceSelector({
 }) {
   return (
     <label class="metric-selector">
-      {label}
       <select
         aria-label={label}
+        title={devices.find((device) => device.id === value)?.name}
         value={value ?? ""}
         onChange={(event) => onChange(event.currentTarget.value)}
       >
@@ -111,7 +112,6 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
     ),
   );
   const gpus = devices.filter((device) => device.kind === "gpu");
-  const filesystems = devices.filter((device) => device.kind === "filesystem");
   const cpu = devices.find((device) => device.kind === "host");
   const ram = devices.find((device) => device.kind === "memory");
   const network = selectDevice(interfaces, choices.network);
@@ -286,13 +286,8 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         <MetricCard
           label="Temperature"
           value={value(temperature, "temperature", "celsius")}
-          source={temperature?.name ?? "CPU temperature"}
-          state={status(temperature, "temperature")}
-          lastSuccessAt={read(temperature, "temperature")?.lastSuccessAt}
-          chart={chart(temperature, "temperature", "Temperature", "celsius")}
-          note={reasonLabel(read(temperature, "temperature")?.reason)}
-          details={
-            <>
+          source={
+            sensors.length > 1 || (sensors.length > 0 && !temperature) ? (
               <DeviceSelector
                 label="Temperature sensor"
                 devices={sensors}
@@ -300,6 +295,16 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
                 onChange={(id) => choose("temperature", id)}
                 empty="CPU sensor unavailable"
               />
+            ) : (
+              (temperature?.name ?? "CPU temperature")
+            )
+          }
+          state={status(temperature, "temperature")}
+          lastSuccessAt={read(temperature, "temperature")?.lastSuccessAt}
+          chart={chart(temperature, "temperature", "Temperature", "celsius")}
+          note={reasonLabel(read(temperature, "temperature")?.reason)}
+          details={
+            <>
               {sensors.map((device) => (
                 <DetailReading
                   key={device.id}
@@ -315,7 +320,18 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         <MetricCard
           label="GPU usage"
           value={value(gpu, "gpu_busy", "percent")}
-          source={gpu?.name ?? "No GPU reading available"}
+          source={
+            gpus.length > 1 ? (
+              <DeviceSelector
+                label="GPU device"
+                devices={gpus}
+                value={gpu?.id}
+                onChange={(id) => choose("gpu", id)}
+              />
+            ) : (
+              (gpu?.name ?? "No GPU reading available")
+            )
+          }
           state={status(gpu, "gpu_busy")}
           lastSuccessAt={read(gpu, "gpu_busy")?.lastSuccessAt}
           detailLabel="GPU details"
@@ -327,12 +343,6 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           }
           details={
             <>
-              <DeviceSelector
-                label="GPU device"
-                devices={gpus}
-                value={gpu?.id}
-                onChange={(id) => choose("gpu", id)}
-              />
               {gpus.map((device) => (
                 <DetailReading
                   key={device.id}
@@ -391,18 +401,23 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
               key={label}
               label={label}
               value={value(network, metric, "bytes_per_second")}
-              source={network?.name ?? "Host interface"}
-              state={status(network, metric)}
-              lastSuccessAt={read(network, metric)?.lastSuccessAt}
-              chart={chart(network, metric, label, "bytes_per_second")}
-              details={
-                <>
+              source={
+                interfaces.length > 1 ? (
                   <DeviceSelector
                     label={label + " interface"}
                     devices={interfaces}
                     value={network?.id}
                     onChange={(id) => choose("network", id)}
                   />
+                ) : (
+                  (network?.name ?? "Host interface")
+                )
+              }
+              state={status(network, metric)}
+              lastSuccessAt={read(network, metric)?.lastSuccessAt}
+              chart={chart(network, metric, label, "bytes_per_second")}
+              details={
+                <>
                   {interfaces.map((device) => (
                     <DetailReading
                       key={device.id}
@@ -474,86 +489,12 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             </>
           }
         />
-        <MetricCard
-          label="Disk fullness"
-          state={
-            filesystems.length
-              ? "available"
-              : loading
-                ? "collecting"
-                : "unavailable"
-          }
-          detailLabel="Filesystem details"
-          details={
-            <>
-              {filesystems.map((device) => {
-                const total = read(device, "filesystem_total")?.value,
-                  used = read(device, "filesystem_used")?.value,
-                  available = read(device, "filesystem_available")?.value;
-                const reserved =
-                  total != null && used != null && available != null
-                    ? total - used - available
-                    : 0;
-                return (
-                  <div class="filesystem-detail" key={device.id}>
-                    <strong>{device.name}</strong>
-                    <p>
-                      {device.driver} ·{" "}
-                      {(device.mountPaths ?? [device.name]).join(" · ")}
-                    </p>
-                    <DetailReading
-                      {...detailProps}
-                      device={device}
-                      metric="filesystem_available"
-                      unit="bytes"
-                      label="Available"
-                    />
-                    {reserved > 0 && (
-                      <p class="muted">
-                        {formatMetric(reserved, "bytes")} reserved; excluded
-                        from used and available capacity.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </>
-          }
-        >
-          {filesystems.map((device) => {
-            const percent = read(device, "filesystem_percent");
-            return (
-              <div
-                class="capacity-row"
-                key={device.id}
-                data-state={percent?.state}
-              >
-                <div>
-                  <strong>{device.name}</strong>
-                  <span>{formatMetric(percent?.value, "percent")}</span>
-                </div>
-                <div
-                  class="capacity-bar"
-                  role="progressbar"
-                  aria-label={device.name + " disk fullness"}
-                  aria-valuenow={percent?.value ?? undefined}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                >
-                  <span style={{ width: (percent?.value ?? 0) + "%" }} />
-                </div>
-                <small>
-                  {value(device, "filesystem_used", "bytes")} /{" "}
-                  {value(device, "filesystem_total", "bytes")}
-                  <ReadingStatus
-                    state={percent?.state ?? "unavailable"}
-                    lastSuccessAt={percent?.lastSuccessAt}
-                  />
-                </small>
-              </div>
-            );
-          })}
-        </MetricCard>
+        <DiskFullnessCard
+          state={state}
+          loading={loading}
+          stale={stale}
+          now={serverNow}
+        />
       </div>
       <div class="dashboard-time-note">
         <span>Charts: last 5 minutes · focus or tap to inspect</span>

@@ -185,11 +185,26 @@ it("uses the same selected interface for upload and download", () => {
 });
 it("does not hide a full filesystem in an average", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: /Choose disks/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "/data", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   const capacity = within(
     screen.getByRole("article", { name: "Disk fullness" }),
   );
   expect(capacity.getByText("99%")).toBeVisible();
   expect(capacity.getByText("10%")).toBeVisible();
+});
+it("lets users switch network interfaces without opening details", () => {
+  render(<Dashboard onUnauthorized={() => {}} />);
+  const selector = screen.getByRole("combobox", { name: "Download interface" });
+  expect(selector).toBeVisible();
+  fireEvent.change(selector, { target: { value: "eth1" } });
+  expect(
+    screen.getByRole("combobox", { name: "Upload interface" }),
+  ).toHaveValue("eth1");
+  expect(
+    screen.getByRole("button", { name: "Download details" }),
+  ).toHaveAttribute("aria-expanded", "false");
 });
 it("marks unavailable and stale values instead of zero", () => {
   const value = fixture();
