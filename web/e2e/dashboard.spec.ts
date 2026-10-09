@@ -43,7 +43,7 @@ test("shows stale observation times and temperature scale without overflowing", 
     "Download",
     "Upload",
     "Disk I/O",
-    "Disk fullness",
+    "/ · Disk fullness",
   ]) {
     const card = page.getByRole("article", { name });
     await expect(
@@ -63,13 +63,16 @@ test("shows stale observation times and temperature scale without overflowing", 
     path: info.outputPath("dashboard-stale.png"),
     fullPage: true,
   });
-  for (const button of await page.locator(".host-metric-toggle").all())
-    await button.click();
+  await page.getByRole("button", { name: "Download details" }).click();
   await expect(
     page
       .getByRole("article", { name: "Download" })
-      .locator(".host-metric-details time"),
+      .locator(".metric-detail-row time"),
   ).toHaveCount(2);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   await page.setViewportSize({ width: 320, height: 844 });
   await expect
     .poll(() =>
@@ -337,47 +340,64 @@ test("recovers from stale samples without inventing zeros", async ({
   await expect(cpu.getByText("42%", { exact: true })).toBeVisible();
   await expect(cpu.getByText("Stale", { exact: true })).toHaveCount(0);
 });
-test("keeps selected device details readable on mobile and across themes", async ({
+test("keeps the compact grid and details readable across themes and screen sizes", async ({
   page,
 }, info) => {
   const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (e) => {
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (event) => {
     if (
-      e.type() === "error" &&
+      event.type() === "error" &&
       !(
-        e.text().includes("401") && e.location().url.endsWith("/api/v1/session")
+        event.text().includes("401") &&
+        event.location().url.endsWith("/api/v1/session")
       )
     )
-      errors.push(e.text());
+      errors.push(event.text());
   });
-  await page.route("**/api/v1/monitoring*", (r) =>
-    r.fulfill({ json: metrics() }),
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: metrics() }),
   );
   await register(page);
   await expect(page.getByText("Receiving metrics")).toBeVisible();
-  const chart = page.getByRole("group", { name: "CPU history" });
-  await chart.focus();
-  await chart.press("ArrowLeft");
-  await expect(page.locator(".chart-inspection").first()).toBeVisible();
+  const download = page.getByRole("article", { name: "Download" });
+  const upload = page.getByRole("article", { name: "Upload" });
+  const left = await download.boundingBox(),
+    right = await upload.boundingBox();
+  expect(left!.y).toBe(right!.y);
+  expect(right!.x).toBeGreaterThan(left!.x);
+  expect(left!.height).toBeLessThan(170);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
     await page.evaluate(
       (theme) => (document.documentElement.dataset.theme = theme),
       theme,
     );
     await page.screenshot({
-      path: info.outputPath("dashboard-" + theme + ".png"),
+      path: info.outputPath("compact-" + theme + ".png"),
       fullPage: true,
     });
   }
-  for (const button of await page.locator(".host-metric-toggle").all())
-    await button.click();
-  await page
-    .getByLabel("Download interface", { exact: true })
-    .selectOption("eth1");
+  await page.getByRole("button", { name: "CPU details", exact: true }).click();
+  const detail = page.getByRole("dialog", { name: "CPU details" });
+  const history = detail.getByRole("group", { name: "CPU history" });
+  await history.focus();
+  await history.press("ArrowLeft");
+  await expect(detail.locator(".chart-inspection")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detail).toHaveCount(0);
   await expect(
-    page.getByLabel("Upload interface", { exact: true }),
-  ).toHaveValue("eth1");
+    page.getByRole("button", { name: "CPU details", exact: true }),
+  ).toBeFocused();
+  // A touch/click on the large reading opens details; the chart remains independently inspectable.
+  await download.click({ position: { x: 30, y: 45 } });
+  await expect(
+    page.getByRole("dialog", { name: "Download details" }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await expect
@@ -386,18 +406,14 @@ test("keeps selected device details readable on mobile and across themes", async
       )
       .toBe(true);
     await page.screenshot({
-      path: info.outputPath("dashboard-details-" + width + ".png"),
+      path: info.outputPath("compact-" + width + ".png"),
       fullPage: true,
     });
   }
-  await page.reload();
-  await page.getByRole("button", { name: "Download details" }).click();
-  await expect(
-    page.getByLabel("Download interface", { exact: true }),
-  ).toHaveValue("eth1");
   expect(errors).toEqual([]);
 });
-test("remembers a disk subset and exposes device choices without opening details", async ({
+
+test("remembers separate disk gauges and shared network choices from customization", async ({
   page,
 }, info) => {
   const snapshot = metrics();
@@ -411,58 +427,80 @@ test("remembers a disk subset and exposes device choices without opening details
     route.fulfill({ json: snapshot }),
   );
   await register(page);
-  const disks = page.getByRole("article", { name: "Disk fullness" });
-  const picker = disks.getByRole("button", { name: "Choose disks" });
+  const customize = page.getByRole("button", { name: "Customize dashboard" });
   const dataPath = "/srv/very-long-filesystem-path-for-application-storage";
-  await expect(disks.getByRole("progressbar")).toHaveCount(1);
-  await picker.click();
-  await disks.getByRole("checkbox", { name: dataPath, exact: true }).check();
+  await expect(page.getByRole("meter", { name: /disk fullness$/ })).toHaveCount(
+    1,
+  );
+  await customize.click();
+  const dialog = page.getByRole("dialog", { name: "Customize dashboard" });
+  for (const row of await dialog.locator(".disk-picker-options label").all()) {
+    const box = await row.boundingBox();
+    expect(box!.height).toBeLessThan(100);
+    await expect(row.locator("span")).toBeInViewport();
+  }
+  await dialog.getByRole("checkbox", { name: dataPath, exact: true }).check();
   await expect(
-    disks.getByRole("checkbox", { name: "/backup", exact: true }),
+    dialog.getByRole("checkbox", { name: "/backup", exact: true }),
   ).not.toBeChecked();
-  await expect(picker).toHaveText("Disks: 2 of 3");
+  await expect(dialog.getByText("2 of 3", { exact: true })).toBeVisible();
+  await dialog
+    .getByRole("combobox", { name: "Network interface" })
+    .selectOption("eth1");
   await page.screenshot({
-    path: info.outputPath("disk-picker.png"),
+    path: info.outputPath("customize-dashboard.png"),
     fullPage: true,
   });
-  await disks.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(picker).toBeFocused();
-  await expect(disks.getByRole("progressbar")).toHaveCount(2);
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(customize).toBeFocused();
+  await expect(page.getByRole("meter", { name: /disk fullness$/ })).toHaveCount(
+    2,
+  );
   await expect(
-    disks.getByRole("button", { name: "Filesystem details" }),
-  ).toHaveAttribute("aria-expanded", "false");
-  await page
-    .getByLabel("Download interface", { exact: true })
-    .selectOption("eth1");
+    page
+      .getByRole("article", { name: "Download" })
+      .getByText("4 MB/s", { exact: true }),
+  ).toBeVisible();
   await expect(
-    page.getByLabel("Upload interface", { exact: true }),
-  ).toHaveValue("eth1");
+    page
+      .getByRole("article", { name: "Upload" })
+      .getByText("2 MB/s", { exact: true }),
+  ).toBeVisible();
   await page.reload();
-  await expect(disks.getByRole("progressbar")).toHaveCount(2);
-  await expect(picker).toHaveText("Disks: 2 of 3");
+  await expect(page.getByRole("meter", { name: /disk fullness$/ })).toHaveCount(
+    2,
+  );
   await expect(
-    page.getByLabel("Download interface", { exact: true }),
-  ).toHaveValue("eth1");
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    )
-    .toBe(true);
+    page
+      .getByRole("article", { name: "Download" })
+      .getByText("4 MB/s", { exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => (document.documentElement.dataset.theme = "dark"));
   await page.screenshot({
     path: info.outputPath("selected-disks.png"),
     fullPage: true,
   });
+  await page
+    .getByRole("button", {
+      name: dataPath + " filesystem details",
+      exact: true,
+    })
+    .click();
+  await expect(page.getByRole("dialog").getByRole("heading")).toContainText(
+    dataPath,
+  );
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 320, height: 844 });
-  await picker.click();
+  await customize.click();
   await expect
     .poll(() =>
       page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
     )
     .toBe(true);
-  await disks.getByRole("checkbox", { name: dataPath, exact: true }).focus();
+  await dialog.getByRole("checkbox", { name: dataPath, exact: true }).focus();
   await page.keyboard.press("Escape");
-  await expect(picker).toBeFocused();
-  await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await expect(customize).toBeFocused();
+  await expect(dialog).toHaveCount(0);
 });
 
 test("clears metrics on logout and after session expiry", async ({ page }) => {

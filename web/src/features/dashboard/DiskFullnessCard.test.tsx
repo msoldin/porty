@@ -1,6 +1,28 @@
 import { fireEvent, render, screen, within } from "@testing-library/preact";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { DiskFullnessCard } from "./DiskFullnessCard";
+import { Dashboard } from "./Dashboard";
+import { useMonitoring } from "./useMonitoring";
+import type { MonitoringState } from "./types";
+vi.mock("./useMonitoring", () => ({ useMonitoring: vi.fn() }));
+function DiskView({
+  state,
+  loading,
+  stale,
+}: {
+  state: MonitoringState;
+  loading: boolean;
+  stale: boolean;
+}) {
+  vi.mocked(useMonitoring).mockReturnValue({
+    state,
+    loading,
+    stale,
+    error: "",
+    retry: vi.fn(),
+    serverNow: Date.parse(state.current.capturedAt),
+  });
+  return <Dashboard onUnauthorized={() => {}} />;
+}
 import { mergeMonitoring } from "./monitoringState";
 import { snapshotFixture } from "./testFixtures";
 import type { MetricKind } from "./types";
@@ -48,44 +70,46 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 it("starts with the system disk and keeps the other filesystems out of the card", () => {
-  render(<DiskFullnessCard state={fixture()} loading={false} stale={false} />);
-  expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+  render(<DiskView state={fixture()} loading={false} stale={false} />);
+  expect(screen.getAllByRole("meter", { name: /disk fullness$/ })).toHaveLength(
+    1,
+  );
   expect(
-    screen.getByRole("progressbar", { name: "/ disk fullness" }),
+    screen.getByRole("meter", { name: "/ disk fullness" }),
   ).toHaveAttribute("aria-valuenow", "60");
   expect(screen.getByText("400 MB free of 1 GB")).toBeVisible();
   expect(
-    screen.getByRole("button", { name: /Choose disks/ }),
-  ).toHaveTextContent("Disks: 1 of 4");
+    screen.getByRole("button", { name: "Customize dashboard" }),
+  ).toBeEnabled();
 });
 
 it("remembers multiple chosen disks without adding unselected filesystems", () => {
   const view = render(
-    <DiskFullnessCard state={fixture()} loading={false} stale={false} />,
+    <DiskView state={fixture()} loading={false} stale={false} />,
   );
-  fireEvent.click(screen.getByRole("button", { name: /Choose disks/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "/data", exact: true }));
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+  expect(screen.getAllByRole("meter", { name: /disk fullness$/ })).toHaveLength(
+    2,
+  );
   expect(
-    screen.queryByRole("progressbar", { name: "/backup disk fullness" }),
+    screen.queryByRole("meter", { name: "/backup disk fullness" }),
   ).not.toBeInTheDocument();
   view.unmount();
-  render(<DiskFullnessCard state={fixture()} loading={false} stale={false} />);
+  render(<DiskView state={fixture()} loading={false} stale={false} />);
   expect(
-    screen.getByRole("progressbar", { name: "/data disk fullness" }),
+    screen.getByRole("meter", { name: "/data disk fullness" }),
   ).toBeVisible();
-  expect(
-    screen.getByRole("button", { name: /Choose disks/ }),
-  ).toHaveTextContent("Disks: 2 of 4");
+  expect(screen.getAllByRole("meter", { name: /disk fullness$/ })).toHaveLength(
+    2,
+  );
 });
 
 it("reports a missing selected disk without substituting a newly discovered disk", () => {
   const state = fixture();
-  const view = render(
-    <DiskFullnessCard state={state} loading={false} stale={false} />,
-  );
-  fireEvent.click(screen.getByRole("button", { name: /Choose disks/ }));
+  const view = render(<DiskView state={state} loading={false} stale={false} />);
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "/data", exact: true }));
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
   const removed = {
@@ -95,14 +119,14 @@ it("reports a missing selected disk without substituting a newly discovered disk
       devices: state.inventory.devices.filter((d) => d.id !== "data"),
     },
   };
-  view.rerender(
-    <DiskFullnessCard state={removed} loading={false} stale={false} />,
-  );
+  view.rerender(<DiskView state={removed} loading={false} stale={false} />);
   expect(screen.getByRole("status")).toHaveTextContent(
     /selected disk.*unavailable/i,
   );
-  expect(screen.getAllByRole("progressbar")).toHaveLength(1);
-  fireEvent.click(screen.getByRole("button", { name: /Choose disks/ }));
+  expect(screen.getAllByRole("meter", { name: /disk fullness$/ })).toHaveLength(
+    1,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   const checkbox = screen.getByRole("checkbox", { name: "/data", exact: true });
   expect(checkbox).toBeChecked();
   fireEvent.click(checkbox);
@@ -111,45 +135,60 @@ it("reports a missing selected disk without substituting a newly discovered disk
 
 it("keeps an intentionally empty selection after reopening the dashboard", () => {
   const view = render(
-    <DiskFullnessCard state={fixture()} loading={false} stale={false} />,
+    <DiskView state={fixture()} loading={false} stale={false} />,
   );
-  fireEvent.click(screen.getByRole("button", { name: /Choose disks/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "/", exact: true }));
   view.unmount();
-  render(<DiskFullnessCard state={fixture()} loading={false} stale={false} />);
-  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  render(<DiskView state={fixture()} loading={false} stale={false} />);
+  expect(
+    screen.queryByRole("meter", { name: /disk fullness$/ }),
+  ).not.toBeInTheDocument();
   expect(screen.getByText(/No disks selected/)).toBeVisible();
-  expect(screen.getByRole("button", { name: /Choose disks/ })).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "Customize dashboard" }),
+  ).toBeEnabled();
 });
 
 it("keeps the picker usable when storage fails and restores focus on Escape", () => {
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw Error("Denied");
   });
-  render(<DiskFullnessCard state={fixture()} loading={false} stale={false} />);
-  const button = screen.getByRole("button", { name: /Choose disks/ });
+  render(<DiskView state={fixture()} loading={false} stale={false} />);
+  const button = screen.getByRole("button", { name: "Customize dashboard" });
+  button.focus();
   fireEvent.click(button);
   fireEvent.click(screen.getByRole("checkbox", { name: "/data", exact: true }));
-  fireEvent.keyDown(screen.getByRole("group", { name: "Visible disks" }), {
-    key: "Escape",
-  });
+  fireEvent(
+    screen.getByRole("dialog"),
+    new Event("cancel", { cancelable: true }),
+  );
   expect(button).toHaveFocus();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+  expect(screen.getAllByRole("meter", { name: /disk fullness$/ })).toHaveLength(
+    2,
+  );
 });
 
 it("keeps individual capacities and technical details for the selected disks", () => {
-  render(<DiskFullnessCard state={fixture()} loading={false} stale={false} />);
-  fireEvent.click(screen.getByRole("button", { name: /Choose disks/ }));
+  render(<DiskView state={fixture()} loading={false} stale={false} />);
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   fireEvent.click(
     screen.getByRole("checkbox", { name: "/backup", exact: true }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(
-    screen.getByRole("progressbar", { name: "/backup disk fullness" }),
+    screen.getByRole("meter", { name: "/backup disk fullness" }),
   ).toHaveAttribute("aria-valuenow", "99");
-  fireEvent.click(screen.getByRole("button", { name: "Filesystem details" }));
-  const card = within(screen.getByRole("article", { name: "Disk fullness" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "/backup filesystem details" }),
+  );
+  const card = within(
+    screen.getByRole("article", {
+      name: "/backup · Disk fullness",
+      hidden: true,
+    }),
+  );
   expect(card.getByText("990 MB used of 1 GB")).toBeVisible();
   expect(card.queryByText("/data")).not.toBeInTheDocument();
 });

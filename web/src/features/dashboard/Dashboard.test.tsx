@@ -116,6 +116,50 @@ beforeEach(() => {
   vi.mocked(useMonitoring).mockReturnValue(fixture());
 });
 afterEach(() => vi.restoreAllMocks());
+it("keeps customization in one dialog and gives each selected disk its own gauge tile", () => {
+  render(<Dashboard onUnauthorized={() => {}} />);
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
+  const dialog = within(
+    screen.getByRole("dialog", { name: "Customize dashboard" }),
+  );
+  fireEvent.click(dialog.getByRole("checkbox", { name: "/data", exact: true }));
+  fireEvent.change(
+    dialog.getByRole("combobox", { name: "Network interface" }),
+    { target: { value: "eth1" } },
+  );
+  fireEvent.click(dialog.getByRole("button", { name: "Done" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("meter", { name: "/ disk fullness" }),
+  ).toHaveAttribute("aria-valuenow", "99");
+  expect(
+    screen.getByRole("meter", { name: "/data disk fullness" }),
+  ).toHaveAttribute("aria-valuenow", "10");
+  expect(
+    within(screen.getByRole("article", { name: "Download" })).getByText(
+      "4 MB/s",
+    ),
+  ).toBeVisible();
+  expect(
+    within(screen.getByRole("article", { name: "Upload" })).getByText("3 MB/s"),
+  ).toBeVisible();
+});
+it("opens tile details without leaving the dashboard and retains CPU history there", () => {
+  render(<Dashboard onUnauthorized={() => {}} />);
+  expect(screen.getByRole("meter", { name: "CPU usage" })).toHaveAttribute(
+    "aria-valuenow",
+    "25",
+  );
+  expect(
+    screen.queryByRole("group", { name: "CPU history" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "CPU details" }));
+  const dialog = within(screen.getByRole("dialog", { name: "CPU details" }));
+  expect(dialog.getByRole("group", { name: "CPU history" })).toBeVisible();
+  fireEvent.click(dialog.getByRole("button", { name: "Close" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
 it("shows last-success timestamps for stale cards, details and filesystems", () => {
   const value = fixture();
   const at = "2026-10-08T10:15:00.000Z";
@@ -133,7 +177,7 @@ it("shows last-success timestamps for stale cards, details and filesystems", () 
     "Download",
     "Upload",
     "Disk I/O",
-    "Disk fullness",
+    "/ · Disk fullness",
   ]) {
     const card = screen.getByRole("article", { name });
     expect(within(card).getAllByText(/Last reading:/).length).toBeGreaterThan(
@@ -145,7 +189,7 @@ it("shows last-success timestamps for stale cards, details and filesystems", () 
   const detail = screen
     .getByRole("article", { name: "Download" })
     .querySelector(".host-metric-details")!;
-  expect(detail.querySelectorAll("time")).toHaveLength(2);
+  expect(detail.querySelectorAll(".metric-detail-row time")).toHaveLength(2);
 });
 it("shows all eight host metrics with their sources", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
@@ -157,7 +201,7 @@ it("shows all eight host metrics with their sources", () => {
     "Download",
     "Upload",
     "Disk I/O",
-    "Disk fullness",
+    "/ · Disk fullness",
   ])
     expect(screen.getByRole("heading", { name, exact: true })).toBeVisible();
   expect(screen.getByText("CPU package")).toBeVisible();
@@ -168,12 +212,12 @@ it("shows all eight host metrics with their sources", () => {
 });
 it("uses the same selected interface for upload and download", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
-  fireEvent.click(screen.getByRole("button", { name: "Download details" }));
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   fireEvent.change(
-    screen.getByRole("combobox", { name: "Download interface" }),
+    screen.getByRole("combobox", { name: "Network interface" }),
     { target: { value: "eth1" } },
   );
-  fireEvent.click(screen.getByRole("button", { name: "Download details" }));
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(
     within(screen.getByRole("article", { name: "Download" })).getByText(
       "4 MB/s",
@@ -185,23 +229,30 @@ it("uses the same selected interface for upload and download", () => {
 });
 it("does not hide a full filesystem in an average", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
-  fireEvent.click(screen.getByRole("button", { name: /Choose disks/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "/data", exact: true }));
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  const capacity = within(
-    screen.getByRole("article", { name: "Disk fullness" }),
-  );
-  expect(capacity.getByText("99%")).toBeVisible();
-  expect(capacity.getByText("10%")).toBeVisible();
+  expect(
+    within(
+      screen.getByRole("article", { name: "/ · Disk fullness" }),
+    ).getByText("99%"),
+  ).toBeVisible();
+  expect(
+    within(
+      screen.getByRole("article", { name: "/data · Disk fullness" }),
+    ).getByText("10%"),
+  ).toBeVisible();
 });
 it("lets users switch network interfaces without opening details", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
-  const selector = screen.getByRole("combobox", { name: "Download interface" });
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
+  const selector = screen.getByRole("combobox", { name: "Network interface" });
   expect(selector).toBeVisible();
   fireEvent.change(selector, { target: { value: "eth1" } });
   expect(
-    screen.getByRole("combobox", { name: "Upload interface" }),
+    screen.getByRole("combobox", { name: "Network interface" }),
   ).toHaveValue("eth1");
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(
     screen.getByRole("button", { name: "Download details" }),
   ).toHaveAttribute("aria-expanded", "false");
@@ -237,11 +288,14 @@ it("keeps selections functional when browser storage is denied", () => {
     throw new Error("Denied");
   });
   render(<Dashboard onUnauthorized={() => {}} />);
-  fireEvent.click(screen.getByRole("button", { name: "Upload details" }));
-  fireEvent.change(screen.getByRole("combobox", { name: "Upload interface" }), {
-    target: { value: "eth1" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Upload details" }));
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
+  fireEvent.change(
+    screen.getByRole("combobox", { name: "Network interface" }),
+    {
+      target: { value: "eth1" },
+    },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(
     within(screen.getByRole("article", { name: "Upload" })).getByText("3 MB/s"),
   ).toBeVisible();

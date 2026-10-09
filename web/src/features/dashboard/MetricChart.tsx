@@ -78,11 +78,11 @@ export function MetricChart({
           )
         )
           return;
-        event.preventDefault();
         if (event.key === "Escape") {
           setSelected(undefined);
           return;
         }
+        event.preventDefault();
         setSelected(
           event.key === "Home"
             ? 0
@@ -127,9 +127,9 @@ export function MetricChart({
                 points={segment.join(" ")}
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="1.5"
-                strokeDasharray={line % 2 ? "5 3" : undefined}
-                vectorEffect="non-scaling-stroke"
+                stroke-width="1.5"
+                stroke-dasharray={line % 2 ? "5 3" : undefined}
+                vector-effect="non-scaling-stroke"
               />
             </g>
           )),

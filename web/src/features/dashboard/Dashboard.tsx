@@ -3,6 +3,9 @@ import { useMonitoring } from "./useMonitoring";
 import { MetricCard } from "./MetricCard";
 import { MetricChart } from "./MetricChart";
 import { ReadingStatus } from "./ReadingStatus";
+import { Dialog } from "../../components/Dialog";
+import { DiskPicker } from "./DiskPicker";
+import { useDiskSelection } from "./useDiskSelection";
 import { DiskFullnessCard } from "./DiskFullnessCard";
 import {
   chartSeries,
@@ -50,6 +53,7 @@ function DeviceSelector({
 }) {
   return (
     <label class="metric-selector">
+      <span>{label}</span>
       <select
         aria-label={label}
         title={devices.find((device) => device.id === value)?.name}
@@ -104,6 +108,8 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
     useMonitoring(onUnauthorized);
   const [choices, setChoices] = useState<Choices>(readChoices);
   const devices = state?.inventory.devices ?? [];
+  const [customizing, setCustomizing] = useState(false);
+  const disks = useDiskSelection(devices);
   const interfaces = devices.filter((device) => device.kind === "interface");
   const sensors = devices.filter((device) =>
     state?.inventory.series.some(
@@ -183,19 +189,28 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             {metricTime && " · " + metricTime}
           </p>
         </div>
-        <div class="monitoring-freshness" data-stale={stale}>
-          <strong>
-            {disabled
-              ? "Monitoring disabled"
-              : loading
-                ? "Connecting to host"
-                : stale
-                  ? "Updates delayed"
-                  : state
-                    ? "Receiving metrics"
-                    : "Metrics unavailable"}
-          </strong>
-          <span>2-second updates · 5-minute history</span>
+        <div class="dashboard-toolbar">
+          <div class="monitoring-freshness" data-stale={stale}>
+            <strong>
+              {disabled
+                ? "Monitoring disabled"
+                : loading
+                  ? "Connecting to host"
+                  : stale
+                    ? "Updates delayed"
+                    : state
+                      ? "Receiving metrics"
+                      : "Metrics unavailable"}
+            </strong>
+            <span>2-second updates · 5-minute history</span>
+          </div>
+          <button
+            type="button"
+            class="dashboard-customize"
+            onClick={() => setCustomizing(true)}
+          >
+            Customize dashboard
+          </button>
         </div>
       </div>
       {error && (
@@ -210,41 +225,188 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           default when available.
         </p>
       )}
+      <Dialog
+        open={customizing}
+        title="Customize dashboard"
+        onClose={() => setCustomizing(false)}
+      >
+        <div class="dashboard-customization">
+          <DeviceSelector
+            label="Network interface"
+            devices={interfaces}
+            value={network?.id}
+            onChange={(id) => choose("network", id)}
+          />
+          <p class="muted">Used for both download and upload.</p>
+          <DeviceSelector
+            label="Temperature sensor"
+            devices={sensors}
+            value={temperature?.id}
+            onChange={(id) => choose("temperature", id)}
+            empty="CPU sensor unavailable"
+          />
+          <DeviceSelector
+            label="GPU device"
+            devices={gpus}
+            value={gpu?.id}
+            onChange={(id) => choose("gpu", id)}
+          />
+          <DiskPicker selection={disks} />
+        </div>
+        <div class="dialog-actions">
+          <button type="button" onClick={() => setCustomizing(false)}>
+            Done
+          </button>
+        </div>
+      </Dialog>
+      {!loading && state && disks.missing.length > 0 && (
+        <p class="selection-notice" role="status">
+          A selected disk is unavailable. Open Customize dashboard to update
+          your selection.
+        </p>
+      )}
       <div class="host-metric-grid">
+        {(["Download", "Upload"] as const).map((label) => {
+          const metric =
+            label === "Download" ? "network_receive_rate" : "network_send_rate";
+          return (
+            <MetricCard
+              key={label}
+              label={label}
+              value={value(network, metric, "bytes_per_second")}
+              source={network?.name ?? "Host interface"}
+              state={status(network, metric)}
+              lastSuccessAt={read(network, metric)?.lastSuccessAt}
+              chart={chart(network, metric, label, "bytes_per_second")}
+              details={
+                <>
+                  {interfaces.map((device) => (
+                    <DetailReading
+                      key={device.id}
+                      {...detailProps}
+                      device={device}
+                      metric={metric}
+                      unit="bytes_per_second"
+                    />
+                  ))}
+                  <p class="muted">
+                    Includes LAN traffic; this is not an internet speed test.
+                  </p>
+                </>
+              }
+            />
+          );
+        })}
         <MetricCard
-          label="CPU usage"
-          value={value(cpu, "cpu_busy", "percent")}
-          source={cpu?.name ?? "All CPUs"}
-          state={status(cpu, "cpu_busy")}
-          lastSuccessAt={read(cpu, "cpu_busy")?.lastSuccessAt}
-          detailLabel="CPU details"
-          chart={chart(cpu, "cpu_busy", "CPU", "percent")}
+          label="Temperature"
+          value={value(temperature, "temperature", "celsius")}
+          source={temperature?.name ?? "CPU temperature"}
+          state={status(temperature, "temperature")}
+          lastSuccessAt={read(temperature, "temperature")?.lastSuccessAt}
+          chart={chart(temperature, "temperature", "Temperature", "celsius")}
+          note={reasonLabel(read(temperature, "temperature")?.reason)}
           details={
-            <div class="metric-core-list">
-              {devices
-                .filter((device) => device.kind === "cpu")
-                .map((device) => (
-                  <DetailReading
-                    key={device.id}
-                    {...detailProps}
-                    device={device}
-                    metric="cpu_busy"
-                    unit="percent"
-                  />
-                ))}
-            </div>
+            <>
+              {sensors.map((device) => (
+                <DetailReading
+                  key={device.id}
+                  {...detailProps}
+                  device={device}
+                  metric="temperature"
+                  unit="celsius"
+                />
+              ))}
+            </>
           }
         />
         <MetricCard
-          label="RAM usage"
+          label="Disk I/O"
           value={
             <>
-              {value(ram, "memory_used", "bytes", true)}
-              <small> / {value(ram, "memory_total", "bytes", true)}</small>
+              {value(disk, "disk_read_rate", "bytes_per_second")}
+              <small> read</small>
             </>
           }
           source={
-            value(ram, "memory_percent", "percent") + " used · Host memory"
+            value(disk, "disk_write_rate", "bytes_per_second") +
+            " write · " +
+            (disk?.name ?? "Physical disks")
+          }
+          state={status(disk, "disk_read_rate")}
+          lastSuccessAt={read(disk, "disk_read_rate")?.lastSuccessAt}
+          detailLabel="Disk activity details"
+          chart={
+            <MetricChart
+              series={[
+                chartSeries(state, disk?.id, "disk_read_rate", "Read"),
+                chartSeries(state, disk?.id, "disk_write_rate", "Write"),
+              ]}
+              unit="bytes_per_second"
+            />
+          }
+          details={
+            <>
+              {devices
+                .filter((device) => device.kind === "block" && !device.default)
+                .map((device) => (
+                  <div key={device.id}>
+                    <DetailReading
+                      {...detailProps}
+                      device={device}
+                      metric="disk_read_rate"
+                      unit="bytes_per_second"
+                      label={device.name + " · read"}
+                    />
+                    <DetailReading
+                      {...detailProps}
+                      device={device}
+                      metric="disk_write_rate"
+                      unit="bytes_per_second"
+                      label={device.name + " · write"}
+                    />
+                  </div>
+                ))}
+              <p class="muted">
+                Physical disks counted once. Partitions and stacked devices are
+                excluded from the aggregate.
+              </p>
+            </>
+          }
+        />
+        {disks.visible.map((device) => (
+          <DiskFullnessCard
+            key={device.id}
+            device={device}
+            state={state}
+            stale={stale}
+            now={serverNow}
+          />
+        ))}
+        {!disks.visible.length && (
+          <div class="disk-empty">
+            <strong>Disk fullness</strong>
+            <p>
+              {loading
+                ? "Discovering disks…"
+                : disks.missing.length
+                  ? "Your selected disks are unavailable."
+                  : disks.filesystems.length
+                    ? "No disks selected."
+                    : "No disks available."}
+            </p>
+            <button type="button" onClick={() => setCustomizing(true)}>
+              Choose disks
+            </button>
+          </div>
+        )}
+        <MetricCard
+          label="RAM usage"
+          gauge={{ value: read(ram, "memory_percent")?.value }}
+          value={value(ram, "memory_percent", "percent")}
+          source={
+            value(ram, "memory_used", "bytes", true) +
+            " / " +
+            value(ram, "memory_total", "bytes", true)
           }
           state={status(ram, "memory_percent")}
           lastSuccessAt={read(ram, "memory_percent")?.lastSuccessAt}
@@ -284,54 +446,35 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           }
         />
         <MetricCard
-          label="Temperature"
-          value={value(temperature, "temperature", "celsius")}
-          source={
-            sensors.length > 1 || (sensors.length > 0 && !temperature) ? (
-              <DeviceSelector
-                label="Temperature sensor"
-                devices={sensors}
-                value={temperature?.id}
-                onChange={(id) => choose("temperature", id)}
-                empty="CPU sensor unavailable"
-              />
-            ) : (
-              (temperature?.name ?? "CPU temperature")
-            )
-          }
-          state={status(temperature, "temperature")}
-          lastSuccessAt={read(temperature, "temperature")?.lastSuccessAt}
-          chart={chart(temperature, "temperature", "Temperature", "celsius")}
-          note={reasonLabel(read(temperature, "temperature")?.reason)}
+          label="CPU usage"
+          gauge={{ value: read(cpu, "cpu_busy")?.value }}
+          value={value(cpu, "cpu_busy", "percent")}
+          source={cpu?.name ?? "All CPUs"}
+          state={status(cpu, "cpu_busy")}
+          lastSuccessAt={read(cpu, "cpu_busy")?.lastSuccessAt}
+          detailLabel="CPU details"
+          chart={chart(cpu, "cpu_busy", "CPU", "percent")}
           details={
-            <>
-              {sensors.map((device) => (
-                <DetailReading
-                  key={device.id}
-                  {...detailProps}
-                  device={device}
-                  metric="temperature"
-                  unit="celsius"
-                />
-              ))}
-            </>
+            <div class="metric-core-list">
+              {devices
+                .filter((device) => device.kind === "cpu")
+                .map((device) => (
+                  <DetailReading
+                    key={device.id}
+                    {...detailProps}
+                    device={device}
+                    metric="cpu_busy"
+                    unit="percent"
+                  />
+                ))}
+            </div>
           }
         />
         <MetricCard
           label="GPU usage"
+          gauge={{ value: read(gpu, "gpu_busy")?.value }}
           value={value(gpu, "gpu_busy", "percent")}
-          source={
-            gpus.length > 1 ? (
-              <DeviceSelector
-                label="GPU device"
-                devices={gpus}
-                value={gpu?.id}
-                onChange={(id) => choose("gpu", id)}
-              />
-            ) : (
-              (gpu?.name ?? "No GPU reading available")
-            )
-          }
+          source={gpu?.name ?? "No GPU reading available"}
           state={status(gpu, "gpu_busy")}
           lastSuccessAt={read(gpu, "gpu_busy")?.lastSuccessAt}
           detailLabel="GPU details"
@@ -392,108 +535,6 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
               )}
             </>
           }
-        />
-        {(["Download", "Upload"] as const).map((label) => {
-          const metric =
-            label === "Download" ? "network_receive_rate" : "network_send_rate";
-          return (
-            <MetricCard
-              key={label}
-              label={label}
-              value={value(network, metric, "bytes_per_second")}
-              source={
-                interfaces.length > 1 ? (
-                  <DeviceSelector
-                    label={label + " interface"}
-                    devices={interfaces}
-                    value={network?.id}
-                    onChange={(id) => choose("network", id)}
-                  />
-                ) : (
-                  (network?.name ?? "Host interface")
-                )
-              }
-              state={status(network, metric)}
-              lastSuccessAt={read(network, metric)?.lastSuccessAt}
-              chart={chart(network, metric, label, "bytes_per_second")}
-              details={
-                <>
-                  {interfaces.map((device) => (
-                    <DetailReading
-                      key={device.id}
-                      {...detailProps}
-                      device={device}
-                      metric={metric}
-                      unit="bytes_per_second"
-                    />
-                  ))}
-                  <p class="muted">
-                    Includes LAN traffic; this is not an internet speed test.
-                  </p>
-                </>
-              }
-            />
-          );
-        })}
-        <MetricCard
-          label="Disk I/O"
-          value={
-            <>
-              {value(disk, "disk_read_rate", "bytes_per_second")}
-              <small> read</small>
-            </>
-          }
-          source={
-            value(disk, "disk_write_rate", "bytes_per_second") +
-            " write · " +
-            (disk?.name ?? "Physical disks")
-          }
-          state={status(disk, "disk_read_rate")}
-          lastSuccessAt={read(disk, "disk_read_rate")?.lastSuccessAt}
-          detailLabel="Disk activity details"
-          chart={
-            <MetricChart
-              series={[
-                chartSeries(state, disk?.id, "disk_read_rate", "Read"),
-                chartSeries(state, disk?.id, "disk_write_rate", "Write"),
-              ]}
-              unit="bytes_per_second"
-            />
-          }
-          details={
-            <>
-              {devices
-                .filter((device) => device.kind === "block" && !device.default)
-                .map((device) => (
-                  <div key={device.id}>
-                    <DetailReading
-                      {...detailProps}
-                      device={device}
-                      metric="disk_read_rate"
-                      unit="bytes_per_second"
-                      label={device.name + " · read"}
-                    />
-                    <DetailReading
-                      {...detailProps}
-                      device={device}
-                      metric="disk_write_rate"
-                      unit="bytes_per_second"
-                      label={device.name + " · write"}
-                    />
-                  </div>
-                ))}
-              <p class="muted">
-                Physical disks counted once. Partitions and stacked devices are
-                excluded from the aggregate.
-              </p>
-            </>
-          }
-        />
-        <DiskFullnessCard
-          state={state}
-          loading={loading}
-          stale={stale}
-          now={serverNow}
         />
       </div>
       <div class="dashboard-time-note">

@@ -1,6 +1,10 @@
 .host-dashboard {
   min-width: 0;
-  padding: 26px;
+  padding: 24px 26px;
+  --monitor-chart: light-dark(#a86b00, #f0a000);
+}
+[data-theme="dark"] .host-dashboard {
+  --monitor-chart: #f0a000;
 }
 .host-dashboard-heading {
   align-items: flex-start;
@@ -9,13 +13,21 @@
 .host-dashboard-heading p {
   overflow-wrap: anywhere;
 }
+.dashboard-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.dashboard-customize {
+  font-size: 12px;
+  min-height: 40px;
+}
 .monitoring-freshness {
   display: grid;
   gap: 3px;
   font-size: 11px;
   text-align: right;
   color: var(--muted);
-  flex-shrink: 0;
 }
 .monitoring-freshness strong {
   font-size: 12px;
@@ -28,8 +40,9 @@
 .host-metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 15px;
+  gap: 10px;
   align-items: start;
+  max-width: 1080px;
 }
 .host-metric {
   background: var(--surface);
@@ -40,50 +53,72 @@
 }
 .host-metric-main {
   position: relative;
-  min-height: 198px;
-  padding: 17px;
+  min-height: 138px;
+  padding: 13px 14px;
   overflow: hidden;
 }
 .host-metric-main.has-chart {
-  padding-bottom: 70px;
+  padding-bottom: 58px;
 }
-.host-metric h2 {
-  position: relative;
+.host-metric-open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  background: transparent;
   z-index: 1;
+  cursor: pointer;
+}
+.host-metric .host-metric-open:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--control-border);
+}
+.host-metric-open:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -3px;
+}
+.host-metric-main > h2,
+.host-metric-value,
+.host-metric-source,
+.host-metric-main > .host-metric-state,
+.metric-gauge {
+  pointer-events: none;
+}
+.host-metric-main > h2 {
   font-size: 12px;
   font-weight: 550;
   color: var(--muted);
-  margin: 0 0 9px;
+  margin: 0 0 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .host-metric-value {
-  position: relative;
-  z-index: 1;
   color: var(--text-strong);
-  font-size: clamp(22px, 2.1vw, 30px);
-  font-weight: 650;
+  font-size: clamp(23px, 2vw, 29px);
+  font-weight: 500;
   letter-spacing: -0.6px;
-  line-height: 1.25;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
 }
 .host-metric-value small {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 400;
   letter-spacing: 0;
   color: var(--muted);
 }
-.host-metric-source,
-.host-metric-note {
-  position: relative;
-  z-index: 1;
+.host-metric-source {
   color: var(--muted);
-  font-size: 11px;
-  margin-top: 6px;
-  overflow-wrap: anywhere;
+  font-size: 10px;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .host-metric-state {
-  position: relative;
-  z-index: 1;
   display: inline-block;
   font-size: 11px;
   color: var(--muted);
@@ -98,33 +133,100 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+.host-metric[data-state="stale"] .gauge-value,
 .host-metric[data-state="stale"] .host-metric-value {
   color: var(--muted);
 }
-.host-metric-toggle {
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  padding: 10px 16px;
-  width: 100%;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--muted);
-  background: var(--surface);
-  min-height: 40px;
+.host-metric[data-state="stale"] .metric-gauge svg {
+  opacity: 0.5;
 }
-.host-metric-toggle[aria-expanded="true"] svg {
-  transform: rotate(180deg);
+.is-gauge .host-metric-main {
+  min-height: 196px;
+  padding-top: 16px;
+  padding-bottom: 13px;
+  text-align: center;
+}
+.is-gauge .host-metric-main > h2 {
+  color: var(--text-strong);
+  margin: 9px 0 0;
+  font-size: 12px;
+}
+.metric-gauge {
+  position: relative;
+  width: 100%;
+  max-width: 224px;
+  margin: 0 auto;
+}
+.metric-gauge svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.metric-gauge path {
+  fill: none;
+  stroke-width: 24px;
+}
+.metric-gauge .gauge-track {
+  stroke: var(--surface-raised);
+}
+.metric-gauge .gauge-activity,
+.metric-gauge .gauge-safe {
+  stroke: #429f4a;
+}
+.metric-gauge .gauge-warning {
+  stroke: #f2aa00;
+}
+.metric-gauge .gauge-danger {
+  stroke: #df4940;
+}
+.metric-gauge .gauge-needle {
+  fill: var(--text-strong);
+  stroke: var(--surface);
+  stroke-width: 2px;
+}
+.gauge-value {
+  position: absolute;
+  bottom: 8%;
+  left: 0;
+  width: 100%;
+  color: var(--text-strong);
+  font-size: clamp(25px, 2.5vw, 36px);
+  font-weight: 450;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.8px;
+}
+.gauge-warning-label {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  bottom: -5%;
+  font-size: 9px;
+  color: var(--warning);
+}
+.gauge-warning-label.is-full {
+  color: var(--danger);
 }
 .host-metric-details {
-  border-top: 1px solid var(--border);
-  padding: 8px 16px 12px;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 .host-metric-details p {
   margin: 8px 0;
-  font-size: 11px;
+  font-size: 12px;
+}
+.metric-detail-current {
+  font-size: 28px;
+  color: var(--text-strong);
+}
+.metric-detail-history {
+  position: relative;
+  height: 140px;
+  margin: 20px 0;
+}
+.metric-detail-history .metric-chart {
+  height: 100%;
 }
 .metric-detail-row {
   display: flex;
@@ -143,8 +245,7 @@
   min-width: 0;
   max-width: 65%;
 }
-.metric-detail-row .host-metric-state,
-.capacity-row .host-metric-state {
+.metric-detail-row .host-metric-state {
   display: block;
 }
 .metric-detail-row small {
@@ -154,78 +255,62 @@
 }
 .metric-selector {
   display: grid;
-  gap: 5px;
-  margin: 4px 0 12px;
-  color: var(--muted);
-  font-size: 11px;
+  gap: 6px;
+  margin: 16px 0 6px;
+  color: var(--text);
+  font-size: 12px;
 }
 .metric-selector select {
   min-width: 0;
   width: 100%;
-  font-size: 12px;
-  padding: 7px;
+  font-size: 13px;
+  padding: 9px;
 }
-.host-metric-source .metric-selector {
-  margin: 0;
-}
-.host-metric-source .metric-selector select {
-  padding: 5px 7px;
+.dashboard-customization > p {
   font-size: 11px;
+  margin-top: 0;
 }
-.disk-picker-toggle {
-  width: 100%;
-  justify-content: space-between;
-  padding: 6px 9px;
-  min-height: 32px;
-  font-size: 11px;
-}
-.disk-picker-toggle svg {
-  width: 14px;
-  height: 14px;
-}
-.disk-picker-toggle[aria-expanded="true"] svg {
-  transform: rotate(90deg);
-}
-.disk-picker {
-  margin-top: 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface-raised);
-  font-size: 11px;
-}
-.disk-picker fieldset {
+.dashboard-disk-picker {
   min-width: 0;
-  margin: 0;
-  padding: 0;
   border: 0;
+  border-top: 1px solid var(--border);
+  padding: 16px 0 0;
+  margin: 24px 0 0;
 }
-.disk-picker legend {
+.dashboard-disk-picker legend {
+  font-size: 13px;
   font-weight: 600;
+  padding-right: 10px;
 }
-.disk-picker p,
-.disk-selection-note {
-  font-size: 11px;
+.dashboard-disk-picker legend span {
   color: var(--muted);
-  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 8px;
+}
+.dashboard-disk-picker p {
+  font-size: 12px;
+  color: var(--muted);
 }
 .disk-picker-options {
-  max-height: 230px;
+  max-height: 260px;
   overflow-y: auto;
-  margin-bottom: 8px;
 }
 .disk-picker-options label {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 5px 0;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 0;
   cursor: pointer;
+  border-bottom: 1px solid var(--border);
 }
-.disk-picker-options input {
-  width: 16px;
-  height: 16px;
+.dashboard-disk-picker .disk-picker-options input {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  min-height: 0;
   margin: 0;
   flex-shrink: 0;
   accent-color: var(--blue);
@@ -234,24 +319,32 @@
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+  font-size: 13px;
 }
 .disk-picker-options small {
   color: var(--muted);
   flex-shrink: 0;
 }
-.disk-picker > button {
-  width: 100%;
-  font-size: 11px;
-  min-height: 32px;
+.disk-empty {
+  border: 1px dashed var(--border);
+  border-radius: 11px;
+  padding: 18px;
+  min-height: 196px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.disk-empty button {
+  font-size: 12px;
 }
 .metric-chart {
   position: absolute;
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 64px;
-  color: var(--blue);
+  height: 50px;
+  color: var(--monitor-chart);
   touch-action: pan-y;
+  z-index: 2;
 }
 .metric-chart:focus-visible {
   outline: 2px solid var(--blue);
@@ -285,16 +378,16 @@
 .chart-legend {
   position: absolute;
   top: 0;
-  right: 10px;
+  right: 8px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   font-size: 9px;
 }
 .chart-range {
   position: absolute;
   top: 0;
-  left: 10px;
-  font-size: 10px;
+  left: 8px;
+  font-size: 9px;
   color: var(--muted);
   background: var(--surface);
   pointer-events: none;
@@ -305,55 +398,17 @@
   gap: 4px;
 }
 .chart-legend i {
-  width: 12px;
+  width: 10px;
   border-top: 2px solid currentColor;
 }
 .chart-legend i.dashed {
   border-top-style: dashed;
 }
-.capacity-row {
-  margin: 12px 0 0;
-}
-.capacity-row > div:first-child {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-}
-.capacity-row strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-weight: 550;
-}
-.capacity-row small {
-  color: var(--muted);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-.capacity-bar {
-  height: 5px;
-  margin: 6px 0 3px;
-  background: var(--surface-raised);
-  border-radius: 5px;
-  overflow: hidden;
-}
-.capacity-bar span {
-  display: block;
-  height: 100%;
-  background: var(--blue);
-  border-radius: 5px;
-}
-.capacity-row[data-state="stale"] .capacity-bar {
-  opacity: 0.5;
-}
-.filesystem-detail {
-  border-bottom: 1px solid var(--border);
-  padding: 8px 0;
-}
 .dashboard-time-note {
   display: flex;
   justify-content: space-between;
   gap: 10px;
+  max-width: 1080px;
   font-size: 10px;
   margin: 10px 2px 0;
   color: var(--muted);
@@ -385,33 +440,91 @@
   justify-content: space-between;
   gap: 12px;
 }
-@media (max-width: 1150px) {
+@media (max-width: 1100px) {
   .host-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 640px;
   }
-  .host-metric-value {
-    font-size: 28px;
+  .host-dashboard-heading {
+    flex-wrap: wrap;
+  }
+  .dashboard-toolbar {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .monitoring-freshness {
+    text-align: left;
   }
 }
 @media (max-width: 560px) {
   .host-dashboard {
     padding: 18px 12px;
   }
-  .host-metric-grid {
-    grid-template-columns: minmax(0, 1fr);
+  .host-dashboard-heading {
     gap: 12px;
   }
-  .host-dashboard-heading {
-    flex-direction: column;
+  .dashboard-toolbar {
+    width: 100%;
+    gap: 10px;
   }
   .monitoring-freshness {
-    text-align: left;
+    font-size: 10px;
+  }
+  .monitoring-freshness strong {
+    font-size: 11px;
+  }
+  .dashboard-customize {
+    padding: 8px;
+    font-size: 11px;
+  }
+  .host-metric-grid {
+    gap: 8px;
   }
   .host-metric-main {
-    min-height: 165px;
+    padding: 11px 10px;
+    min-height: 130px;
   }
-  .dashboard-time-note {
+  .host-metric-main > h2 {
+    font-size: 11px;
+  }
+  .host-metric-value {
+    font-size: 23px;
+  }
+  .is-gauge .host-metric-main {
+    min-height: 170px;
+    padding: 16px 10px 12px;
+  }
+  .is-gauge .host-metric-main > h2 {
+    font-size: 11px;
+  }
+  .gauge-value {
+    font-size: 27px;
+  }
+  .host-metric-source {
     font-size: 10px;
+  }
+  .gauge-warning-label {
+    font-size: 8px;
+  }
+}
+@media (max-width: 359px) {
+  .host-dashboard {
+    padding: 14px 8px;
+  }
+  .gauge-value {
+    font-size: 23px;
+  }
+  .host-metric-value {
+    font-size: 21px;
+  }
+  .host-metric-main {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .is-gauge .host-metric-main {
+    min-height: 154px;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
