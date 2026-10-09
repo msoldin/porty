@@ -1,0 +1,319 @@
+.host-dashboard {
+  min-width: 0;
+}
+.host-dashboard-heading {
+  align-items: flex-start;
+  gap: 16px;
+}
+.host-dashboard-heading p {
+  overflow-wrap: anywhere;
+}
+.monitoring-freshness {
+  display: grid;
+  gap: 3px;
+  font-size: 11px;
+  text-align: right;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.monitoring-freshness strong {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--success);
+}
+.monitoring-freshness[data-stale="true"] strong {
+  color: var(--warning);
+}
+.host-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 15px;
+  align-items: start;
+}
+.host-metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  min-width: 0;
+  overflow: hidden;
+}
+.host-metric-main {
+  position: relative;
+  min-height: 178px;
+  padding: 17px;
+  overflow: hidden;
+}
+.host-metric-main.has-chart {
+  padding-bottom: 70px;
+}
+.host-metric h2 {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--muted);
+  margin: 0 0 9px;
+}
+.host-metric-value {
+  position: relative;
+  z-index: 1;
+  color: var(--text-strong);
+  font-size: clamp(22px, 2.1vw, 30px);
+  font-weight: 650;
+  letter-spacing: -0.6px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.host-metric-value small {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.host-metric-source,
+.host-metric-note {
+  position: relative;
+  z-index: 1;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.host-metric-state {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.host-metric-state.is-stale {
+  color: var(--warning);
+}
+.host-metric[data-state="stale"] .host-metric-value {
+  color: var(--muted);
+}
+.host-metric-toggle {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding: 10px 16px;
+  width: 100%;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  min-height: 40px;
+}
+.host-metric-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.host-metric-details {
+  border-top: 1px solid var(--border);
+  padding: 8px 16px 12px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.host-metric-details p {
+  margin: 8px 0;
+  font-size: 11px;
+}
+.metric-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.metric-detail-row > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.metric-detail-row > span:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.metric-detail-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+.metric-selector {
+  display: grid;
+  gap: 5px;
+  margin: 4px 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.metric-selector select {
+  min-width: 0;
+  width: 100%;
+  font-size: 12px;
+  padding: 7px;
+}
+.metric-chart {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 64px;
+  color: var(--blue);
+  touch-action: pan-y;
+}
+.metric-chart:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -3px;
+}
+.metric-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.chart-series-1 {
+  color: var(--syntax-property);
+}
+.chart-inspection {
+  position: absolute;
+  z-index: 3;
+  bottom: 6px;
+  left: 6px;
+  right: 6px;
+  width: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.chart-legend {
+  position: absolute;
+  top: 0;
+  right: 10px;
+  display: flex;
+  gap: 10px;
+  font-size: 9px;
+}
+.chart-legend span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.chart-legend i {
+  width: 12px;
+  border-top: 2px solid currentColor;
+}
+.chart-legend i.dashed {
+  border-top-style: dashed;
+}
+.capacity-row {
+  margin: 12px 0 0;
+}
+.capacity-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.capacity-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 550;
+}
+.capacity-row small {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.capacity-bar {
+  height: 5px;
+  margin: 6px 0 3px;
+  background: var(--surface-raised);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.capacity-bar span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  border-radius: 5px;
+}
+.capacity-row[data-state="stale"] .capacity-bar {
+  opacity: 0.5;
+}
+.filesystem-detail {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+.dashboard-time-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  margin: 10px 2px 0;
+  color: var(--muted);
+}
+.monitoring-coverage {
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.monitoring-coverage summary {
+  cursor: pointer;
+}
+.monitoring-coverage ul {
+  padding-left: 20px;
+}
+.monitoring-error,
+.selection-notice {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.monitoring-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+@media (max-width: 1150px) {
+  .host-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .host-metric-value {
+    font-size: 28px;
+  }
+}
+@media (max-width: 560px) {
+  .host-metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .host-dashboard-heading {
+    flex-direction: column;
+  }
+  .monitoring-freshness {
+    text-align: left;
+  }
+  .host-metric-main {
+    min-height: 165px;
+  }
+  .dashboard-time-note {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .host-dashboard * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
