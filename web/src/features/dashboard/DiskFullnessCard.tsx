@@ -63,22 +63,57 @@ export function DiskFullnessCard({
       detailLabel={device.name + " filesystem details"}
       details={
         <>
-          <p>
-            {[device.driver, ...(device.mountPaths ?? [device.name])]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-          <p>
-            {bytes("filesystem_used")} used of {bytes("filesystem_total")}
-          </p>
-          <p>{bytes("filesystem_available")} available</p>
-          <p class="muted">Capacity guide: 70% filling up · 90% almost full.</p>
-          {reserved > 0 && (
-            <p class="muted">
-              {formatMetric(reserved, "bytes")} reserved; excluded from used and
-              available capacity.
-            </p>
-          )}
+          <dl class="disk-space-summary" aria-label="Storage space">
+            <div>
+              <dt>Used</dt>
+              <dd>{bytes("filesystem_used")}</dd>
+            </div>
+            <div>
+              <dt>Free</dt>
+              <dd>{bytes("filesystem_available")}</dd>
+            </div>
+            <div>
+              <dt>Total</dt>
+              <dd>{bytes("filesystem_total")}</dd>
+            </div>
+          </dl>
+          <details class="disk-technical-details">
+            <summary>Technical details</summary>
+            <dl>
+              {device.driver && (
+                <div>
+                  <dt>Filesystem type</dt>
+                  <dd>{device.driver}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Mount paths</dt>
+                <dd>
+                  {[
+                    ...new Set(
+                      device.mountPaths?.length
+                        ? device.mountPaths
+                        : [device.name],
+                    ),
+                  ].map((path) => (
+                    <code key={path}>{path}</code>
+                  ))}
+                </dd>
+              </div>
+              {reserved > 0 && (
+                <div>
+                  <dt>Reserved space</dt>
+                  <dd>{formatMetric(reserved, "bytes")}</dd>
+                </div>
+              )}
+            </dl>
+            {reserved > 0 && (
+              <p class="muted">
+                Reserved space is set aside by the filesystem and is not
+                included in Used or Free.
+              </p>
+            )}
+          </details>
         </>
       }
     />

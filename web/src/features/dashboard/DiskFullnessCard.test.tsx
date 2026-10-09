@@ -170,7 +170,7 @@ it("keeps the picker usable when storage fails and restores focus on Escape", ()
   );
 });
 
-it("keeps individual capacities and technical details for the selected disks", () => {
+it("shows clear storage totals and keeps technical disk information collapsed", () => {
   render(<DiskView state={fixture()} loading={false} stale={false} />);
   fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
   fireEvent.click(
@@ -189,6 +189,11 @@ it("keeps individual capacities and technical details for the selected disks", (
       hidden: true,
     }),
   );
-  expect(card.getByText("990 MB used of 1 GB")).toBeVisible();
+  expect(card.getByText("Used").parentElement).toHaveTextContent("990 MB");
+  expect(card.getByText("Free").parentElement).toHaveTextContent("10 MB");
+  expect(card.getByText("Total").parentElement).toHaveTextContent("1 GB");
+  expect(card.getByText("Technical details")).toBeVisible();
+  expect(card.getByText("ext4")).not.toBeVisible();
+  expect(card.queryByText(/Capacity guide/)).not.toBeInTheDocument();
   expect(card.queryByText("/data")).not.toBeInTheDocument();
 });

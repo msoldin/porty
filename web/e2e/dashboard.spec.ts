@@ -340,6 +340,65 @@ test("recovers from stale samples without inventing zeros", async ({
   await expect(cpu.getByText("42%", { exact: true })).toBeVisible();
   await expect(cpu.getByText("Stale", { exact: true })).toHaveCount(0);
 });
+test("keeps disk details readable and reveals technical information on demand", async ({
+  page,
+}, info) => {
+  const snapshot = metrics();
+  const disk = snapshot.inventory!.devices.find(
+    (device) => device.id === "root",
+  )!;
+  const mount =
+    "/mnt/wsl/docker-desktop-bind-mounts/Ubuntu/" +
+    "8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0f1";
+  disk.driver = "9p";
+  disk.mountPaths = ["/", mount, mount];
+  snapshot.current.readings["root.filesystem_available"].value = 300000000000;
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  await register(page);
+  if (info.project.use.hasTouch)
+    await page.setViewportSize({ width: 320, height: 844 });
+  await page.evaluate(() => (document.documentElement.dataset.theme = "dark"));
+  const trigger = page.getByRole("button", {
+    name: "/ filesystem details",
+    exact: true,
+  });
+  await trigger.click();
+  const dialog = page.getByRole("dialog");
+  const summary = dialog.locator(".disk-space-summary");
+  await expect(summary).toContainText("Used680 GB");
+  await expect(summary).toContainText("Free300 GB");
+  await expect(summary).toContainText("Total1 TB");
+  await expect(dialog.getByText(mount, { exact: true })).toBeHidden();
+  await expect(dialog.getByText("9p", { exact: true })).toBeHidden();
+  await page.screenshot({
+    path: info.outputPath("storage-summary.png"),
+    fullPage: true,
+  });
+  const disclosure = dialog.locator("summary", {
+    hasText: "Technical details",
+  });
+  await disclosure.focus();
+  await disclosure.press("Enter");
+  await expect(dialog.getByText(mount, { exact: true })).toBeVisible();
+  await expect(dialog.getByText(mount, { exact: true })).toHaveCount(1);
+  await expect(dialog.getByText("20 GB", { exact: true })).toBeVisible();
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("technical-details.png"),
+    fullPage: true,
+  });
+  await disclosure.click();
+  await expect(dialog.getByText(mount, { exact: true })).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
 test("opens an expanded monitoring graph with axes and interactive history", async ({
   page,
 }, info) => {
