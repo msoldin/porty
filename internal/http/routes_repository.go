@@ -8,6 +8,7 @@ import (
 )
 
 func registerRepositoryRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
+	registerDeploymentReviewRoutes(mux, options)
 	if options.Repository != nil {
 		mux.HandleFunc("GET /api/v1/repository/status", readRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 			value, err := options.Repository.RepositoryStatus(r.Context())
@@ -42,6 +43,9 @@ func registerRepositoryRoutes(mux *stdhttp.ServeMux, options RouterOptions) {
 	}
 	if options.Actions != nil {
 		mux.HandleFunc("POST /api/v1/stacks/{id}/actions/{action}", mutationRoute(options, func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+			if handleReviewedDeployment(w, r, options) {
+				return
+			}
 			value, err := options.Actions.StartAction(r.Context(), portystack.StackID(r.PathValue("id")), r.PathValue("action"))
 			writeResult(w, r, value, err, stdhttp.StatusAccepted)
 		}))

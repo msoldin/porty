@@ -45,6 +45,7 @@ type RouterOptions struct {
 	Environment          EnvironmentAPI
 	Repository           RepositoryAPI
 	Actions              ActionAPI
+	DeploymentReview     DeploymentReviewAPI
 	Operations           OperationQueryAPI
 	Deployments          DeploymentQueryAPI
 	StackDeploymentTimes StackDeploymentTimesAPI
@@ -102,6 +103,11 @@ type RepositoryAPI interface {
 type ActionAPI interface {
 	StartAction(context.Context, portystack.StackID, string) (portyop.Operation, error)
 	StartRepositoryAction(context.Context, string) (portyop.Operation, error)
+}
+
+type DeploymentReviewAPI interface {
+	ReviewDeployment(context.Context, portystack.StackID) (portycontrol.DeploymentReview, error)
+	StartReviewedDeployment(context.Context, portystack.StackID, string) (portyop.Operation, error)
 }
 
 type OperationQueryAPI interface {

@@ -51,6 +51,7 @@ type ControlPlane struct {
 	logs           LogPublisher
 	stateStore     DeploymentStateStore
 	alerts         AlertReader
+	reviewKey      deploymentReviewKey
 }
 
 type DeploymentStateStore interface {
@@ -191,6 +192,9 @@ func parseContainerStates(rows []api.ContainerSummary) []ContainerState {
 }
 
 func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, action string) (portyop.Operation, error) {
+	if action == "deploy" || action == "recreate" {
+		return c.startDeployment(ctx, id, action, nil)
+	}
 	stack, err := c.lookup.ByID(ctx, id)
 	if err != nil {
 		return portyop.Operation{}, err
@@ -201,49 +205,6 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 	}
 	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
 	switch action {
-	case "deploy", "recreate":
-		release, err := c.coordinator.Try(false, string(id))
-		if err != nil {
-			return portyop.Operation{}, err
-		}
-		operationID := portyop.NewOperationID()
-		operation, startErr := c.startObserved(ctx, portyop.OperationRequest{ID: operationID, Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), StackName: stack.DirectoryName, AlertTargets: stackAlertTargets(string(id), action)}, func(jobCtx context.Context) (string, error) {
-			status, statusErr := c.repository.Status(jobCtx)
-			if statusErr != nil {
-				return "", statusErr
-			}
-			head, headErr := c.repository.Head(jobCtx)
-			if headErr != nil {
-				return "", headErr
-			}
-			diffDigest := ""
-			if status.Dirty {
-				diff, diffErr := c.repository.Diff(jobCtx, stack.DirectoryName)
-				if diffErr != nil {
-					return "", diffErr
-				}
-				digest := sha256.Sum256([]byte(diff))
-				diffDigest = "sha256:" + hex.EncodeToString(digest[:])
-			}
-			sources, images, platforms, err := c.manualImageOverrides(jobCtx, id, request)
-			if err != nil {
-				return "", err
-			}
-			deployment, err := c.deployments.DeployLocked(jobCtx, portyop.DeployRequest{StackID: id, OperationID: operationID, StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: values, GitCommit: head, Dirty: status.Dirty, DiffDigest: diffDigest, Recreate: action == "recreate", ImageOverrides: images, ImagePlatforms: platforms})
-			if err != nil {
-				return "", err
-			}
-			if c.updateStore != nil {
-				if err := c.updateStore.PruneImages(jobCtx, id, sources); err != nil {
-					return "", err
-				}
-			}
-			return fmt.Sprintf("deployment %s", deployment.ID), nil
-		}, func(jobCtx context.Context) bool { return c.verifyStackAction(jobCtx, request, action) }, release)
-		if startErr != nil {
-			release()
-		}
-		return operation, startErr
 	case "validate", "status", "start", "stop", "restart", "pull", "logs":
 		release, err := c.coordinator.Try(false, string(id))
 		if err != nil {
@@ -313,6 +274,73 @@ func (c *ControlPlane) StartAction(ctx context.Context, id portystack.StackID, a
 	default:
 		return portyop.Operation{}, errors.New("unsupported stack action")
 	}
+}
+
+func (c *ControlPlane) startDeployment(ctx context.Context, id portystack.StackID, action string, expected *string) (portyop.Operation, error) {
+	release, err := c.coordinator.Try(false, string(id))
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	accepted := false
+	defer func() {
+		if !accepted {
+			release()
+		}
+	}()
+	stack, err := c.lookup.ByID(ctx, id)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	values, err := c.environment.Values(ctx, id)
+	if err != nil {
+		return portyop.Operation{}, err
+	}
+	request := portycompose.Request{StackDir: filepath.Join(c.root, stack.DirectoryName), ProjectName: stack.ComposeProjectName, Environment: values}
+	if expected != nil {
+		review, err := c.reviewDeploymentLocked(ctx, id, stack, request)
+		if err != nil {
+			return portyop.Operation{}, err
+		}
+		if !sameDeploymentRevision(review.SourceRevision, *expected) {
+			return portyop.Operation{}, ErrDeploymentReviewChanged
+		}
+	}
+	operationID := portyop.NewOperationID()
+	operation, startErr := c.startObserved(ctx, portyop.OperationRequest{ID: operationID, Kind: action, ScopeType: "stack", ScopeID: string(id), Secrets: mapValues(values), StackName: stack.DirectoryName, AlertTargets: stackAlertTargets(string(id), action)}, func(jobCtx context.Context) (string, error) {
+		status, statusErr := c.repository.Status(jobCtx)
+		if statusErr != nil {
+			return "", statusErr
+		}
+		head, headErr := c.repository.Head(jobCtx)
+		if headErr != nil {
+			return "", headErr
+		}
+		diffDigest := ""
+		if status.Dirty {
+			diff, diffErr := c.repository.Diff(jobCtx, stack.DirectoryName)
+			if diffErr != nil {
+				return "", diffErr
+			}
+			digest := sha256.Sum256([]byte(diff))
+			diffDigest = "sha256:" + hex.EncodeToString(digest[:])
+		}
+		sources, images, platforms, err := c.manualImageOverrides(jobCtx, id, request)
+		if err != nil {
+			return "", err
+		}
+		deployment, err := c.deployments.DeployLocked(jobCtx, portyop.DeployRequest{StackID: id, OperationID: operationID, StackDir: request.StackDir, ProjectName: request.ProjectName, Environment: values, GitCommit: head, Dirty: status.Dirty, DiffDigest: diffDigest, Recreate: action == "recreate", ImageOverrides: images, ImagePlatforms: platforms})
+		if err != nil {
+			return "", err
+		}
+		if c.updateStore != nil {
+			if err := c.updateStore.PruneImages(jobCtx, id, sources); err != nil {
+				return "", err
+			}
+		}
+		return fmt.Sprintf("deployment %s", deployment.ID), nil
+	}, func(jobCtx context.Context) bool { return c.verifyStackAction(jobCtx, request, action) }, release)
+	accepted = startErr == nil
+	return operation, startErr
 }
 
 func mapValues(values map[string]string) []string {

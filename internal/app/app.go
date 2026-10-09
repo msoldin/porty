@@ -124,6 +124,7 @@ func New(ctx context.Context, db *sql.DB, cfg config.Config) (*Application, erro
 			})
 			options.Repository = control
 			options.Actions = control
+			options.DeploymentReview = control
 			options.State = control
 			options.Containers = control
 			if setupService != nil {
