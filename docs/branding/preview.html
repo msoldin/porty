@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Porty · icon size preview</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f5f7fb;
+        color: #263445;
+        font:
+          14px/1.5 Inter,
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 1120px;
+        margin: auto;
+        padding: 32px 24px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        letter-spacing: -0.7px;
+      }
+      h2 {
+        font-size: 18px;
+        margin: 0 0 16px;
+      }
+      h3 {
+        font-size: 13px;
+        margin: 20px 0 12px;
+      }
+      p {
+        margin: 6px 0 20px;
+        color: #58697e;
+      }
+      .themes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .theme {
+        padding: 24px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--page);
+        color: var(--text);
+        min-width: 0;
+      }
+      .light {
+        --page: #fff;
+        --sidebar: #eaf0f7;
+        --border: #dce3ed;
+        --text: #1b2b3e;
+        --muted: #58697e;
+        --active: #ddeaf9;
+      }
+      .dark {
+        --page: #213142;
+        --sidebar: #182b3c;
+        --border: #35495b;
+        --text: #f0f5fb;
+        --muted: #adbacb;
+        --active: #294c6a;
+      }
+      .hero {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 180px;
+        background: var(--sidebar);
+        border-radius: 12px;
+      }
+      .hero img {
+        width: 180px;
+        height: 180px;
+      }
+      img {
+        object-fit: contain;
+        vertical-align: middle;
+      }
+      .samples {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 16px;
+      }
+      figure {
+        margin: 0;
+        text-align: center;
+      }
+      figcaption {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+      .tabs {
+        margin-top: 14px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--sidebar);
+        padding: 9px 12px;
+        border-radius: 8px 8px 0 0;
+        font-size: 12px;
+      }
+      .tab img {
+        width: 16px;
+        height: 16px;
+      }
+      .sidebar {
+        width: 200px;
+        max-width: 100%;
+        background: var(--sidebar);
+        padding: 18px 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+        font-size: 24px;
+        font-weight: 750;
+        letter-spacing: -0.7px;
+      }
+      .brand img {
+        width: 48px;
+        height: 48px;
+      }
+      .nav {
+        padding: 8px 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .nav.active {
+        color: var(--text);
+        background: var(--active);
+        border-radius: 7px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin: 22px 0;
+      }
+      select {
+        font: inherit;
+        padding: 6px 10px;
+        border: 1px solid #8493a6;
+        border-radius: 6px;
+        background: white;
+        color: #263445;
+      }
+      .note {
+        font-size: 12px;
+        margin: 20px 0 0;
+      }
+      a {
+        color: #1769b4;
+      }
+      @media (max-width: 720px) {
+        main {
+          padding: 20px 14px;
+        }
+        .themes {
+          grid-template-columns: 1fr;
+        }
+        .theme {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Porty, at actual size</h1>
+      <p>
+        Full-body mascot for branding · simplified mascot for the sidebar · head
+        and cap for the favicon.
+      </p>
+      <div class="controls">
+        <label for="sidebar-size">Sidebar icon size</label>
+        <select id="sidebar-size">
+          <option value="25">25 px · existing slot</option>
+          <option value="32">32 px</option>
+          <option value="40">40 px</option>
+          <option value="48" selected>48 px · proposed</option>
+          <option value="64">64 px</option>
+        </select>
+        <label for="sidebar-art">Sidebar artwork</label>
+        <select id="sidebar-art">
+          <option value="porty-sidebar.png">Simplified full body</option>
+          <option value="porty-mascot.png">Original full body</option>
+          <option value="porty-head.png">Head and cap</option>
+        </select>
+      </div>
+      <div class="themes" id="themes"></div>
+      <p class="note">
+        Sizes are CSS pixels. View at 100% browser zoom. These are isolated
+        branding previews using Porty’s current light and dark colors; they do
+        not change the application.
+      </p>
+      <p class="note">
+        Source PNGs: <a href="porty-mascot.png">main mascot</a> ·
+        <a href="porty-sidebar.png">sidebar mascot</a> ·
+        <a href="porty-head.png">favicon head</a>. The wordmark stays separate
+        text.
+      </p>
+    </main>
+    <script>
+      const sample = (file, size) =>
+        `<figure><img src="${file}" alt="Porty at ${size} pixels" width="${size}" height="${size}"><figcaption>${size} px</figcaption></figure>`;
+      document.getElementById("themes").innerHTML = ["light", "dark"]
+        .map(
+          (theme) => `
+        <section class="theme ${theme}" aria-label="${theme} theme">
+          <h2>${theme === "light" ? "Light" : "Dark"} background</h2>
+          <div class="hero"><img src="porty-mascot.png" width="180" height="180" alt="Porty pushing a container"></div>
+          <h3>Simplified full-body mascot</h3>
+          <div class="samples">${[25, 32, 40, 48, 64].map((size) => sample("porty-sidebar.png", size)).join("")}</div>
+          <h3>Head and cap</h3>
+          <div class="samples">${[16, 24, 32, 48].map((size) => sample("porty-head.png", size)).join("")}</div>
+          <div class="tabs"><div class="tab"><img src="porty-head.png" alt="">Stacks · Porty <span aria-hidden="true">×</span></div></div>
+          <h3>Sidebar · separate wordmark</h3>
+          <div class="sidebar"><div class="brand"><img src="porty-sidebar.png" width="48" height="48" alt=""><span>Porty</span></div><div class="nav active">Stacks</div><div class="nav">Repository</div><div class="nav">Operations</div></div>
+        </section>`,
+        )
+        .join("");
+      document
+        .getElementById("sidebar-size")
+        .addEventListener("change", (event) => {
+          document.querySelectorAll(".brand img").forEach((img) => {
+            img.style.width = `${event.target.value}px`;
+            img.style.height = `${event.target.value}px`;
+          });
+        });
+      document
+        .getElementById("sidebar-art")
+        .addEventListener("change", (event) => {
+          document.querySelectorAll(".brand img").forEach((img) => {
+            img.src = event.target.value;
+          });
+        });
+    </script>
+  </body>
+</html>

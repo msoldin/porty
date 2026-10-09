@@ -1,0 +1,36 @@
+{
+  "tool": "Built-in image_gen.imagegen",
+  "purpose": "Approved branding source artwork and size previews; optimized copies are integrated into the application.",
+  "webExports": {
+    "../../web/src/assets/porty-mascot.png": {
+      "source": "porty-mascot.png",
+      "size": 384
+    },
+    "../../web/src/assets/porty-sidebar.png": {
+      "source": "porty-sidebar.png",
+      "size": 144
+    },
+    "../../web/public/favicon-16.png": {
+      "source": "porty-head.png",
+      "size": 16
+    },
+    "../../web/public/favicon-32.png": {
+      "source": "porty-head.png",
+      "size": 32
+    }
+  },
+  "assets": {
+    "porty-mascot.png": {
+      "role": "Approved full-body concept",
+      "source": "exec-b48399c0-2fc3-4d1f-a0c5-ab175b1b1912.png"
+    },
+    "porty-sidebar.png": {
+      "role": "Simplified full-body sidebar variant",
+      "prompt": "Use case: logo-brand. Create a SIMPLIFIED SMALL-SIZE VARIANT of this exact Porty elephant mascot for a 48 pixel sidebar brand icon. Preserve the whole elephant pushing a smaller shipping container to the right, oversized head and ears, happy expression, blue cap with plain white front, forward lean and braced feet. Preserve the reference character and overall pose. Radically simplify into clear mostly flat vector-like shapes and thick clean navy outlines: no gradients or textures, no highlights except white cap and tiny toe shapes; two broad blue-grey elephant tones; pink ear; blue cap and blue container; container has only TWO broad ribs on the main face and no corner bolts or top ribs. Remove eyebrows and trunk wrinkles. Slightly shorten tail and legs for compactness. A single readable smiling eye where possible. More visual space between legs, trunk, and box. Clear coherent silhouette, elephant dominates, container about one-third composition width. One icon only, full-body visible, no text/wordmark or Docker logo or scenery. TRUE transparent background. Centered square canvas with 6 percent padding. Designed for small-size recognition, not an elaborate illustration."
+    },
+    "porty-head.png": {
+      "role": "Favicon head variant",
+      "prompt": "Use case: logo-brand. Create a TINY FAVICON VARIANT of this exact friendly Porty elephant. HEAD AND CAP ONLY, no container, no body, no legs, no wordmark or text. Preserve recognizable blue cap with white front, oversized rounded pink inner ear, slate blue elephant head and curved trunk. Simplify aggressively for actual use at 16 and 32 pixels: use very few broad flat shapes, smooth navy outline, ONE clearly visible small smiling eye, no eyebrows, no trunk wrinkles, no mouth details, no gradients, no shadows, no fine highlights. Friendly three-quarter head facing right with short curved trunk, one dominant ear on left. Compact almost-square silhouette, tightly framed but uncropped with 6 percent padding, all features large. 6 flat colors maximum: navy, slate blue, lighter slate blue, pink, vivid blue, white. Vector-like crisp clean contours. TRUE transparent background. One icon only, no sheet of multiple sizes. Match the full-body reference's identity."
+    }
+  }
+}

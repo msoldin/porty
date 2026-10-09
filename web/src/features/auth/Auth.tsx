@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { message } from "../../lib/http";
 import { signIn } from "./api";
 import { type Session } from "./types";
-import { Icon } from "../../components/Icon";
+import portyMascot from "../../assets/porty-mascot.png";
 import { Notice } from "../../components/Feedback";
 import "./auth.css";
 export function Auth({
@@ -17,7 +17,7 @@ export function Auth({
   return (
     <main class="auth">
       <div class="auth-brand">
-        <Icon name="Stacks" />
+        <img src={portyMascot} alt="" width="120" height="120" />
         Porty
       </div>
       <h1>{registered ? "Welcome back" : "Set up Porty"}</h1>

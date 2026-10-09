@@ -9,7 +9,7 @@ import {
   type RepositorySetupMode,
   type RepositorySetupStatus,
 } from "./types";
-import { Icon } from "../../components/Icon";
+import portySidebar from "../../assets/porty-sidebar.png";
 import { Notice } from "../../components/Feedback";
 import { RemoteAuthenticationFields } from "./RepositoryRemoteFields";
 import "./repository.css";
@@ -133,7 +133,7 @@ export function RepositorySetup({
       <main class="setup-page">
         <div class="setup-heading">
           <div class="auth-brand">
-            <Icon name="Stacks" /> Porty
+            <img src={portySidebar} alt="" width="48" height="48" /> Porty
           </div>
           <h1>Configure the stack repository</h1>
           <p>

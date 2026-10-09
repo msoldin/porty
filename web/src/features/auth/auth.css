@@ -13,8 +13,9 @@
   font-size: 25px;
   margin-bottom: 30px;
 }
-.auth-brand svg {
-  color: var(--blue);
+.auth .auth-brand img {
+  width: 120px;
+  height: 120px;
 }
 .auth h1 {
   font-size: 26px;

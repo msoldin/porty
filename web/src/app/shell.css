@@ -32,10 +32,11 @@
   color: var(--text-strong);
   padding: 0 12px 28px;
 }
-.brand svg {
-  width: 25px;
-  height: 25px;
-  color: var(--blue);
+.brand img {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .brand:hover {
   text-decoration: none;

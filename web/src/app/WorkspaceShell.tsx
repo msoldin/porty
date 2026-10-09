@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Icon } from "../components/Icon";
+import portySidebar from "../assets/porty-sidebar.png";
 
 const nav = [
   { name: "Stacks", icon: "Stacks", path: "/" },
@@ -64,7 +65,7 @@ export function WorkspaceShell({
               selectPage("/");
             }}
           >
-            <Icon name="Stacks" />
+            <img src={portySidebar} alt="" width="48" height="48" />
             <span>Porty</span>
           </a>
           <button

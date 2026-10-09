@@ -956,6 +956,12 @@ td > a {
   color: var(--blue);
   margin-bottom: 35px;
 }
+.auth-brand img {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
 .auth h1 {
   font-size: 28px;
   margin-bottom: 12px;
