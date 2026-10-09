@@ -66,9 +66,21 @@ function AlertRow({
       </p>
       {item.resolvedAt && (
         <p>
-          Resolved by {item.resolvedBy || "verified recovery"} ·{" "}
-          {new Date(item.resolvedAt).toLocaleString()}
+          {item.resolvedBy
+            ? `Manually resolved by ${item.resolvedBy}`
+            : "Resolved after verified recovery"}{" "}
+          · {new Date(item.resolvedAt).toLocaleString()}
           {item.resolution && ` · ${item.resolution}`}
+        </p>
+      )}
+      {!item.acknowledgedAt && (
+        <p class="muted">
+          Acknowledgement does not recover containers or resume automation.
+        </p>
+      )}
+      {!item.resolvedAt && !item.canResolveManually && (
+        <p class="muted">
+          This incident requires verified recovery before it can be resolved.
         </p>
       )}
       <div class="action-group">

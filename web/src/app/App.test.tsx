@@ -35,6 +35,8 @@ let environmentSecret = false;
 let environmentKeys: string[];
 let environmentReadResponse: (() => Promise<Response>) | undefined;
 let environmentUpdateFails = false;
+let operationReadResponse: (() => Promise<Response>) | undefined;
+let auditFails = false;
 beforeEach(() => {
   alertRecord = {
     id: "alert1",
@@ -77,6 +79,8 @@ beforeEach(() => {
   environmentKeys = ["DATABASE_PASSWORD"];
   environmentReadResponse = undefined;
   environmentUpdateFails = false;
+  operationReadResponse = undefined;
+  auditFails = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -177,6 +181,13 @@ beforeEach(() => {
         };
         return Response.json(alertRecord);
       }
+      if (path === "/audit?limit=50" && auditFails)
+        return Response.json(
+          { error: { code: "Unavailable", message: "Audit unavailable" } },
+          { status: 503 },
+        );
+      if (path === "/operations/old-op" && operationReadResponse)
+        return operationReadResponse();
       if (path === "/operations/old-op")
         return Response.json({
           id: "old-op",
@@ -796,4 +807,44 @@ it("shows the same alert revision globally and on its stack and opens an older l
   expect(writes.map((write) => write.path)).toEqual([
     "/alerts/alert1/acknowledge",
   ]);
+});
+it("does not reopen operation details from a late response after close", async () => {
+  let respond!: (response: Response) => void;
+  operationReadResponse = () =>
+    new Promise((resolve) => {
+      respond = resolve;
+    });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("link", { name: /Alerts/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "View operation" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Close operation" }),
+  );
+  respond(
+    Response.json({
+      id: "old-op",
+      kind: "deploy",
+      status: "failed",
+      output: "Late failure output",
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("region", { name: "Operation details" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByText("Late failure output")).not.toBeInTheDocument();
+});
+it("shows failed audit loading instead of an empty log", async () => {
+  auditFails = true;
+  render(<App />);
+  fireEvent.click(await screen.findByRole("link", { name: "Audit log" }));
+  expect(
+    await screen.findByText(/Audit log could not be loaded/),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("No audit events recorded."),
+  ).not.toBeInTheDocument();
 });

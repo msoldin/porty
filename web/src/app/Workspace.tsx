@@ -61,11 +61,14 @@ export function Workspace({
   const operationRequest = useRef(0);
   const [linkedOperation, setLinkedOperation] = useState<Operation>();
   const [selectedOperation, setSelectedOperation] = useState<string>();
+  const [operationLoading, setOperationLoading] = useState(false);
   const [signOutPending, setSignOutPending] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const remoteEnabled = Boolean(repositoryStatus.managedRemote);
   async function openOperation(id: string) {
     const request = ++operationRequest.current;
+    setOperationLoading(true);
+    setSelectedOperation(undefined);
     try {
       const item =
         operations.find((item) => item.id === id) || (await getOperation(id));
@@ -75,10 +78,13 @@ export function Workspace({
       setSelectedOperation(item.id);
     } catch (cause) {
       if (request === operationRequest.current) setError(message(cause));
+    } finally {
+      if (request === operationRequest.current) setOperationLoading(false);
     }
   }
   function onAction(operation: Operation) {
     operationRequest.current++;
+    setOperationLoading(false);
     addOperation(operation);
     setSelectedOperation(operation.id);
   }
@@ -107,7 +113,7 @@ export function Workspace({
       username={session.username}
       route={route}
       stackSelected={Boolean(selectedStack)}
-      operationOpen={Boolean(operation)}
+      operationOpen={Boolean(operation) || operationLoading}
       connection={stream.connection}
       navigate={navigate}
       onSignOut={() => {
@@ -115,11 +121,12 @@ export function Workspace({
         else void signOutAction();
       }}
       drawer={
-        operation && (
+        (operation || operationLoading) && (
           <OperationDrawer
             operation={operation}
             close={() => {
               operationRequest.current++;
+              setOperationLoading(false);
               setSelectedOperation(undefined);
             }}
           />

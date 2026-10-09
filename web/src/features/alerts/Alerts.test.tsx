@@ -71,3 +71,28 @@ it("keeps acknowledged unresolved incidents listed", () => {
     screen.queryByRole("button", { name: "Acknowledge" }),
   ).not.toBeInTheDocument();
 });
+it("acknowledging an alert does not start recovery", () => {
+  const acknowledge = vi.fn(),
+    resolve = vi.fn(),
+    open = vi.fn();
+  render(
+    <AlertList
+      items={[
+        { ...recovered, resolvedAt: undefined, canResolveManually: false },
+      ]}
+      busy={false}
+      acknowledge={acknowledge}
+      resolve={resolve}
+      openOperation={open}
+      navigate={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByText(/acknowledgement does not recover/i),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/requires verified recovery/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
+  expect(acknowledge).toHaveBeenCalledTimes(1);
+  expect(resolve).not.toHaveBeenCalled();
+  expect(open).not.toHaveBeenCalled();
+});
