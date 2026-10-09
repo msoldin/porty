@@ -100,19 +100,46 @@ func (s *Service) Snapshot(rawCursor string) (Snapshot, error) {
 			return Snapshot{}, err
 		}
 	}
-	for _, entry := range s.history {
-		if reset || entry.sequence > sequence {
-			var sample Sample
-			if err := json.Unmarshal(entry.data, &sample); err != nil {
-				return Snapshot{}, err
-			}
-			result.Samples = append(result.Samples, sample)
-		}
-	}
+
 	encodedCursor, _ := json.Marshal(cursor{s.generation, strconv.FormatUint(s.sequence, 10), s.inventory.Revision})
 	result.Cursor = base64.RawURLEncoding.EncodeToString(encodedCursor)
 	if len(s.history) > 0 {
 		result.WindowStart = s.history[0].at.UTC()
+	}
+	// Select the newest encoded samples that fit before allocating decoded maps.
+	// Re-encoding and trimming an entire large history creates quadratic work.
+	metadata, err := json.Marshal(result)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	budget := s.responseLimit - len(metadata) - 16 // timestamp precision may change
+	first := len(s.history)
+	trimmed := false
+	for i := len(s.history) - 1; i >= 0; i-- {
+		entry := s.history[i]
+		if !reset && entry.sequence <= sequence {
+			break
+		}
+		size := len(entry.data) + 1
+		if size > budget {
+			trimmed = true
+			break
+		}
+		budget -= size
+		first = i
+	}
+	if trimmed {
+		result.WindowStart = now.UTC()
+		if first < len(s.history) {
+			result.WindowStart = s.history[first].at.UTC()
+		}
+	}
+	for _, entry := range s.history[first:] {
+		var sample Sample
+		if err := json.Unmarshal(entry.data, &sample); err != nil {
+			return Snapshot{}, err
+		}
+		result.Samples = append(result.Samples, sample)
 	}
 	for {
 		data, err := json.Marshal(result)

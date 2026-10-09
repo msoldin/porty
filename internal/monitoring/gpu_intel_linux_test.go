@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"golang.org/x/sys/unix"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -151,4 +153,47 @@ func TestIntelPerfFailureClosesAvailablePair(t *testing.T) {
 	if !counter.closed {
 		t.Fatal("counter not closed")
 	}
+}
+
+func TestIntelRetriesDeniedCountersAfterPermissionRecovery(t *testing.T) {
+	owner, dir, now := linuxFixture(t)
+	writeFixture(t, dir, "sys/class/drm/card0/device/uevent", "PCI_SLOT_NAME=0000:00:02.0\n")
+	if err := os.Symlink("../../../../drivers/i915", filepath.Join(dir, "sys/class/drm/card0/device/driver")); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, dir, "sys/bus/event_source/devices/i915/type", "9")
+	writeFixture(t, dir, "sys/bus/event_source/devices/i915/format/event", "config:0-7")
+	writeFixture(t, dir, "sys/bus/event_source/devices/i915/events/rcs0-busy", "event=0x1")
+	calls := 0
+	counter := &fakePerf{value: 100, enabled: 100, running: 100}
+	r := &intelReader{owner: owner, card: "card0", device: Device{ID: "gpu", Kind: DeviceGPU}, openCounter: func(uint32, uint64, int) (perfReader, error) {
+		calls++
+		if calls == 1 {
+			return nil, unix.EACCES
+		}
+		return counter, nil
+	}}
+	first, _ := r.Read(context.Background())
+	if metricReading(t, first, MetricGPUBusy).Reason != "permission_denied" {
+		t.Fatal(first)
+	}
+	*now = now.Add(2 * time.Second)
+	r.Read(context.Background())
+	if calls != 1 {
+		t.Fatal("retried faster than discovery interval")
+	}
+	*now = now.Add(10 * time.Second)
+	r.Read(context.Background())
+	*now = now.Add(2 * time.Second)
+	counter.value += 1000000000
+	counter.enabled += 2000000000
+	counter.running += 2000000000
+	recovered, _ := r.Read(context.Background())
+	if got := metricReading(t, recovered, MetricGPUBusy); got.Value == nil || *got.Value != 50 {
+		t.Fatalf("no recovery: %+v", got)
+	}
+	if len(r.engines) != 1 {
+		t.Fatal("retry duplicated engines")
+	}
+	r.Close()
 }

@@ -44,6 +44,7 @@ type Service struct {
 	historyBytes, historyLimit, responseLimit int
 	discover                                  func(context.Context) ([]Source, error)
 	discovering                               bool
+	sourceOmitted                             int
 	ctx                                       context.Context
 	cancel                                    context.CancelFunc
 	stopped                                   bool
@@ -121,7 +122,7 @@ func (s *Service) schedule(ctx context.Context) {
 			}
 			s.mu.Unlock()
 			if retired {
-				_ = slot.source.Close()
+				s.closeSlot(slot)
 			}
 		}(id, slot)
 	}
@@ -156,25 +157,45 @@ func (s *Service) discoverSources() {
 }
 
 func (s *Service) replaceSourcesLocked(sources []Source) {
-	keep := make(map[string]bool)
+	keep := make(map[string]Source)
+	s.sourceOmitted = 0
 	for _, source := range sources {
-		if source == nil || !validID(source.ID()) || len(keep) >= maxSources {
+		if source == nil || !validID(source.ID()) {
 			continue
 		}
-		id := source.ID()
-		keep[id] = true
-		if _, exists := s.slots[id]; !exists {
-			s.slots[id] = &sourceSlot{source: source}
+		if len(keep) >= maxSources {
+			s.sourceOmitted++
+			continue
 		}
+		keep[source.ID()] = source
 	}
 	for id, slot := range s.slots {
-		if !keep[id] {
+		if keep[id] == nil {
 			s.retireLocked(slot)
-			delete(s.slots, id)
 			delete(s.batches, id)
 		}
 	}
+	// Retired readers keep their slot until both Collect and Close return.
+	// Repeated hotplug cannot accumulate workers beyond the same global bound.
+	for id, source := range keep {
+		if _, exists := s.slots[id]; exists {
+			continue
+		}
+		if len(s.slots) >= maxSources {
+			s.sourceOmitted++
+			continue
+		}
+		s.slots[id] = &sourceSlot{source: source}
+	}
 	s.rebuildLocked()
+}
+func (s *Service) closeSlot(slot *sourceSlot) {
+	_ = slot.source.Close()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.slots[slot.source.ID()] == slot {
+		delete(s.slots, slot.source.ID())
+	}
 }
 func (s *Service) retireLocked(slot *sourceSlot) {
 	if slot.retired {
@@ -183,7 +204,7 @@ func (s *Service) retireLocked(slot *sourceSlot) {
 	slot.retired = true
 	if !slot.busy {
 		s.workers.Add(1)
-		go func() { defer s.workers.Done(); _ = slot.source.Close() }()
+		go func() { defer s.workers.Done(); s.closeSlot(slot) }()
 	}
 }
 func (s *Service) stop() {
@@ -257,6 +278,9 @@ func (s *Service) rebuildLocked() {
 	inventory := Inventory{Devices: []Device{}, Series: []Series{}}
 	readings := map[string]Reading{}
 	coverage := []Coverage{}
+	if s.sourceOmitted > 0 {
+		coverage = append(coverage, Coverage{Source: "monitoring", Partial: true, Omitted: s.sourceOmitted, Reason: "limit_exceeded"})
+	}
 	deviceIDs := map[string]bool{}
 	seriesIDs := map[string]bool{}
 	counts := map[DeviceKind]int{}

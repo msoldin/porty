@@ -86,6 +86,7 @@ type intelReader struct {
 	reason      string
 	omitted     int
 	initialized bool
+	openCounter func(uint32, uint64, int) (perfReader, error)
 	attempted   time.Time
 }
 
@@ -240,6 +241,13 @@ func encodePerfEvent(event string, formats map[string]string) (uint64, error) {
 	return result, nil
 }
 func (r *intelReader) initialize() {
+	// Only readers without an open counter retry initialization.
+	r.engines = nil
+	r.omitted = 0
+	openCounter := r.openCounter
+	if openCounter == nil {
+		openCounter = openPerfCounterOnCPU
+	}
 	root := "class/drm/" + r.card + "/device"
 	driver, err := r.owner.sys.Readlink(root + "/driver")
 	if err != nil {
@@ -362,12 +370,12 @@ func (r *intelReader) initialize() {
 		engine := intelEngine{name: event.name}
 		config, err := encodePerfEvent(event.active, formats)
 		if err == nil {
-			engine.active, err = openPerfCounterOnCPU(uint32(typeID), config, cpu)
+			engine.active, err = openCounter(uint32(typeID), config, cpu)
 		}
 		if err == nil && event.total != "" {
 			config, err = encodePerfEvent(event.total, formats)
 			if err == nil {
-				engine.total, err = openPerfCounterOnCPU(uint32(typeID), config, cpu)
+				engine.total, err = openCounter(uint32(typeID), config, cpu)
 			}
 		}
 		if err != nil {
@@ -379,7 +387,13 @@ func (r *intelReader) initialize() {
 		}
 		r.engines = append(r.engines, engine)
 	}
-	r.initialized = len(r.engines) > 0
+	r.initialized = false
+	for _, engine := range r.engines {
+		if engine.active != nil {
+			r.initialized = true
+			break
+		}
+	}
 	r.reason = "unsupported"
 }
 func engineClassName(class uint16) string {

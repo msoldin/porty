@@ -316,7 +316,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         <MetricCard
           label="GPU usage"
           value={value(gpu, "gpu_busy", "percent")}
-          source={gpu?.name ?? "No GPU detected"}
+          source={gpu?.name ?? "No GPU reading available"}
           state={status(gpu, "gpu_busy")}
           detailLabel="GPU details"
           chart={chart(gpu, "gpu_busy", "GPU", "percent")}

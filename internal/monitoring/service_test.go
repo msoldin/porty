@@ -3,6 +3,9 @@ package monitoring
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -151,4 +154,55 @@ func TestServiceRetainsSourcesUnderRepeatedDiscoveryFailure(t *testing.T) {
 	if healthy.closed.Load() {
 		t.Fatal("failed discovery retired a working source")
 	}
+}
+
+func TestServiceBoundsRetiredReadersUnderRepeatedHotplug(t *testing.T) {
+	blocked := make(chan struct{})
+	service, _ := NewService(ServiceOptions{})
+	defer func() { close(blocked); _ = service.Shutdown(context.Background()) }()
+	for i := 0; i < maxSources+3; i++ {
+		source := &testSource{id: fmt.Sprintf("hotplug-%d", i), blocked: blocked, started: make(chan struct{}, 1)}
+		service.mu.Lock()
+		service.replaceSourcesLocked([]Source{source})
+		service.mu.Unlock()
+		service.schedule(context.Background())
+		if i < maxSources {
+			<-source.started
+		}
+	}
+	service.mu.Lock()
+	slots := len(service.slots)
+	service.mu.Unlock()
+	if slots != maxSources {
+		t.Fatalf("retired readers escaped the bound: retained %d slots, want %d", slots, maxSources)
+	}
+}
+
+func TestServiceSharesCollectionAcrossSnapshotClients(t *testing.T) {
+	source := &testSource{id: "cpu"}
+	service, _ := NewService(ServiceOptions{Sources: []Source{source}})
+	defer service.Shutdown(context.Background())
+	service.schedule(context.Background())
+	waitFor(t, func() bool { snapshot, _ := service.Snapshot(""); return len(snapshot.Current.Readings) > 0 })
+	goroutines := runtime.NumGoroutine()
+	var clients sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		clients.Add(1)
+		go func() {
+			defer clients.Done()
+			for j := 0; j < 50; j++ {
+				if _, err := service.Snapshot(""); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+	}
+	clients.Wait()
+	if got := source.calls.Load(); got != 1 {
+		t.Fatalf("client reads triggered %d collections", got)
+	}
+	if got := runtime.NumGoroutine(); got > goroutines+2 {
+		t.Fatalf("client reads retained goroutines: %d -> %d", goroutines, got)
+	}
+	t.Logf("20 clients / 1000 snapshots: collector calls=%d, goroutines before=%d after=%d", source.calls.Load(), goroutines, runtime.NumGoroutine())
 }

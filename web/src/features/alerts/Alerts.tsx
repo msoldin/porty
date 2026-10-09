@@ -7,14 +7,16 @@ import { useAlerts } from "./useAlerts";
 import type { AlertDetail, AlertView } from "./types";
 export function Alerts({
   stackId,
+  streamEnabled = true,
   navigate,
   openOperation,
 }: {
   stackId?: string;
+  streamEnabled?: boolean;
   navigate: (path: string) => void;
   openOperation: (id: string) => void;
 }) {
-  const state = useAlerts(stackId);
+  const state = useAlerts(stackId, streamEnabled);
   const [history, setHistory] = useState<string>();
   return (
     <section class="detail-content">

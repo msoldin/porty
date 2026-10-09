@@ -65,7 +65,7 @@ export function Workspace({
     addOperation,
     addOperations,
   } = useWorkspaceData(logout, repositoryStatus?.state === "ready");
-  const alerts = useAlerts();
+  const alerts = useAlerts(undefined, repositoryStatus?.state === "ready");
   const operationRequest = useRef(0);
   const [linkedOperation, setLinkedOperation] = useState<Operation>();
   const [selectedOperation, setSelectedOperation] = useState<string>();
@@ -193,7 +193,11 @@ export function Workspace({
             onRepositoryChange={onRepositoryChange}
           />
         ) : route === "/alerts" ? (
-          <Alerts navigate={navigate} openOperation={openOperation} />
+          <Alerts
+            streamEnabled={repositoryStatus?.state === "ready"}
+            navigate={navigate}
+            openOperation={openOperation}
+          />
         ) : repositoryError ? (
           <Notice>
             {repositoryError}{" "}

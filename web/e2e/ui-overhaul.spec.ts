@@ -356,7 +356,7 @@ test("keeps long names, editor, repository and settings usable across themes and
   page,
 }, info) => {
   const { errors } = await fixture(page);
-  await page.goto(baseURL);
+  await page.goto(baseURL + "/#/stacks");
   await expect(
     page
       .getByRole("region", { name: "Stacks table" })
@@ -454,7 +454,7 @@ test("keeps long stack names inside their cells and all repository controls reac
   page,
 }) => {
   await fixture(page);
-  await page.goto(baseURL);
+  await page.goto(baseURL + "/#/stacks");
   const name = page
     .getByRole("region", { name: "Stacks table" })
     .getByRole("link", {
@@ -485,7 +485,7 @@ test("shows loading honestly while inventory is pending", async ({
     await ready;
     await route.fulfill({ json: [] });
   });
-  await page.goto(baseURL);
+  await page.goto(baseURL + "/#/stacks");
   await expect(page.getByText("Loading stacks…")).toBeVisible();
   await capture(page, info, "inventory-loading");
   release();
@@ -541,7 +541,7 @@ test("preserves theme through registration setup and password-change sign out", 
   page,
 }, info) => {
   await page.emulateMedia({ colorScheme: "light" });
-  await page.goto(baseURL);
+  await page.goto(baseURL + "/#/stacks");
   await page.evaluate(() => localStorage.setItem("porty-theme", "dark"));
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -592,7 +592,7 @@ test("keeps runtime and deployment readable at 320px and opens container logs di
 }) => {
   await fixture(page);
   await page.setViewportSize({ width: 320, height: 844 });
-  await page.goto(baseURL);
+  await page.goto(baseURL + "/#/stacks");
   const table = page.getByRole("region", { name: "Stacks table" });
   for (const text of ["Sleeping", "Current", "Never deployed"]) {
     const badge = table.getByText(text, { exact: true });

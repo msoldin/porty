@@ -4,7 +4,7 @@ import { useTopicStream } from "../../hooks/useTopicStream";
 import { listAlerts, acknowledgeAlert, resolveAlert } from "./api";
 import type { Alert, AlertPage, AlertView } from "./types";
 const changed = "porty:alerts-changed";
-export function useAlerts(stackId?: string) {
+export function useAlerts(stackId?: string, streamEnabled = true) {
   const [view, setViewState] = useState<AlertView>("attention");
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<AlertPage>();
@@ -48,6 +48,7 @@ export function useAlerts(stackId?: string) {
       if (event.type === "alert") void reload();
     },
     () => void reload(),
+    streamEnabled,
   );
   async function mutate(item: Alert, note?: string) {
     if (busy) return;

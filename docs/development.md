@@ -131,3 +131,59 @@ workloads. Remote Docker daemons cannot see the local fixture path.
 GPU fixture tests cover supported field decoding and error states. Record
 actual driver/kernel/device results separately; no GPU hardware matrix is
 implied by the unit suite. See the operator guide for optional permissions.
+
+### Validation recorded on 2026-10-09
+
+Verified on Linux amd64: 537 Go tests with the race detector, 239 frontend
+tests, typecheck, production build, go vet, cgo/non-cgo builds, 38 desktop/mobile
+browser workflows, and the live OCI smoke check. The final snapshot-allocation
+fix was followed by the backend suite and 10 dashboard browser regressions.
+Screenshots cover light/dark 1536×1024 and 390×844, plus 320 px with every
+disclosure open; no page overflow or unexpected browser errors remained.
+
+An isolated container using the documented host mounts matched host RAM
+capacity exactly and returned CPU readings; all 71 exposed host mounts were
+read-only. The final native collector reported 1.65% CPU versus 1.56% from an
+independent /proc/stat interval and matched RAM capacity exactly. Availability
+values can differ because they are sampled at different instants.
+
+A 15-minute integration-build run used consecutive five-minute phases with
+zero, one and three real dashboard tabs. A separate observer requested a full
+snapshot every ten seconds. Results include that observer and concurrent
+development/test activity; these are smoke measurements, not a benchmark SLA:
+
+| Open tabs | CPU (% of one core) | RSS range (MiB) | Open descriptors |
+| --- | ---: | ---: | ---: |
+| 0 | 1.19 | 69.0–103.3 | 22–23 |
+| 1 | 1.44 | 93.9–99.2 | 23–25 |
+| 3 | 2.10 | 90.3–98.0 | 23–25 |
+
+History plateaued at 150 samples and approximately 3.07 MB for full responses
+on this host; sequence advanced at the same two-second cadence in every
+phase. This run preceded the final hotplug, Alerts stream and oversized-history
+allocation fixes. Final focused tests additionally verify that 1,000 snapshots
+from 20 concurrent clients cause only one scheduled collection and retain no
+extra goroutines (2 before and after). A 128 KiB response-budget stress case
+allocated about 1.06 MB after the fix, versus 351 MB before it. The 64 MiB limit
+applies to stored monitoring data, not total process RSS.
+
+The uncompressed OCI image increased from 19,679,310 to approximately
+47,532,123 bytes due mainly to the glibc runtime. Non-cgo unstripped native
+binary size grew from 57,858,290 bytes (monitoring not yet reachable) to about
+58.2 MB; the cgo build is about 58.8 MB. No frontend dependency was added.
+
+Artifacts for this run are under `/tmp/porty-dashboard-validation/`:
+`soak.json`, `native-host.json`, `docker-host.json`, `client-count.log`,
+`allocation.log`, `final-packaging.log`, `final-browser/`, and
+`final-dashboard/`. They are not tracked in Git.
+
+Remaining environment checks: no AMD, NVIDIA, Intel i915 or Xe device was
+exposed, so real driver compatibility and GPU sleep/power behavior remain
+untested. The disposable newly-created nested-mount fixture requires mount
+privileges unavailable to this user; existing nested host mounts were verified
+read-only through Docker. Live on-demand workload/activation gates were not
+run because this daemon was not established as disposable; their existing
+browser and unit regressions passed. Other architectures and rootless Docker
+remain unverified. For partially accessible Intel engines, restart Porty after
+changing access to additional engines; fully denied PMU initialization retries
+every ten seconds.

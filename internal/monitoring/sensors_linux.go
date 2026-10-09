@@ -88,8 +88,19 @@ func (s *sensorSource) Collect(ctx context.Context) (Batch, error) {
 			add(root+"|"+target+"|"+driver+"|"+stem, driver+" · "+label, driver, root+"/"+entry, cpu)
 		}
 	}
-	// Thermal zones supplement hwmon when no hwmon temperature is exposed.
-	if len(next) == 0 {
+	// Prefer package/control sensors, then another sensor from a known CPU driver.
+	if !selected {
+		for i := range batch.Devices {
+			driver := batch.Devices[i].Driver
+			if driver == "coretemp" || driver == "k10temp" || driver == "zenpower" {
+				batch.Devices[i].Default = true
+				selected = true
+				break
+			}
+		}
+	}
+	// An unrelated hwmon sensor must not hide the CPU thermal-zone fallback.
+	if !selected {
 		zones, extra, err := readDirectory(s.owner.sys, "class/thermal", 128)
 		omitted += extra
 		if err == nil {

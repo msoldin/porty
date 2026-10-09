@@ -65,3 +65,31 @@ func TestSensorSymlinkEscapeIsUnavailable(t *testing.T) {
 		t.Fatal("in-root sensor missing or escape read")
 	}
 }
+
+func TestSensorSelectsKnownCPUCoreWhenPackageIsMissing(t *testing.T) {
+	owner, dir, _ := linuxFixture(t)
+	writeFixture(t, dir, "sys/class/hwmon/hwmon0/name", "coretemp")
+	writeFixture(t, dir, "sys/class/hwmon/hwmon0/temp1_label", "Core 0")
+	writeFixture(t, dir, "sys/class/hwmon/hwmon0/temp1_input", "41000")
+	batch, err := (&sensorSource{owner: owner}).Collect(context.Background())
+	if err != nil || len(batch.Devices) != 1 || !batch.Devices[0].Default {
+		t.Fatalf("known CPU fallback missing: %+v, %v", batch.Devices, err)
+	}
+}
+func TestSensorFindsThermalCPUAlongsideNonCPUSensors(t *testing.T) {
+	owner, dir, _ := linuxFixture(t)
+	writeFixture(t, dir, "sys/class/hwmon/hwmon0/name", "amdgpu")
+	writeFixture(t, dir, "sys/class/hwmon/hwmon0/temp1_input", "51000")
+	writeFixture(t, dir, "sys/class/thermal/thermal_zone0/type", "x86_pkg_temp")
+	writeFixture(t, dir, "sys/class/thermal/thermal_zone0/temp", "42000")
+	batch, err := (&sensorSource{owner: owner}).Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, device := range batch.Devices {
+		if device.Default && device.Driver == "x86_pkg_temp" {
+			return
+		}
+	}
+	t.Fatal("thermal CPU sensor hidden by unrelated GPU sensor")
+}

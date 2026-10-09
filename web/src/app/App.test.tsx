@@ -403,7 +403,7 @@ describe("Porty administration interface", () => {
       await screen.findByRole("button", { name: "Create local repository" }),
     ).toBeInTheDocument();
     expect(requestsFor("/stacks")).toHaveLength(0);
-    expect(sockets).toBe(1);
+    expect(sockets).toBe(0);
   });
 
   it.each([
@@ -430,7 +430,7 @@ describe("Porty administration interface", () => {
       ).toBeInTheDocument();
       expect(requestsFor("/repository/setup/status")).toHaveLength(1);
       expect(requestsFor("/stacks")).toHaveLength(0);
-      expect(sockets).toBe(1);
+      expect(sockets).toBe(0);
     },
   );
   it("keeps repository actions disabled when status is unconfigured", async () => {

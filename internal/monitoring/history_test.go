@@ -3,6 +3,8 @@ package monitoring
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -158,4 +160,37 @@ func TestHistoryUsesObservationAgeWhenWallTimeJumps(t *testing.T) {
 			t.Fatalf("wall-clock jump retained old history: %v", err)
 		}
 	}
+}
+
+func TestHistoryBoundsSnapshotAllocationBeforeDecoding(t *testing.T) {
+	service, now := historyService(t)
+	service.responseLimit = 128 << 10
+	sample := Sample{Sequence: "1", CapturedAt: *now, Readings: map[string]Reading{}}
+	for i := 0; i < 256; i++ {
+		sample.Readings[fmt.Sprintf("series-%d", i)] = available(1, *now)
+	}
+	data, err := json.Marshal(sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		service.history = append(service.history, storedSample{at: *now, sequence: uint64(i + 1), data: data})
+		service.historyBytes += len(data) + 64
+	}
+	service.sequence = 100
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	snapshot, err := service.Snapshot("")
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Samples) == 0 {
+		t.Fatal("lost all history")
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 8<<20 {
+		t.Fatalf("allocated %d bytes for a 128 KiB response", allocated)
+	}
+	t.Logf("allocated %d bytes for %d retained samples", after.TotalAlloc-before.TotalAlloc, len(snapshot.Samples))
 }

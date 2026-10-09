@@ -40,7 +40,7 @@ test.afterAll(() => {
 });
 
 async function register(page: Page) {
-  await page.goto(baseURL);
+  await page.goto(baseURL + "/#/stacks");
   await expect(page).toHaveTitle("Porty");
   await page.getByLabel("Username").fill("admin");
   await page.getByLabel("Password").fill("correct horse battery staple");
