@@ -340,6 +340,51 @@ test("recovers from stale samples without inventing zeros", async ({
   await expect(cpu.getByText("42%", { exact: true })).toBeVisible();
   await expect(cpu.getByText("Stale", { exact: true })).toHaveCount(0);
 });
+test("fills the available dashboard width as the window grows", async ({
+  page,
+}, info) => {
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: metrics() }),
+  );
+  await register(page);
+  let previousWidth = 0;
+  const columns: number[] = [];
+  for (const width of [800, 1440, 1920, 2560]) {
+    await page.setViewportSize({ width, height: 1024 });
+    const layout = await page
+      .locator(".host-dashboard")
+      .evaluate((dashboard) => {
+        const styles = getComputedStyle(dashboard);
+        const grid = dashboard.querySelector(".host-metric-grid")!;
+        return {
+          available:
+            dashboard.clientWidth -
+            parseFloat(styles.paddingLeft) -
+            parseFloat(styles.paddingRight),
+          grid: grid.getBoundingClientRect().width,
+          heading: dashboard
+            .querySelector(".host-dashboard-heading")!
+            .getBoundingClientRect().width,
+          footer: dashboard
+            .querySelector(".dashboard-time-note")!
+            .getBoundingClientRect().width,
+          columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
+        };
+      });
+    expect(layout.grid).toBeCloseTo(layout.available, 0);
+    expect(layout.heading).toBeCloseTo(layout.grid, 0);
+    expect(layout.footer).toBeCloseTo(layout.grid, 0);
+    expect(layout.grid).toBeGreaterThan(previousWidth);
+    previousWidth = layout.grid;
+    columns.push(layout.columns);
+    await page.screenshot({
+      path: info.outputPath(`fluid-${width}.png`),
+      fullPage: true,
+    });
+  }
+  expect(columns.at(-1)).toBeGreaterThan(columns[1]);
+});
+
 test("keeps the compact grid and details readable across themes and screen sizes", async ({
   page,
 }, info) => {
