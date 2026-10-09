@@ -2,13 +2,17 @@ import { useState } from "preact/hooks";
 import { formatMetric, type ChartSeries } from "./metricPresentation";
 import type { Unit } from "./types";
 
+export type MetricChartProps = {
+  series: ChartSeries[];
+  unit: Unit;
+  detailed?: boolean;
+};
+
 export function MetricChart({
   series,
   unit,
-}: {
-  series: ChartSeries[];
-  unit: Unit;
-}) {
+  detailed = false,
+}: MetricChartProps) {
   const [selected, setSelected] = useState<number>();
   const points = series[0]?.points ?? [];
   const end = points.at(-1)?.time ?? 0,
@@ -23,7 +27,18 @@ export function MetricChart({
   const high = unit === "percent" ? 100 : Math.max(low + 1, ...values);
   const x = (time: number) =>
     Math.max(0, Math.min(300, ((time - start) / (end - start)) * 300));
-  const y = (value: number) => 58 - ((value - low) / (high - low)) * 52;
+  const height = detailed ? 180 : 64;
+  const bottom = detailed ? height : 58;
+  const top = detailed ? 0 : 6;
+  const y = (value: number) =>
+    bottom - ((value - low) / (high - low)) * (bottom - top);
+  const ticks = [0, 0.25, 0.5, 0.75, 1];
+  const timeLabel = (time: number) =>
+    new Date(time).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
   const paths = (item: ChartSeries) => {
     const segments: string[][] = [];
     let segment: string[] = [];
@@ -53,7 +68,9 @@ export function MetricChart({
     series.some((item) => item.points[index]?.value != null);
   function inspect(clientX: number, element: HTMLDivElement) {
     if (!points.length) return;
-    const rect = element.getBoundingClientRect();
+    const rect = (
+      detailed ? element.querySelector("svg")! : element
+    ).getBoundingClientRect();
     const time =
       start +
       Math.max(0, Math.min(1, (clientX - rect.left) / (rect.width || 1))) *
@@ -68,7 +85,7 @@ export function MetricChart({
   }
   return (
     <div
-      class="metric-chart"
+      class={"metric-chart" + (detailed ? " is-detailed" : "")}
       role="group"
       aria-label={label + " history"}
       tabIndex={0}
@@ -110,7 +127,40 @@ export function MetricChart({
         inspect(event.clientX, event.currentTarget);
       }}
     >
-      <svg viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true">
+      {detailed && (
+        <>
+          <div class="chart-value-axis" aria-label="Value scale">
+            {ticks.map((tick) => (
+              <span key={tick}>
+                {formatMetric(high - tick * (high - low), unit)}
+              </span>
+            ))}
+          </div>
+          <div class="chart-time-axis" aria-label="Time scale">
+            {points.length > 0 &&
+              [0, 0.5, 1].map((tick) => (
+                <time key={tick}>
+                  {timeLabel(start + tick * (end - start))}
+                </time>
+              ))}
+          </div>
+        </>
+      )}
+      <svg
+        viewBox={`0 0 300 ${height}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        {detailed && (
+          <g class="chart-grid">
+            {ticks.map((tick) => (
+              <g key={tick}>
+                <line x1="0" x2="300" y1={tick * height} y2={tick * height} />
+                <line x1={tick * 300} x2={tick * 300} y1="0" y2={height} />
+              </g>
+            ))}
+          </g>
+        )}
         {series.map((item, line) =>
           paths(item).map((segment, i) => (
             <g key={line + "-" + i} class={"chart-series chart-series-" + line}>
@@ -118,14 +168,25 @@ export function MetricChart({
                 <polygon
                   points={
                     segment[0].split(",")[0] +
-                    ",64 " +
+                    "," +
+                    height +
+                    " " +
                     segment.join(" ") +
                     " " +
                     segment.at(-1)!.split(",")[0] +
-                    ",64"
+                    "," +
+                    height
                   }
                   fill="currentColor"
-                  opacity=".07"
+                  opacity={detailed ? ".14" : ".07"}
+                />
+              )}
+              {segment.length === 1 && detailed && (
+                <circle
+                  cx={segment[0].split(",")[0]}
+                  cy={segment[0].split(",")[1]}
+                  r="2"
+                  fill="currentColor"
                 />
               )}
               <polyline
@@ -139,8 +200,23 @@ export function MetricChart({
             </g>
           )),
         )}
+        {detailed &&
+          hasSelectedReading &&
+          index !== undefined &&
+          points[index] && (
+            <line
+              class="chart-cursor"
+              x1={x(points[index].time)}
+              x2={x(points[index].time)}
+              y1="0"
+              y2={height}
+            />
+          )}
       </svg>
-      {unit === "celsius" && values.length > 0 && (
+      {detailed && values.length === 0 && (
+        <span class="chart-empty">Waiting for history</span>
+      )}
+      {!detailed && unit === "celsius" && values.length > 0 && (
         <span class="chart-range">
           Range: {formatMetric(low, unit)}–{formatMetric(high, unit)}
         </span>

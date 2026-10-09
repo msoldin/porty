@@ -226,13 +226,109 @@
   font-size: 28px;
   color: var(--text-strong);
 }
-.metric-detail-history {
-  position: relative;
-  height: 140px;
-  margin: 20px 0;
+.metric-detail-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 24px;
 }
-.metric-detail-history .metric-chart {
-  height: 100%;
+.metric-detail-summary > div:first-child {
+  min-width: 0;
+}
+.metric-detail-current {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.metric-detail-history {
+  margin: 24px 0;
+}
+.metric-history-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.metric-history-heading h3 {
+  font-size: 16px;
+  margin: 0;
+  color: var(--text-strong);
+}
+.metric-history-heading > span,
+.host-metric-details .metric-history-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+.metric-chart.is-detailed {
+  position: relative;
+  height: 260px;
+  width: 100%;
+}
+.metric-chart.is-detailed svg {
+  position: absolute;
+  left: 66px;
+  top: 8px;
+  width: calc(100% - 78px);
+  height: calc(100% - 38px);
+  overflow: visible;
+}
+.chart-value-axis {
+  position: absolute;
+  left: 0;
+  width: 58px;
+  top: 2px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: right;
+}
+.chart-time-axis {
+  position: absolute;
+  left: 66px;
+  right: 12px;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+}
+.chart-value-axis,
+.chart-time-axis {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.chart-grid line {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.chart-cursor {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.metric-chart.is-detailed .chart-inspection {
+  left: 74px;
+  right: 16px;
+  bottom: 40px;
+  font-size: 11px;
+  padding: 8px;
+}
+.metric-chart.is-detailed .chart-legend {
+  top: -16px;
+  right: 12px;
+  font-size: 10px;
+}
+.chart-empty {
+  position: absolute;
+  inset: 8px 12px 30px 66px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
 }
 .metric-detail-row {
   display: flex;

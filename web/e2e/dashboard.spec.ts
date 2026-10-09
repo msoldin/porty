@@ -340,6 +340,74 @@ test("recovers from stale samples without inventing zeros", async ({
   await expect(cpu.getByText("42%", { exact: true })).toBeVisible();
   await expect(cpu.getByText("Stale", { exact: true })).toHaveCount(0);
 });
+test("opens an expanded monitoring graph with axes and interactive history", async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: metrics() }),
+  );
+  await register(page);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(
+      (theme) => (document.documentElement.dataset.theme = theme),
+      theme,
+    );
+    const trigger = page.getByRole("button", {
+      name: "Download details",
+      exact: true,
+    });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Download details" });
+    await expect(
+      dialog.getByRole("heading", { name: "History" }),
+    ).toBeVisible();
+    await expect(dialog.getByText("Last 5 minutes")).toBeVisible();
+    const chart = dialog.getByRole("group", { name: "Download history" });
+    await expect(chart.locator(".chart-value-axis span")).toHaveCount(5);
+    await expect(chart.locator(".chart-time-axis time")).toHaveCount(3);
+    const box = (await chart.locator("svg").boundingBox())!;
+    expect(box.height).toBeGreaterThan(200);
+    const x = box.x + (box.width * 100) / 150,
+      y = box.y + box.height / 2;
+    if (info.project.use.hasTouch) await page.touchscreen.tap(x, y);
+    else await page.mouse.move(x, y);
+    await expect(chart.locator("output")).toContainText("Download:");
+    await chart.focus();
+    await chart.press("End");
+    await expect(chart.locator("output")).toContainText("Download:");
+    await page.screenshot({
+      path: info.outputPath(`history-${theme}.png`),
+      fullPage: true,
+    });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  }
+  await page.setViewportSize({ width: 320, height: 844 });
+  for (const name of ["Disk activity details", "/ filesystem details"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByRole("heading", { name: "History" }),
+    ).toBeVisible();
+    expect(
+      await dialog.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(
+        name.startsWith("Disk") ? "io-history-320.png" : "disk-history-320.png",
+      ),
+      fullPage: true,
+    });
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  }
+  expect(errors).toEqual([]);
+});
+
 test("fills the available dashboard width as the window grows", async ({
   page,
 }, info) => {
@@ -535,9 +603,9 @@ test("remembers separate disk gauges and shared network choices from customizati
       exact: true,
     })
     .click();
-  await expect(page.getByRole("dialog").getByRole("heading")).toContainText(
-    dataPath,
-  );
+  await expect(
+    page.getByRole("dialog").getByRole("heading", { level: 2 }),
+  ).toContainText(dataPath);
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 320, height: 844 });
   await customize.click();

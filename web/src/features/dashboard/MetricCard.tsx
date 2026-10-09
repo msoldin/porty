@@ -1,4 +1,5 @@
-import type { ComponentChildren } from "preact";
+import { cloneElement, type ComponentChildren, type VNode } from "preact";
+import type { MetricChartProps } from "./MetricChart";
 import { useId, useState } from "preact/hooks";
 import { Dialog } from "../../components/Dialog";
 import type { State } from "./types";
@@ -36,7 +37,7 @@ export function MetricCard({
   source?: ComponentChildren;
   state: State;
   lastSuccessAt?: string;
-  chart?: ComponentChildren;
+  chart?: VNode<MetricChartProps> | false;
   children?: ComponentChildren;
   details?: ComponentChildren;
   detailLabel?: string;
@@ -90,16 +91,34 @@ export function MetricCard({
       </div>
       <Dialog open={open} title={detailLabel} onClose={() => setOpen(false)}>
         <div class="host-metric-details">
-          {value != null && value !== "—" && (
-            <div class="metric-detail-current">
-              <MetricValue value={value} />
+          <div class="metric-detail-summary">
+            <div>
+              {source && <p>{source}</p>}
+              <ReadingStatus state={state} lastSuccessAt={lastSuccessAt} />
             </div>
-          )}
-          {source && <p>{source}</p>}
-          <ReadingStatus state={state} lastSuccessAt={lastSuccessAt} />
+            {value != null && value !== "—" && (
+              <div class="metric-detail-current">
+                <MetricValue value={value} />
+              </div>
+            )}
+          </div>
           {note && <p class="muted">{note}</p>}
           {availability}
-          {chart && <div class="metric-detail-history">{chart}</div>}
+          {chart && (
+            <section
+              class="metric-detail-history"
+              aria-label={label + " history chart"}
+            >
+              <div class="metric-history-heading">
+                <h3>History</h3>
+                <span>Last 5 minutes</span>
+              </div>
+              {cloneElement(chart, { detailed: true })}
+              <p class="metric-history-hint">
+                Hover or tap to inspect · Use arrow keys when focused
+              </p>
+            </section>
+          )}
           {details}
         </div>
         <div class="dialog-actions">

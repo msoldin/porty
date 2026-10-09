@@ -125,3 +125,48 @@ it("does not connect a line across unavailable samples", () => {
   );
   expect(container.querySelectorAll("polyline")).toHaveLength(2);
 });
+
+it("inspects detailed plots using the plot bounds rather than the axis labels", () => {
+  render(
+    <MetricChart
+      detailed
+      unit="percent"
+      series={[
+        {
+          label: "CPU",
+          points: [
+            { time: 0, value: 10 },
+            { time: 150000, value: null },
+            { time: 300000, value: 0 },
+          ],
+        },
+      ]}
+    />,
+  );
+  const chart = screen.getByRole("group", { name: "CPU history" });
+  chart.getBoundingClientRect = () => ({ left: 0, width: 500 }) as DOMRect;
+  chart.querySelector("svg")!.getBoundingClientRect = () =>
+    ({ left: 100, width: 300 }) as DOMRect;
+  fireEvent(
+    chart,
+    new MouseEvent("pointermove", { clientX: 250, bubbles: true }),
+  );
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  fireEvent(
+    chart,
+    new MouseEvent("pointermove", { clientX: 400, bubbles: true }),
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("CPU: 0%");
+});
+it("explains when no history has arrived", () => {
+  render(
+    <MetricChart
+      detailed
+      unit="percent"
+      series={[{ label: "CPU", points: [] }]}
+    />,
+  );
+  expect(screen.getByText("Waiting for history")).toBeVisible();
+  fireEvent.focus(screen.getByRole("group", { name: "CPU history" }));
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
