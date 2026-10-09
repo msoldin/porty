@@ -383,6 +383,7 @@ export function StackDetail({
       />
       <div
         role="tabpanel"
+        class={tab === "Editor" ? "editor-tabpanel" : undefined}
         id={`stack-panel-${tab}`}
         aria-labelledby={`stack-tab-${tab}`}
         tabIndex={0}

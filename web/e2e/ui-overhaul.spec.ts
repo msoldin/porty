@@ -633,3 +633,56 @@ test("keeps runtime and deployment readable at 320px and opens container logs di
   ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText(/Upstream connection refused/)).toBeVisible();
 });
+
+test("fills the available workspace with the file editor and resizes its panes", async ({
+  page,
+}, info) => {
+  const { state, errors } = await fixture(page);
+  state.content =
+    "services:\n" +
+    Array.from({ length: 200 }, (_, i) => `  # configuration line ${i}`).join(
+      "\n",
+    );
+  await page.setViewportSize({ width: 1536, height: 900 });
+  await page.goto(`${baseURL}/#/stacks/monitoring`);
+  await page.getByRole("tab", { name: "Compose & files", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "File contents" }),
+  ).toBeVisible();
+  const editor = page.getByRole("region", { name: "File editor", exact: true });
+  let previousHeight = 0;
+  for (const height of [900, 1200]) {
+    await page.setViewportSize({ width: 1536, height });
+    await expect
+      .poll(async () => {
+        const rect = await editor.boundingBox();
+        return Math.abs(rect!.y + rect!.height - height);
+      })
+      .toBeLessThanOrEqual(2);
+    const rect = (await editor.boundingBox())!;
+    if (previousHeight)
+      expect(rect.height - previousHeight).toBeCloseTo(300, 0);
+    previousHeight = rect.height;
+    await expect(
+      page.getByRole("button", { name: "Commit stack", exact: true }),
+    ).toBeInViewport();
+    expect(
+      await page
+        .locator(".cm-scroller")
+        .evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+    await capture(page, info, `editor-height-${height}`);
+  }
+  for (const width of [1100, 1024, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect((await editor.boundingBox())!.height).toBeGreaterThanOrEqual(384);
+    await page
+      .getByRole("button", { name: "Commit stack", exact: true })
+      .scrollIntoViewIfNeeded();
+    await expect(
+      page.getByRole("button", { name: "Commit stack", exact: true }),
+    ).toBeInViewport();
+    await capture(page, info, `editor-width-${width}`);
+  }
+  expect(errors).toEqual([]);
+});
