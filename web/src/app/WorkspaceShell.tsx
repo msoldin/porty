@@ -1,13 +1,14 @@
 import type { ComponentChildren } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Icon } from "../components/Icon";
 
 const nav = [
-  { name: "Overview", icon: "Stacks", path: "/" },
+  { name: "Stacks", icon: "Stacks", path: "/" },
   { name: "Repository", path: "/repository" },
-  { name: "Operations", path: "/operations" },
+  { name: "Operations", path: "/operations", group: "Monitor" },
   { name: "Alerts", path: "/alerts" },
-  { name: "Audit", path: "/audit" },
-  { name: "Settings", path: "/settings" },
+  { name: "Audit log", icon: "Audit", path: "/audit" },
+  { name: "Settings", path: "/settings", group: "Manage" },
 ];
 
 export function WorkspaceShell({
@@ -33,61 +34,110 @@ export function WorkspaceShell({
   drawer?: ComponentChildren;
   children: ComponentChildren;
 }) {
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const navigationToggle = useRef<HTMLButtonElement>(null);
+  useEffect(() => setNavigationOpen(false), [route]);
+  const connectionLabel =
+    connection === "Connected"
+      ? "Live updates connected"
+      : connection === "Reconnecting"
+        ? "Reconnecting · data may be stale"
+        : "Updates unavailable · data may be stale";
+  function selectPage(path: string) {
+    navigate(path);
+    if (navigationOpen) {
+      setNavigationOpen(false);
+      navigationToggle.current?.focus();
+    }
+  }
   return (
     <div class={`app-shell ${operationOpen ? "with-drawer" : ""}`}>
-      <aside class="sidebar">
-        <a
-          class="brand"
-          href="#/"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate("/");
+      <aside
+        class={`workspace-sidebar ${navigationOpen ? "navigation-open" : ""}`}
+      >
+        <div class="sidebar-heading">
+          <a
+            class="brand"
+            href="#/"
+            onClick={(event) => {
+              event.preventDefault();
+              selectPage("/");
+            }}
+          >
+            <Icon name="Stacks" />
+            <span>Porty</span>
+          </a>
+          <button
+            class="navigation-toggle"
+            ref={navigationToggle}
+            type="button"
+            aria-label="Navigation"
+            aria-expanded={navigationOpen}
+            aria-controls="workspace-navigation"
+            onClick={() => setNavigationOpen(!navigationOpen)}
+          >
+            Navigation <Icon name="Chevron" />
+          </button>
+        </div>
+        <div
+          class="sidebar-content"
+          id="workspace-navigation"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && navigationOpen) {
+              setNavigationOpen(false);
+              navigationToggle.current?.focus();
+            }
           }}
         >
-          <Icon name="Stacks" />
-          <span>Porty</span>
-        </a>
-        <p class="tagline">
-          Docker Compose
-          <br />
-          made simple
-        </p>
-        <nav aria-label="Main navigation">
-          {nav.map((item) => (
-            <a
-              href={`#${item.path}`}
-              class={
-                route === item.path || (item.path === "/" && stackSelected)
-                  ? "active"
-                  : ""
-              }
-              onClick={(event) => {
-                event.preventDefault();
-                navigate(item.path);
-              }}
-            >
-              <Icon name={item.icon || item.name} />
-              {item.name}
-              {item.path === "/alerts" && unacknowledgedAlerts > 0 && (
-                <span
-                  class="alert-count"
-                  aria-label={`${unacknowledgedAlerts} unacknowledged alerts`}
+          <nav aria-label="Main navigation">
+            {nav.map((item) => (
+              <div key={item.path}>
+                {item.group && <p class="nav-group">{item.group}</p>}
+                <a
+                  href={`#${item.path}`}
+                  aria-current={
+                    route === item.path || (item.path === "/" && stackSelected)
+                      ? "page"
+                      : undefined
+                  }
+                  class={
+                    route === item.path || (item.path === "/" && stackSelected)
+                      ? "active"
+                      : ""
+                  }
+                  onClick={(event) => {
+                    event.preventDefault();
+                    selectPage(item.path);
+                  }}
                 >
-                  {unacknowledgedAlerts}
-                </span>
-              )}
-            </a>
-          ))}
-        </nav>
-        <div class="server-info">
-          <span class="muted">Server</span>
-          <strong>{location.hostname}</strong>
-          <span class="connection">{connection}</span>
-          <hr />
-          <span>{username}</span>
-          <button class="text-button" onClick={onSignOut}>
-            Sign out
-          </button>
+                  <Icon name={item.icon || item.name} />
+                  {item.name}
+                  {item.path === "/alerts" && unacknowledgedAlerts > 0 && (
+                    <span
+                      class="alert-count"
+                      aria-label={`${unacknowledgedAlerts} unacknowledged alerts`}
+                    >
+                      {unacknowledgedAlerts}
+                    </span>
+                  )}
+                </a>
+              </div>
+            ))}
+          </nav>
+          <div class="server-info">
+            <span class="muted">Server</span>
+            <strong>{location.hostname}</strong>
+            <span
+              class={`connection ${connection === "Connected" ? "is-connected" : ""}`}
+            >
+              {connectionLabel}
+            </span>
+            <hr />
+            <span>{username}</span>
+            <button class="text-button" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
       <div class={`workspace ${stackSelected ? "stack-workspace" : ""}`}>

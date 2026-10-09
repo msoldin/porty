@@ -70,7 +70,7 @@ test("appearance follows the operating system and a saved override", async ({
         () => getComputedStyle(document.documentElement).backgroundColor,
       ),
     )
-    .toBe("rgb(17, 24, 39)");
+    .toBe("rgb(23, 33, 45)");
   await page.screenshot({ path: testInfo.outputPath("dark-auth.png") });
 
   await page.emulateMedia({ colorScheme: "light" });
@@ -80,7 +80,7 @@ test("appearance follows the operating system and a saved override", async ({
         () => getComputedStyle(document.documentElement).backgroundColor,
       ),
     )
-    .toBe("rgb(255, 255, 255)");
+    .toBe("rgb(245, 247, 251)");
   await page.evaluate(() => localStorage.setItem("porty-theme", "dark"));
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -90,7 +90,7 @@ test("appearance follows the operating system and a saved override", async ({
         () => getComputedStyle(document.documentElement).backgroundColor,
       ),
     )
-    .toBe("rgb(17, 24, 39)");
+    .toBe("rgb(23, 33, 45)");
 });
 
 test("administrator creates, edits, commits, and deploys a stack", async ({

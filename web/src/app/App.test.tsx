@@ -430,7 +430,7 @@ describe("Porty administration interface", () => {
     expect(
       within(
         screen.getByRole("navigation", { name: "Main navigation" }),
-      ).getByRole("link", { name: "Overview" }),
+      ).getByRole("link", { name: "Stacks" }),
     ).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("link", { name: "paperless" }));
     expect(

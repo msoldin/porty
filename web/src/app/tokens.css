@@ -1,0 +1,48 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  font-size: 14px;
+  line-height: 1.5;
+  --page: light-dark(#f5f7fb, #17212d);
+  --sidebar: light-dark(#eaf0f7, #182b3c);
+  --surface: light-dark(#fff, #213142);
+  --surface-soft: light-dark(#f5f7fb, #1b2938);
+  --surface-raised: light-dark(#edf2f8, #293d50);
+  --text: light-dark(#263445, #e7eef7);
+  --text-strong: light-dark(#1b2b3e, #f0f5fb);
+  --muted: light-dark(#58697e, #adbacb);
+  --border: light-dark(#dce3ed, #35495b);
+  --control-border: light-dark(#8493a6, #75899d);
+  --blue: light-dark(#1769b4, #9ecfff);
+  --accent-soft: light-dark(#ddeaf9, #294c6a);
+  --primary: light-dark(#1769b4, #256bb7);
+  --primary-hover: light-dark(#135995, #1b5796);
+  --on-primary: #fff;
+  --success: light-dark(#167449, #8cdeb0);
+  --success-soft: light-dark(#eaf7f0, #203b2e);
+  --warning: light-dark(#875609, #f0c983);
+  --warning-soft: light-dark(#fff5df, #3a3021);
+  --danger: light-dark(#b13e3e, #ffa49e);
+  --danger-soft: light-dark(#fff0ef, #40282b);
+  --syntax-keyword: light-dark(#7751aa, #c7a5ff);
+  --syntax-string: light-dark(#a12936, #ff9a9f);
+  --syntax-number: light-dark(#24599b, #a7c4ff);
+  --syntax-comment: var(--muted);
+  --syntax-property: light-dark(#176a63, #87d8c8);
+  --editor-active-line: light-dark(#edf3fb, #293d50);
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  color: var(--text);
+  background: var(--page);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
