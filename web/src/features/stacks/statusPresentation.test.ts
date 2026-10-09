@@ -9,63 +9,64 @@ import {
 
 it("distinguishes sleeping from failures while keeping real running state", () => {
   expect(stackRuntimePresentation("sleeping")).toEqual({
-    label: "SLEEPING",
+    label: "Sleeping",
     tone: "blue",
   });
   expect(stackRuntimePresentation("on_demand")).toEqual({
-    label: "RUNNING · ON DEMAND",
+    label: "Running · on demand",
     tone: "blue",
   });
   expect(containerStatePresentation("exited", "unhealthy", true)).toEqual({
-    label: "SLEEPING",
+    label: "Sleeping",
     tone: "blue",
   });
   expect(
     containerStatePresentation("running", "unhealthy", true).healthTone,
   ).toBe("danger");
-  expect(containerStatePresentation("exited", "", false).label).toBe("STOPPED");
+  expect(containerStatePresentation("exited", "", false).label).toBe("Stopped");
 });
 
 it("shows every stack runtime with a clear label and tone", () => {
   expect(stackRuntimePresentation("running")).toEqual({
-    label: "RUNNING",
+    label: "Running",
     tone: "success",
   });
   expect(stackRuntimePresentation("stopped")).toEqual({
-    label: "STOPPED",
+    label: "Stopped",
     tone: "danger",
   });
   expect(stackRuntimePresentation("partial")).toEqual({
-    label: "PARTIALLY RUNNING",
+    label: "Partially running",
     tone: "warning",
   });
   expect(stackRuntimePresentation("unhealthy")).toEqual({
-    label: "UNHEALTHY",
+    label: "Unhealthy",
     tone: "danger",
   });
   expect(stackRuntimePresentation(undefined)).toEqual({
-    label: "UNKNOWN",
+    label: "Unknown",
     tone: "neutral",
   });
-  expect(stackRuntimePresentation("paused").label).toBe("UNKNOWN");
+  expect(stackRuntimePresentation("paused").label).toBe("Unknown");
 });
 
 it("keeps Docker health visible beside the container state", () => {
+  expect(containerStatePresentation("running").health).toBe("No health check");
   expect(containerStatePresentation("running", "healthy")).toEqual({
-    label: "RUNNING",
+    label: "Running",
     tone: "success",
     health: "Healthy",
     healthTone: "success",
   });
   expect(containerStatePresentation("running", "unhealthy")).toEqual({
-    label: "RUNNING",
+    label: "Running",
     tone: "success",
     health: "Unhealthy",
     healthTone: "danger",
   });
-  expect(containerStatePresentation("created").label).toBe("STOPPED");
+  expect(containerStatePresentation("created").label).toBe("Stopped");
   expect(containerStatePresentation("exited").tone).toBe("danger");
-  expect(containerStatePresentation("paused").label).toBe("UNKNOWN");
+  expect(containerStatePresentation("paused").label).toBe("Unknown");
 });
 
 it("maps remote and deployment information onto the same badge palette", () => {

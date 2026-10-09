@@ -219,6 +219,11 @@ beforeEach(() => {
           },
         },
         "/stacks": [stack],
+        "/stacks/s1/state": {
+          runtime: "unknown",
+          freshness: "unverifiable",
+          hasDeployed: false,
+        },
         "/stacks/s1/containers": [],
         "/repository/status": repositoryStatus,
         "/repository/history?limit=50": [
@@ -230,6 +235,7 @@ beforeEach(() => {
           },
         ],
         "/operations?limit=50": [],
+        "/audit?limit=50": [],
         "/stacks/s1/tree": [
           {
             path: "docker-compose.yml",
@@ -415,17 +421,17 @@ describe("Porty administration interface", () => {
     const link = await screen.findByRole("link", { name: "paperless" });
     const row = within(link.closest("tr")!);
     expect(row.getByText("Ahead 1")).toBeInTheDocument();
-    expect(row.getByText("UNKNOWN")).toBeInTheDocument();
+    expect(row.getByText("Unknown")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Filter stacks" }), {
       target: { value: "modified" },
     });
     expect(screen.getByRole("link", { name: "paperless" })).toBeInTheDocument();
-    expect(screen.queryByText("RUNNING")).not.toBeInTheDocument();
+    expect(row.queryByText("Running")).not.toBeInTheDocument();
   });
   it("navigates from the dashboard to a stack and back", async () => {
     render(<App />);
     expect(
-      await screen.findByRole("heading", { name: "Overview" }),
+      await screen.findByRole("heading", { name: "Stacks", level: 1 }),
     ).toBeInTheDocument();
     expect(
       within(
@@ -440,7 +446,7 @@ describe("Porty administration interface", () => {
       within(screen.getByRole("main")).getByRole("link", { name: "Overview" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "Overview" }),
+      await screen.findByRole("heading", { name: "Stacks", level: 1 }),
     ).toBeInTheDocument();
   });
   it("opens a stack from a direct hash link and handles malformed stack IDs", async () => {

@@ -101,7 +101,9 @@ it("filters intentionally sleeping services separately from stopped services", (
     errors: [],
     loading: false,
   });
-  expect(screen.getByText("SLEEPING")).toBeInTheDocument();
+  expect(
+    screen.getByText("Sleeping", { selector: ".badge" }),
+  ).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Filter services state"), {
     target: { value: "sleeping" },
   });

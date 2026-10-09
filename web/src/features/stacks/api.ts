@@ -14,20 +14,8 @@ import type {
 export const stackPath = (id: string): string =>
   `/stacks/${encodeURIComponent(id)}`;
 
-export async function listStacksWithState(): Promise<Stack[]> {
-  const items = await api<Stack[] | null>("/stacks");
-  return Promise.all(
-    (items || []).map(async (stack) => {
-      try {
-        return {
-          ...stack,
-          state: await api<StackState>(`${stackPath(stack.id)}/state`),
-        };
-      } catch {
-        return stack;
-      }
-    }),
-  );
+export async function listStacks(): Promise<Stack[]> {
+  return (await api<Stack[] | null>("/stacks")) || [];
 }
 
 export function getStackState(id: string): Promise<StackState> {

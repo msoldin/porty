@@ -6,19 +6,19 @@ export type StatusPresentation = { label: string; tone: StatusTone };
 export function stackRuntimePresentation(value?: string): StatusPresentation {
   switch (value) {
     case "running":
-      return { label: "RUNNING", tone: "success" };
+      return { label: "Running", tone: "success" };
     case "sleeping":
-      return { label: "SLEEPING", tone: "blue" };
+      return { label: "Sleeping", tone: "blue" };
     case "on_demand":
-      return { label: "RUNNING · ON DEMAND", tone: "blue" };
+      return { label: "Running · on demand", tone: "blue" };
     case "stopped":
-      return { label: "STOPPED", tone: "danger" };
+      return { label: "Stopped", tone: "danger" };
     case "partial":
-      return { label: "PARTIALLY RUNNING", tone: "warning" };
+      return { label: "Partially running", tone: "warning" };
     case "unhealthy":
-      return { label: "UNHEALTHY", tone: "danger" };
+      return { label: "Unhealthy", tone: "danger" };
     default:
-      return { label: "UNKNOWN", tone: "neutral" };
+      return { label: "Unknown", tone: "neutral" };
   }
 }
 
@@ -28,14 +28,15 @@ export function containerStatePresentation(
   onDemandSleeping = false,
 ): StatusPresentation & { health?: string; healthTone?: StatusTone } {
   if (state === "exited" && onDemandSleeping)
-    return { label: "SLEEPING", tone: "blue" };
+    return { label: "Sleeping", tone: "blue" };
   const base: StatusPresentation =
     state === "running"
-      ? { label: "RUNNING", tone: "success" }
+      ? { label: "Running", tone: "success" }
       : state === "created" || state === "exited"
-        ? { label: "STOPPED", tone: "danger" }
-        : { label: "UNKNOWN", tone: "neutral" };
-  if (!health) return base;
+        ? { label: "Stopped", tone: "danger" }
+        : { label: "Unknown", tone: "neutral" };
+  if (!health)
+    return { ...base, health: "No health check", healthTone: "neutral" };
   return {
     ...base,
     health: health[0].toUpperCase() + health.slice(1).toLowerCase(),

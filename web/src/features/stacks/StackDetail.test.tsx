@@ -195,7 +195,7 @@ it("enables Stop and Restart for a running stack with an earlier successful depl
   });
   showStack();
   expect(
-    await screen.findByText("RUNNING", { selector: ".state-strip .badge" }),
+    await screen.findByText("Running", { selector: ".state-strip .badge" }),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Actions" }));
   expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
@@ -240,7 +240,7 @@ it("disables Stop and Restart for a running stack without a successful deploymen
   });
   showStack();
   expect(
-    await screen.findByText("RUNNING", { selector: ".state-strip .badge" }),
+    await screen.findByText("Running", { selector: ".state-strip .badge" }),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Actions" }));
   expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
@@ -279,7 +279,7 @@ it("updates the runtime and hides actions after a manual Docker stop", async () 
     await vi.advanceTimersByTimeAsync(5000);
   });
   expect(
-    screen.getByText("STOPPED", { selector: ".state-strip .badge" }),
+    screen.getByText("Stopped", { selector: ".state-strip .badge" }),
   ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
     "aria-disabled",
@@ -313,7 +313,9 @@ it("shows Unknown and hides actions when the state refresh fails", async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });
   expect(
-    screen.getByText("UNKNOWN", { selector: ".state-strip .badge" }),
+    screen.getByText("Unknown", {
+      selector: ".state-strip .badge:has(.badge-dot)",
+    }),
   ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveAttribute(
     "aria-disabled",

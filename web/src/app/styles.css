@@ -1532,3 +1532,14 @@ td > a {
 .update-result {
   overflow-wrap: anywhere;
 }
+/* Summaries describe the full inventory even when the table is filtered. */
+.inventory-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 0;
+  color: var(--muted);
+}
+.inventory-summary strong {
+  color: var(--text);
+}

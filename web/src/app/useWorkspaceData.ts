@@ -1,6 +1,6 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { APIError, message } from "../lib/http";
-import { listStacksWithState } from "../features/stacks/api";
+import { listStacks } from "../features/stacks/api";
 import type { Stack } from "../features/stacks/types";
 import { getRepositoryStatus, listCommits } from "../features/repository/api";
 import type { Repository, Commit } from "../features/repository/types";
@@ -10,6 +10,21 @@ import type { Operation } from "../features/operations/types";
 import { listAudit } from "../features/audit/api";
 import type { AuditEvent } from "../features/audit/types";
 
+type ReadStatus = {
+  loading: boolean;
+  loaded: boolean;
+  stale: boolean;
+  error: string;
+};
+const resourceNames = [
+  "stacks",
+  "repository",
+  "commits",
+  "operations",
+  "audit",
+] as const;
+type Resources = Record<(typeof resourceNames)[number], ReadStatus>;
+
 export function useWorkspaceData(logout: () => void) {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [repo, setRepo] = useState<Repository | null>(null);
@@ -18,15 +33,36 @@ export function useWorkspaceData(logout: () => void) {
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const request = useRef(0);
+  const [resources, setResources] = useState<Resources>(
+    () =>
+      Object.fromEntries(
+        resourceNames.map((name) => [
+          name,
+          { loading: true, loaded: false, stale: false, error: "" },
+        ]),
+      ) as Resources,
+  );
 
   async function refresh(): Promise<void> {
+    const generation = ++request.current;
+    setResources(
+      (current) =>
+        Object.fromEntries(
+          resourceNames.map((name) => [
+            name,
+            { ...current[name], loading: true },
+          ]),
+        ) as Resources,
+    );
     const result = await Promise.allSettled([
-      listStacksWithState(),
+      listStacks(),
       getRepositoryStatus(),
       listCommits(),
       listOperations(),
       listAudit(),
     ]);
+    if (generation !== request.current) return;
     if (
       result.some(
         (value) =>
@@ -43,15 +79,35 @@ export function useWorkspaceData(logout: () => void) {
     if (result[2].status === "fulfilled") setCommits(result[2].value || []);
     if (result[3].status === "fulfilled") setOperations(result[3].value || []);
     if (result[4].status === "fulfilled") setAudit(result[4].value || []);
-    const failed = result
-      .slice(0, 4)
-      .find((value) => value.status === "rejected");
+    setResources(
+      (current) =>
+        Object.fromEntries(
+          resourceNames.map((name, index) => {
+            const value = result[index];
+            return [
+              name,
+              value.status === "fulfilled"
+                ? { loading: false, loaded: true, stale: false, error: "" }
+                : {
+                    loading: false,
+                    loaded: current[name].loaded,
+                    stale: current[name].loaded,
+                    error: message(value.reason),
+                  },
+            ];
+          }),
+        ) as Resources,
+    );
+    const failed = result.find((value) => value.status === "rejected");
     setError(failed?.status === "rejected" ? message(failed.reason) : "");
     setLoading(false);
   }
 
   useEffect(() => {
     refresh();
+    return () => {
+      request.current++;
+    };
   }, []);
   const stream = useOperationStream((operation) => {
     setOperations((values) =>
@@ -87,6 +143,7 @@ export function useWorkspaceData(logout: () => void) {
     error,
     setError,
     loading,
+    resources,
     refresh,
     stream,
     addOperation,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
 import { createStack, runStackAction } from "./api";
 import type { Stack, StackState } from "./types";
@@ -14,7 +14,8 @@ import {
   remoteTone,
   stackRuntimePresentation,
 } from "./statusPresentation";
-import { useStackState } from "./useStackState";
+import { useStackInventoryState } from "./useStackInventoryState";
+import { filterStacks, inventorySummary } from "./stackInventory";
 import { OverviewServices } from "./OverviewServices";
 
 function deploymentTime(
@@ -72,24 +73,14 @@ export function Dashboard({
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [states, setStates] = useState<Record<string, StackState | undefined>>(
-    {},
+  const [runtimeFilter, setRuntimeFilter] = useState("all");
+  const [deploymentFilter, setDeploymentFilter] = useState("all");
+  const observation = useStackInventoryState(
+    stacks.map((stack) => stack.id),
+    operations.map((op) => `${op.id}:${op.status}`).join("|"),
   );
-  const onState = useCallback((id: string, state: StackState | undefined) => {
-    setStates((current) => {
-      const old = current[id];
-      if (
-        old === state ||
-        (old &&
-          state &&
-          old.runtime === state.runtime &&
-          old.freshness === state.freshness &&
-          old.hasDeployed === state.hasDeployed)
-      )
-        return current;
-      return { ...current, [id]: state };
-    });
-  }, []);
+  const { states } = observation;
+  const summary = inventorySummary(stacks, states);
   useEffect(() => {
     const known = new Set(
       stacks.filter((stack) => !stack.archivedAt).map((stack) => stack.id),
@@ -99,20 +90,14 @@ export function Dashboard({
       return new Set([...current].filter((id) => known.has(id)));
     });
   }, [stacks]);
-  const visible = stacks
-    .filter(
-      (stack) =>
-        stack.directoryName.toLowerCase().includes(search.toLowerCase()) &&
-        (filter !== "modified" || isModified(stack, repo)) &&
-        (archiveFilter === "all" ||
-          (archiveFilter === "active" && !stack.archivedAt) ||
-          (archiveFilter === "archived" && !!stack.archivedAt)),
-    )
-    .sort(
-      (a, b) =>
-        a.directoryName.localeCompare(b.directoryName) *
-        (sort === "asc" ? 1 : -1),
-    );
+  const visible = filterStacks(stacks, states, repo, {
+    search,
+    runtime: runtimeFilter,
+    deployment: deploymentFilter,
+    git: filter,
+    archive: archiveFilter,
+    sort,
+  });
   const selectableVisible = visible.filter((stack) => !stack.archivedAt);
   const selectedStacks = selectableVisible.filter((stack) =>
     selected.has(stack.id),
@@ -169,8 +154,27 @@ export function Dashboard({
   return (
     <section class="dashboard">
       <div class="page-heading">
-        <h1>Overview</h1>
+        <h1>Stacks</h1>
       </div>
+      <div class="inventory-summary" role="status" aria-label="Stack summary">
+        <span>
+          <strong>{summary.total}</strong> active stacks
+        </span>
+        <span>
+          <strong>{summary.attention} needs attention</strong>
+        </span>
+        <span>{summary.changes} with undeployed changes</span>
+        {observation.loading ? (
+          <span>Checking status…</span>
+        ) : (
+          summary.unknown > 0 && (
+            <span>Incomplete status: {summary.unknown} unknown</span>
+          )
+        )}
+      </div>
+      {observation.errors.length > 0 && (
+        <Notice>Incomplete status: {observation.errors.join(" · ")}</Notice>
+      )}
       <div class="services-heading">
         <h2>Stacks</h2>
         <div class="action-group">
@@ -269,8 +273,53 @@ export function Dashboard({
             setSelected(new Set());
           }}
         >
-          <option value="all">All status</option>
-          <option value="modified">Modified</option>
+          <option value="all">All Git states</option>
+          <option value="modified">Uncommitted files</option>
+          <option value="clean">Committed files</option>
+        </select>
+        <select
+          aria-label="Filter runtime"
+          value={runtimeFilter}
+          onChange={(event) => {
+            setRuntimeFilter(event.currentTarget.value);
+            setSelected(new Set());
+          }}
+        >
+          <option value="all">All runtimes</option>
+          {[
+            "running",
+            "sleeping",
+            "on_demand",
+            "stopped",
+            "partial",
+            "unhealthy",
+            "unknown",
+          ].map((value) => (
+            <option key={value} value={value}>
+              {stackRuntimePresentation(value).label}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter deployment"
+          value={deploymentFilter}
+          onChange={(event) => {
+            setDeploymentFilter(event.currentTarget.value);
+            setSelected(new Set());
+          }}
+        >
+          <option value="all">All deployments</option>
+          {[
+            "current",
+            "changes_pending",
+            "never_deployed",
+            "unverifiable",
+            "unknown",
+          ].map((value) => (
+            <option key={value} value={value}>
+              {deploymentLabel(value)}
+            </option>
+          ))}
         </select>
         <select
           aria-label="Filter archived stacks"
@@ -375,7 +424,7 @@ export function Dashboard({
                     return next;
                   })
                 }
-                onState={onState}
+                state={states[stack.id]}
               />
             ))}
           </tbody>
@@ -406,7 +455,7 @@ function StackRow({
   selected,
   selectionDisabled,
   onSelect,
-  onState,
+  state,
 }: {
   stack: Stack;
   repo: Repository | null;
@@ -415,10 +464,8 @@ function StackRow({
   selected: boolean;
   selectionDisabled: boolean;
   onSelect: (checked: boolean) => void;
-  onState: (id: string, state: StackState | undefined) => void;
+  state?: StackState;
 }) {
-  const state = useStackState(stack.id);
-  useEffect(() => onState(stack.id, state), [stack.id, state, onState]);
   const active = operations.find(
     (operation) =>
       operation.scopeId === stack.id &&
@@ -456,6 +503,9 @@ function StackRow({
             {stack.directoryName}
           </a>
           {stack.archivedAt && <Badge tone="neutral">Archived</Badge>}
+          {isModified(stack, repo) && (
+            <Badge tone="warning">Uncommitted files</Badge>
+          )}
         </div>
       </td>
       <td>

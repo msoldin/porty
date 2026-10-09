@@ -76,7 +76,7 @@ it("shows only the selected replica with its existing container details", async 
   expect(screen.getByText("full-id-b")).toBeInTheDocument();
   expect(screen.getByText("example/web:2")).toBeInTheDocument();
   expect(screen.getByText("State").nextElementSibling).toHaveTextContent(
-    /^RUNNING$/,
+    /^Running$/,
   );
   expect(screen.getByText("Healthy")).toBeInTheDocument();
   expect(screen.getByText("front, back")).toBeInTheDocument();

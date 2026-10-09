@@ -95,14 +95,14 @@ it("shows exact Services columns and keeps replicas and runtime metadata distinc
   );
   expect(second.getByText("web")).toBeInTheDocument();
   expect(second.getByText("web-2")).toBeInTheDocument();
-  expect(second.getByText("RUNNING")).toBeInTheDocument();
+  expect(second.getByText("Running")).toBeInTheDocument();
   expect(second.getByText("Unhealthy")).toHaveClass("danger");
   expect(second.getByText("ghcr.io/example/web:1.4")).toBeInTheDocument();
   expect(second.getByText("[::1]:8443 → 443/tcp")).toBeInTheDocument();
   const worker = within(
     screen.getByRole("checkbox", { name: "Select worker-1" }).closest("tr")!,
   );
-  expect(worker.getByText("STOPPED")).toBeInTheDocument();
+  expect(worker.getByText("Stopped")).toBeInTheDocument();
   expect(worker.getAllByText("—")).toHaveLength(2);
 });
 

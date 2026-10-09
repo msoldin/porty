@@ -58,6 +58,22 @@ function showDashboard(onOperationsAccepted = vi.fn()) {
   );
 }
 
+it("keeps attention counts for filtered-out stacks and reports incomplete observations", async () => {
+  vi.mocked(getStackState).mockImplementation(async (id) => {
+    if (id === "two") throw new Error("Docker offline");
+    return { runtime: "unhealthy", freshness: "current", hasDeployed: true };
+  });
+  showDashboard();
+  expect(await screen.findByText("1 needs attention")).toBeInTheDocument();
+  fireEvent.input(screen.getByRole("textbox", { name: "Search stacks" }), {
+    target: { value: "beta" },
+  });
+  expect(screen.getByText("1 needs attention")).toBeInTheDocument();
+  expect(
+    screen.getByRole("status", { name: "Stack summary" }),
+  ).toHaveTextContent(/Incomplete status/);
+});
+
 it("shows the six Stacks columns, readable states, and recorded deployment time", async () => {
   vi.mocked(getStackState).mockResolvedValue({
     runtime: "running",
@@ -75,7 +91,7 @@ it("shows the six Stacks columns, readable states, and recorded deployment time"
   const alpha = within(
     screen.getByRole("link", { name: "alpha" }).closest("tr")!,
   );
-  expect(await alpha.findByText("RUNNING")).toBeInTheDocument();
+  expect(await alpha.findByText("Running")).toBeInTheDocument();
   expect(alpha.getByText("Current")).toBeInTheDocument();
   expect(alpha.getByText("Unknown")).toBeInTheDocument();
   expect(alpha.getByText(/2026/)).toBeInTheDocument();
@@ -163,7 +179,9 @@ it("clears selection on filtering and disables runtime actions for mixed or unkn
     hasDeployed: true,
   }));
   showDashboard();
-  await screen.findByText("STOPPED");
+  await within(
+    screen.getByRole("link", { name: "beta" }).closest("tr")!,
+  ).findByText("Stopped");
   fireEvent.click(
     screen.getByRole("checkbox", { name: "Select all visible stacks" }),
   );
@@ -235,7 +253,7 @@ it("keeps the last deployment when Docker state becomes unavailable", async () =
     .mockRejectedValue(new Error("Docker offline"));
   showDashboard();
   await act(async () => {
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
   });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
@@ -243,7 +261,7 @@ it("keeps the last deployment when Docker state becomes unavailable", async () =
   const alpha = within(
     screen.getByRole("link", { name: "alpha" }).closest("tr")!,
   );
-  expect(alpha.getByText("UNKNOWN")).toBeInTheDocument();
+  expect(alpha.getAllByText("Unknown")).toHaveLength(2);
   expect(alpha.getByText(/2026/).closest("time")).toHaveAttribute(
     "datetime",
     "2026-09-20T10:00:00Z",
@@ -342,7 +360,7 @@ it("updates each stack row after an external Docker state change", async () => {
     />,
   );
   await act(async () => {
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
   });
   const alpha = within(
     screen.getByRole("link", { name: "alpha" }).closest("tr")!,
@@ -350,12 +368,12 @@ it("updates each stack row after an external Docker state change", async () => {
   const beta = within(
     screen.getByRole("link", { name: "beta" }).closest("tr")!,
   );
-  expect(alpha.getByText("RUNNING")).toBeInTheDocument();
-  expect(beta.getByText("RUNNING")).toBeInTheDocument();
+  expect(alpha.getByText("Running")).toBeInTheDocument();
+  expect(beta.getByText("Running")).toBeInTheDocument();
 
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });
-  expect(alpha.getByText("STOPPED")).toBeInTheDocument();
-  expect(beta.getByText("RUNNING")).toBeInTheDocument();
+  expect(alpha.getByText("Stopped")).toBeInTheDocument();
+  expect(beta.getByText("Running")).toBeInTheDocument();
 });

@@ -44,6 +44,7 @@ export function Workspace({
     error,
     setError,
     loading,
+    resources,
     refresh,
     stream,
     addOperation,
@@ -143,6 +144,12 @@ export function Workspace({
           {error} <button onClick={refresh}>Retry</button>
         </Notice>
       )}
+      {Object.values(resources).some((resource) => resource.stale) && (
+        <Notice role="status">
+          Some information could not be refreshed. Previously loaded records may
+          be out of date.
+        </Notice>
+      )}
       {stream.gap && (
         <Notice>
           Stream interrupted; some output may be missing. Operation records have
@@ -154,6 +161,27 @@ export function Workspace({
           <Alerts navigate={navigate} openOperation={openOperation} />
         ) : loading ? (
           <Empty>Loading stacks…</Empty>
+        ) : route === "/audit" &&
+          !resources.audit.loaded &&
+          resources.audit.error ? (
+          <Notice>
+            Audit log could not be loaded.{" "}
+            <button onClick={refresh}>Retry audit log</button>
+          </Notice>
+        ) : route === "/" &&
+          !resources.stacks.loaded &&
+          resources.stacks.error ? (
+          <Notice>
+            Stacks could not be loaded.{" "}
+            <button onClick={refresh}>Retry stacks</button>
+          </Notice>
+        ) : route === "/operations" &&
+          !resources.operations.loaded &&
+          resources.operations.error ? (
+          <Notice>
+            Operations could not be loaded.{" "}
+            <button onClick={refresh}>Retry operations</button>
+          </Notice>
         ) : selectedStack && stackRoute?.containerId ? (
           <ContainerDetail
             key={`${selectedStack.id}:${stackRoute.containerId}`}
