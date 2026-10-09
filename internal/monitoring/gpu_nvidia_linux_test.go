@@ -97,3 +97,53 @@ func TestNVIDIACallsDoNotOverlap(t *testing.T) {
 	}
 	session.Close()
 }
+
+func TestNVIDIADiscoveryKeepsHealthyGPUReadableUnderBlockedRead(t *testing.T) {
+	session := &nvidiaSession{api: &fakeNVML{}}
+	blocked := &fakeNVDevice{blocked: make(chan struct{})}
+	healthy := &fakeNVDevice{}
+	done := make(chan struct{})
+	go func() {
+		_, _ = (&nvidiaReader{session: session, handle: blocked, device: Device{ID: "blocked", Kind: DeviceGPU}}).Read(context.Background())
+		close(done)
+	}()
+	waitFor(t, func() bool { return blocked.calls.Load() == 1 })
+	discovered := make(chan struct{})
+	go func() { session.Discover(context.Background()); close(discovered) }()
+	defer func() { close(blocked.blocked); <-done; <-discovered; session.Close() }()
+	select {
+	case <-discovered:
+	case <-time.After(time.Second):
+		t.Fatal("blocked GPU prevented periodic discovery")
+	}
+	batch, err := (&nvidiaReader{session: session, handle: healthy, device: Device{ID: "healthy", Kind: DeviceGPU}}).Read(context.Background())
+	if err != nil || metricReading(t, batch, MetricGPUBusy).State != StateAvailable {
+		t.Fatal("healthy GPU did not remain readable", err)
+	}
+}
+
+func TestNVIDIAShutdownWaitsForActiveRead(t *testing.T) {
+	api := &fakeNVML{}
+	session := &nvidiaSession{api: api}
+	session.Discover(context.Background())
+	device := &fakeNVDevice{blocked: make(chan struct{})}
+	done := make(chan struct{})
+	go func() {
+		_, _ = (&nvidiaReader{session: session, handle: device, device: Device{ID: "gpu", Kind: DeviceGPU}}).Read(context.Background())
+		close(done)
+	}()
+	waitFor(t, func() bool { return device.calls.Load() == 1 })
+	closed := make(chan struct{})
+	go func() { session.Close(); close(closed) }()
+	select {
+	case <-closed:
+		t.Error("NVML shut down during a device read")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(device.blocked)
+	<-done
+	<-closed
+	if !api.closed {
+		t.Fatal("NVML was not shut down after the read finished")
+	}
+}

@@ -116,6 +116,37 @@ beforeEach(() => {
   vi.mocked(useMonitoring).mockReturnValue(fixture());
 });
 afterEach(() => vi.restoreAllMocks());
+it("shows last-success timestamps for stale cards, details and filesystems", () => {
+  const value = fixture();
+  const at = "2026-10-08T10:15:00.000Z";
+  for (const reading of Object.values(value.state.current.readings)) {
+    reading.state = "stale";
+    reading.lastSuccessAt = at;
+  }
+  vi.mocked(useMonitoring).mockReturnValue(value);
+  render(<Dashboard onUnauthorized={() => {}} />);
+  for (const name of [
+    "CPU usage",
+    "RAM usage",
+    "Temperature",
+    "GPU usage",
+    "Download",
+    "Upload",
+    "Disk I/O",
+    "Disk fullness",
+  ]) {
+    const card = screen.getByRole("article", { name });
+    expect(within(card).getAllByText(/Last reading:/).length).toBeGreaterThan(
+      0,
+    );
+    expect(card.querySelector("time")).toHaveAttribute("datetime", at);
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Download details" }));
+  const detail = screen
+    .getByRole("article", { name: "Download" })
+    .querySelector(".host-metric-details")!;
+  expect(detail.querySelectorAll("time")).toHaveLength(2);
+});
 it("shows all eight host metrics with their sources", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
   for (const name of [

@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { useMonitoring } from "./useMonitoring";
 import { MetricCard } from "./MetricCard";
 import { MetricChart } from "./MetricChart";
+import { ReadingStatus } from "./ReadingStatus";
 import {
   chartSeries,
   currentReading,
@@ -89,15 +90,10 @@ function DetailReading({
       <span>{label ?? device.name}</span>
       <span>
         {formatMetric(reading?.value, unit, binary)}
-        {reading?.state !== "available" && (
-          <small>
-            {reading?.state === "stale"
-              ? "Stale"
-              : reading?.state === "collecting"
-                ? "Collecting"
-                : "Unavailable"}
-          </small>
-        )}
+        <ReadingStatus
+          state={reading?.state ?? "unavailable"}
+          lastSuccessAt={reading?.lastSuccessAt}
+        />
       </span>
     </div>
   );
@@ -220,6 +216,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           value={value(cpu, "cpu_busy", "percent")}
           source={cpu?.name ?? "All CPUs"}
           state={status(cpu, "cpu_busy")}
+          lastSuccessAt={read(cpu, "cpu_busy")?.lastSuccessAt}
           detailLabel="CPU details"
           chart={chart(cpu, "cpu_busy", "CPU", "percent")}
           details={
@@ -250,6 +247,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             value(ram, "memory_percent", "percent") + " used · Host memory"
           }
           state={status(ram, "memory_percent")}
+          lastSuccessAt={read(ram, "memory_percent")?.lastSuccessAt}
           detailLabel="Memory details"
           chart={chart(ram, "memory_percent", "RAM", "percent")}
           details={
@@ -290,6 +288,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           value={value(temperature, "temperature", "celsius")}
           source={temperature?.name ?? "CPU temperature"}
           state={status(temperature, "temperature")}
+          lastSuccessAt={read(temperature, "temperature")?.lastSuccessAt}
           chart={chart(temperature, "temperature", "Temperature", "celsius")}
           note={reasonLabel(read(temperature, "temperature")?.reason)}
           details={
@@ -318,6 +317,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           value={value(gpu, "gpu_busy", "percent")}
           source={gpu?.name ?? "No GPU reading available"}
           state={status(gpu, "gpu_busy")}
+          lastSuccessAt={read(gpu, "gpu_busy")?.lastSuccessAt}
           detailLabel="GPU details"
           chart={chart(gpu, "gpu_busy", "GPU", "percent")}
           note={
@@ -393,6 +393,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
               value={value(network, metric, "bytes_per_second")}
               source={network?.name ?? "Host interface"}
               state={status(network, metric)}
+              lastSuccessAt={read(network, metric)?.lastSuccessAt}
               chart={chart(network, metric, label, "bytes_per_second")}
               details={
                 <>
@@ -433,6 +434,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             (disk?.name ?? "Physical disks")
           }
           state={status(disk, "disk_read_rate")}
+          lastSuccessAt={read(disk, "disk_read_rate")?.lastSuccessAt}
           detailLabel="Disk activity details"
           chart={
             <MetricChart
@@ -543,9 +545,10 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
                 <small>
                   {value(device, "filesystem_used", "bytes")} /{" "}
                   {value(device, "filesystem_total", "bytes")}
-                  {percent?.state !== "available" &&
-                    " · " +
-                      (percent?.state === "stale" ? "Stale" : "Unavailable")}
+                  <ReadingStatus
+                    state={percent?.state ?? "unavailable"}
+                    lastSuccessAt={percent?.lastSuccessAt}
+                  />
                 </small>
               </div>
             );

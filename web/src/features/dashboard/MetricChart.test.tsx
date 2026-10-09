@@ -1,6 +1,23 @@
 import { fireEvent, render, screen } from "@testing-library/preact";
 import { expect, it } from "vitest";
 import { MetricChart } from "./MetricChart";
+it("shows the plotted temperature range without requiring inspection", () => {
+  render(
+    <MetricChart
+      unit="celsius"
+      series={[
+        {
+          label: "Temperature",
+          points: [
+            { time: 1000, value: 52 },
+            { time: 3000, value: 68 },
+          ],
+        },
+      ]}
+    />,
+  );
+  expect(screen.getByText("Range: 51 °C–68 °C")).toBeVisible();
+});
 it("makes chart samples available with keyboard and touch", () => {
   const series = [
     {

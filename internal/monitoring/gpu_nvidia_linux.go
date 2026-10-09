@@ -27,6 +27,7 @@ type nvmlDevice interface {
 type nvidiaSession struct {
 	api                 nvmlAPI
 	mu                  sync.RWMutex
+	discoveryMu         sync.Mutex
 	initialized, closed bool
 	sources             map[string]Source
 	epoch               uint64
@@ -48,8 +49,12 @@ func nvmlReason(ret nvml.Return) string {
 	}
 }
 func (s *nvidiaSession) Discover(ctx context.Context) ([]Source, []Coverage) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Serialize inventory updates without queuing an exclusive lifecycle lock
+	// behind a slow GPU read. Only shutdown needs to exclude all NVML calls.
+	s.discoveryMu.Lock()
+	defer s.discoveryMu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.closed || ctx.Err() != nil {
 		return nil, nil
 	}

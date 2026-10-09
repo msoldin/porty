@@ -7,6 +7,30 @@ import {
 } from "./metricPresentation";
 import { mergeMonitoring } from "./monitoringState";
 import { snapshotFixture } from "./testFixtures";
+it("leaves gaps for repeated observations but keeps unchanged fresh values", () => {
+  const fixture = snapshotFixture();
+  const start = Date.parse(fixture.serverTime);
+  fixture.samples = [0, 2000, 4000, 6000].map((delta, i) => ({
+    ...fixture.current,
+    sequence: String(i + 1),
+    capturedAt: new Date(start + delta).toISOString(),
+    readings: {
+      "cpu.busy": {
+        ...fixture.current.readings["cpu.busy"],
+        sampledAt: new Date(start + (i === 3 ? 5500 : 0)).toISOString(),
+      },
+    },
+  }));
+  fixture.serverTime = fixture.samples[3].capturedAt;
+  const points = chartSeries(
+    mergeMonitoring(undefined, fixture),
+    "cpu",
+    "cpu_busy",
+    "CPU",
+  ).points;
+  expect(points.map((point) => point.value)).toEqual([25, null, null, 25]);
+  expect(points[3].time).toBe(start + 5500);
+});
 it("uses decimal rates and disk capacity but binary memory", () => {
   expect(formatMetric(1500000, "bytes_per_second")).toBe("1.5 MB/s");
   expect(formatMetric(1073741824, "bytes", true)).toBe("1 GiB");

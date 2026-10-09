@@ -70,4 +70,3 @@ docker run --rm --user 0 --entrypoint /bin/sh \
     awk '\''$5 ~ /^\/fixture($|\/)/ { n++; if ($6 !~ /(^|,)ro(,|$)/) exit 1 } END { if (n < 2) exit 1 }'\'' /proc/self/mountinfo
   '
 echo "PASS recursive read-only parent and nested mount"
-

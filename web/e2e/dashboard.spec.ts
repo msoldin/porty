@@ -10,6 +10,79 @@ import type {
   Unit,
 } from "../src/features/dashboard/types";
 
+test("shows stale observation times and temperature scale without overflowing", async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (event) => {
+    if (
+      event.type() === "error" &&
+      !(
+        event.text().includes("401") &&
+        event.location().url.endsWith("/api/v1/session")
+      )
+    )
+      errors.push(event.text());
+  });
+  const snapshot = metrics();
+  const lastSuccessAt = "2026-10-08T10:15:00.000Z";
+  for (const reading of Object.values(snapshot.current.readings)) {
+    reading.state = "stale";
+    reading.lastSuccessAt = lastSuccessAt;
+  }
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  await register(page);
+  for (const name of [
+    "CPU usage",
+    "RAM usage",
+    "Temperature",
+    "GPU usage",
+    "Download",
+    "Upload",
+    "Disk I/O",
+    "Disk fullness",
+  ]) {
+    const card = page.getByRole("article", { name });
+    await expect(
+      card.getByText("Last reading:", { exact: false }).first(),
+    ).toBeVisible();
+    await expect(card.locator("time").first()).toHaveAttribute(
+      "datetime",
+      lastSuccessAt,
+    );
+  }
+  await expect(
+    page
+      .getByRole("group", { name: "Temperature history" })
+      .getByText(/^Range:/),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("dashboard-stale.png"),
+    fullPage: true,
+  });
+  for (const button of await page.locator(".host-metric-toggle").all())
+    await button.click();
+  await expect(
+    page
+      .getByRole("article", { name: "Download" })
+      .locator(".host-metric-details time"),
+  ).toHaveCount(2);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+  await page.screenshot({
+    path: info.outputPath("dashboard-stale-details-320.png"),
+    fullPage: true,
+  });
+  expect(errors).toEqual([]);
+});
+
 let server: ChildProcess, baseURL: string, dataDir: string;
 test.beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "porty-dashboard-e2e-"));

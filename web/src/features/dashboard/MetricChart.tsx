@@ -135,6 +135,11 @@ export function MetricChart({
           )),
         )}
       </svg>
+      {unit === "celsius" && values.length > 0 && (
+        <span class="chart-range">
+          Range: {formatMetric(low, unit)}–{formatMetric(high, unit)}
+        </span>
+      )}
       {series.length > 1 && (
         <div class="chart-legend">
           {series.map((item, i) => (

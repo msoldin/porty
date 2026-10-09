@@ -92,6 +92,12 @@
 .host-metric-state.is-stale {
   color: var(--warning);
 }
+.metric-last-success {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 .host-metric[data-state="stale"] .host-metric-value {
   color: var(--muted);
 }
@@ -134,7 +140,12 @@
 .metric-detail-row > span:last-child {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 65%;
+}
+.metric-detail-row .host-metric-state,
+.capacity-row .host-metric-state {
+  display: block;
 }
 .metric-detail-row small {
   display: block;
@@ -199,6 +210,15 @@
   display: flex;
   gap: 10px;
   font-size: 9px;
+}
+.chart-range {
+  position: absolute;
+  top: 0;
+  left: 10px;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface);
+  pointer-events: none;
 }
 .chart-legend span {
   display: flex;

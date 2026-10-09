@@ -74,13 +74,17 @@ export function chartSeries(
   const series = state?.inventory.series.find(
     (series) => series.deviceId === device && series.metric === metric,
   );
+  const observations = new Set<string>();
   return {
     label,
     points: (state?.samples ?? []).slice(-151).map((sample) => {
       const reading = series ? sample.readings[series.id] : undefined;
+      const fresh =
+        reading?.state === "available" && !observations.has(reading.sampledAt);
+      if (fresh) observations.add(reading.sampledAt);
       return {
-        time: Date.parse(sample.capturedAt),
-        value: reading?.state === "available" ? reading.value : null,
+        time: Date.parse(fresh ? reading.sampledAt : sample.capturedAt),
+        value: fresh ? reading.value : null,
       };
     }),
   };

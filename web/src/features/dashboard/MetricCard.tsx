@@ -2,11 +2,13 @@ import type { ComponentChildren } from "preact";
 import { useId, useState } from "preact/hooks";
 import { Icon } from "../../components/Icon";
 import type { State } from "./types";
+import { ReadingStatus } from "./ReadingStatus";
 export function MetricCard({
   label,
   value,
   source,
   state,
+  lastSuccessAt,
   chart,
   children,
   details,
@@ -17,6 +19,7 @@ export function MetricCard({
   value?: ComponentChildren;
   source?: ComponentChildren;
   state: State;
+  lastSuccessAt?: string;
   chart?: ComponentChildren;
   children?: ComponentChildren;
   details?: ComponentChildren;
@@ -25,23 +28,13 @@ export function MetricCard({
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
-  const status =
-    state === "stale"
-      ? "Stale"
-      : state === "unavailable"
-        ? "Unavailable"
-        : state === "collecting"
-          ? "Collecting"
-          : "";
   return (
     <article class="host-metric" aria-labelledby={id} data-state={state}>
       <div class={"host-metric-main" + (chart ? " has-chart" : "")}>
         <h2 id={id}>{label}</h2>
         {value !== undefined && <div class="host-metric-value">{value}</div>}
         {source && <div class="host-metric-source">{source}</div>}
-        {status && (
-          <span class={"host-metric-state is-" + state}>{status}</span>
-        )}
+        <ReadingStatus state={state} lastSuccessAt={lastSuccessAt} />
         {note && <div class="host-metric-note">{note}</div>}
         {children}
         {chart}
