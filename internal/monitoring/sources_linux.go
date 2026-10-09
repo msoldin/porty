@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -70,7 +71,40 @@ func (o *LinuxSources) Discover(ctx context.Context) ([]Source, error) {
 	if o.options.Mode == "disabled" {
 		return []Source{}, nil
 	}
-	return []Source{o.sources["cpu"], o.sources["memory"], o.sources["network"]}, nil
+	if o.sources["disks"] == nil {
+		o.sources["disks"] = &diskSource{owner: o}
+	}
+	if o.sources["sensors"] == nil {
+		o.sources["sensors"] = &sensorSource{owner: o}
+	}
+	next := map[string]Source{}
+	for _, id := range []string{"cpu", "memory", "network", "disks", "sensors"} {
+		next[id] = o.sources[id]
+	}
+	filesystems, coverage, err := o.discoverFilesystems()
+	if err != nil {
+		coverage = append(coverage, Coverage{Source: "filesystems", Partial: true, Reason: sourceReason(err)})
+		for id, source := range o.sources {
+			if strings.HasPrefix(id, "fs-") {
+				next[id] = source
+			}
+		}
+	} else {
+		for _, source := range filesystems {
+			if existing := o.sources[source.ID()]; existing != nil {
+				source = existing
+			}
+			next[source.ID()] = source
+		}
+	}
+	status := &discoverySource{coverage: coverage}
+	next[status.ID()] = status
+	o.sources = next
+	result := make([]Source, 0, len(next))
+	for _, source := range next {
+		result = append(result, source)
+	}
+	return result, nil
 }
 func (o *LinuxSources) Host(ctx context.Context) HostInfo {
 	info := HostInfo{Name: "Host identity unavailable", OS: "Linux"}
@@ -174,3 +208,15 @@ func addReading(batch *Batch, device string, metric MetricKind, unit Unit, readi
 func collecting(now time.Time) Reading {
 	return Reading{State: StateCollecting, Reason: "collecting", SampledAt: now}
 }
+
+// Immutable discovery reports get new identities when capabilities change.
+type discoverySource struct{ coverage []Coverage }
+
+func (s *discoverySource) ID() string {
+	data, _ := json.Marshal(s.coverage)
+	return stableID("discovery", string(data))
+}
+func (s *discoverySource) Collect(context.Context) (Batch, error) {
+	return Batch{Coverage: s.coverage}, nil
+}
+func (s *discoverySource) Close() error { return nil }

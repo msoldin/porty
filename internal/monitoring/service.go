@@ -246,7 +246,8 @@ func (s *Service) acceptBatchLocked(id string, batch Batch, err error, at time.T
 	s.rebuildLocked()
 }
 
-var deviceLimits = map[DeviceKind]int{DeviceHost: 1, DeviceCPU: 256, DeviceMemory: 1, DeviceInterface: 64, DeviceBlock: 64, DeviceFilesystem: 64, DeviceSensor: 128, DeviceGPU: 16, DeviceEngine: 256}
+// The block inventory includes one derived aggregate in addition to 64 devices.
+var deviceLimits = map[DeviceKind]int{DeviceHost: 1, DeviceCPU: 256, DeviceMemory: 1, DeviceInterface: 64, DeviceBlock: 65, DeviceFilesystem: 64, DeviceSensor: 128, DeviceGPU: 16, DeviceEngine: 256}
 
 func (s *Service) rebuildLocked() {
 	inventory := Inventory{Devices: []Device{}, Series: []Series{}}
