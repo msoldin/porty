@@ -311,6 +311,9 @@ func normalizeBatch(batch Batch) Batch {
 			continue
 		}
 		device.Name = safeLabel(device.Name)
+		if device.ParentID != "" && !validID(device.ParentID) {
+			device.ParentID = ""
+		}
 		device.Driver = safeLabel(device.Driver)
 		if device.UtilizationBasis != "vendor" && device.UtilizationBasis != "busiest_engine" {
 			device.UtilizationBasis = ""

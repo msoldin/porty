@@ -88,6 +88,7 @@ type Series struct {
 }
 type Device struct {
 	ID               string     `json:"id"`
+	ParentID         string     `json:"parentId,omitempty"`
 	Kind             DeviceKind `json:"kind"`
 	Name             string     `json:"name"`
 	Driver           string     `json:"driver,omitempty"`

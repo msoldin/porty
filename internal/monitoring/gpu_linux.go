@@ -85,6 +85,8 @@ func (o *LinuxSources) discoverDRM() ([]Source, []Coverage, error) {
 		var reader gpuDeviceReader = &unavailableGPU{device: device, reason: "unsupported"}
 		if vendor == "0x1002" {
 			reader = &amdReader{owner: o, path: root, device: device}
+		} else {
+			reader = &intelReader{owner: o, card: card, device: device}
 		}
 		next[key] = &gpuSource{id: id, reader: reader}
 	}
