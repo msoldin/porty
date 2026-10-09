@@ -158,3 +158,85 @@ After a verified automatic update, later manual deploy/recreate operations retai
 ### Restart and shutdown safety
 
 Porty stops background admission and drains accepted operations for up to 30 seconds before closing Docker. The systemd unit allows 45 seconds for HTTP shutdown and this drain. A forced stop can leave durable update intent: prepared-only work is discarded; applying/verifying work is recorded as interrupted and automatic updates stay paused for manual recovery. Startup inspection never replays a recreation or performs rollback. If outcome persistence fails, automatic admission stops until reconciliation succeeds after restart.
+
+## Host monitoring
+
+The Dashboard is available after sign-in, even before repository setup. Porty
+samples once every two seconds, shares that cache across clients, and retains
+five minutes in memory. Restarting Porty clears history. Rates use decimal B/s;
+RAM and GPU memory use binary units. CPU busy excludes I/O wait; RAM is total
+minus available. Disk I/O combines eligible physical leaf devices only;
+filesystem fullness remains separate for each filesystem and includes reserved
+space. Missing, denied, unsupported and stale readings are never shown as zero.
+
+Native installs default to `monitoring.mode: native`. Set
+`PORTY_MONITORING_MODE=disabled` to stop collection. The OCI image defaults to
+`host`, using `/host/proc`, `/host/sys` and `/host/root`; missing paths never
+fall back to the container. Override with `PORTY_MONITORING_HOST_PROC`,
+`PORTY_MONITORING_HOST_SYS` and `PORTY_MONITORING_HOST_ROOT`. Host network counters
+come from host PID 1's network namespace, without joining that namespace.
+
+For a local Linux Docker Engine supporting recursive read-only binds (Linux
+5.12+), use the following monitoring mounts with your existing data/socket
+configuration. No host PID namespace, host networking or privileged mode is
+needed for basic metrics:
+
+```sh
+docker run --rm --name porty -p 127.0.0.1:8080:8080 \
+  --mount type=volume,src=porty-data,dst=/var/lib/porty \
+  --mount type=bind,src=/proc,dst=/host/proc,readonly,bind-recursive=readonly,bind-propagation=rprivate \
+  --mount type=bind,src=/sys,dst=/host/sys,readonly,bind-recursive=readonly,bind-propagation=rprivate \
+  --mount type=bind,src=/,dst=/host/root,readonly,bind-recursive=readonly,bind-propagation=rprivate \
+  porty:verify
+```
+
+The host-root bind exposes readable host files to Porty's service user. Omit
+that bind if that visibility is inappropriate or recursive read-only mounts
+are unsupported; filesystem metrics then report unavailable. Do not replace
+it with a writable bind or assume `-v /:/host/root:ro` protects nested mounts.
+Docker documents the [recursive mount contract](https://docs.docker.com/engine/storage/bind-mounts/#recursive-mounts).
+Private propagation means newly attached filesystems may require recreating
+the container's mounts. Porty checks the opened filesystem's device identity
+against host mountinfo and rejects a missing or mismatched host mount.
+Rootless engines and proc hidepid restrictions can limit host visibility;
+Docker Desktop observes its Linux VM, not macOS or Windows hardware.
+
+AMD metrics use readable DRM sysfs counters. NVIDIA support uses the official
+NVML binding, loaded at runtime; no CUDA toolkit is bundled. Configure the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/docker-specialized.html)
+and grant the desired GPU with `--gpus` and
+`NVIDIA_DRIVER_CAPABILITIES=utility`. A normal machine without NVIDIA libraries
+still starts. Builds made with `CGO_ENABLED=0` explicitly report NVIDIA
+monitoring as unsupported. MIG/device-specific fields may be partial.
+
+Intel utilization uses i915/Xe PMU engine activity, labelled **busiest measured
+engine**, not whole-GPU busy. Xe discovery may need a specific
+`--device=/dev/dri/renderD128` and the matching render group; device paths and
+group IDs vary by host. PMU reads may need `--cap-add=PERFMON` plus a copy of
+Docker's version-matched default seccomp profile that permits only
+`perf_event_open` in addition to its existing rules. Do not disable seccomp or
+use `--privileged`. Driver, kernel, permissions and PMU availability determine
+coverage. Rootless setups often cannot grant the necessary host PMU access.
+
+The native systemd unit keeps its default restrictions. For a host that
+explicitly needs Intel PMU access, create a reviewed service drop-in:
+
+```ini
+[Service]
+CapabilityBoundingSet=CAP_PERFMON
+AmbientCapabilities=CAP_PERFMON
+PrivateDevices=no
+DevicePolicy=closed
+DeviceAllow=/dev/dri/renderD128 r
+SupplementaryGroups=render
+```
+
+Adjust the render node/group to the selected GPU. If a custom syscall filter blocks perf_event_open, add that syscall to the existing
+allowlist rather than replacing the filter. Keep the existing filesystem
+restrictions; inspect the effective unit and journal after applying
+a drop-in. NVIDIA access under systemd also needs its specific device nodes and
+driver libraries made visible; do not grant all devices globally. Temperature,
+memory and utilization capabilities are reported independently. Fixture tests
+do not establish hardware compatibility for every driver.
+
+App URL health checks and favicon shortcuts are reserved for a later feature.

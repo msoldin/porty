@@ -95,3 +95,39 @@ go test ./internal/compose -run 'TestUpdateLive' -count=1 -v
 `TestUpdateLivePreservesVolumesAndUnselectedService` creates a uniquely named fixture, checks named/anonymous volume markers and unselected container identity across recreation, and verifies a stopped service remains stopped. Cleanup removes only the fixture project and volumes; pulled images are left on the disposable daemon. The fixture bypasses registry discovery to isolate Compose recreation behavior.
 
 **Release gate pending:** live tests were not run during this implementation because no daemon had been established as disposable. Record Docker version, API version, storage mode, fixture images and test output before release. The full matrix still needs live coverage on classic and containerd image stores, mutable-tag publication during pull, a multi-architecture index changing only another platform, shared-tag stacks, multi-replica/dependency fixtures, and marker ownership inside custom-hostname/shared-mount containers. Unit tests for these boundaries are not substitutes for the missing live scenarios. The OCI packaging test has its own explicit live gate.
+
+## Host dashboard verification
+
+Build the frontend before the executable. Monitoring is owned by
+`internal/monitoring`; Linux adapters use bounded, rooted proc/sys reads and
+the NVIDIA adapter uses optional runtime NVML. The only added Go dependency is
+`github.com/NVIDIA/go-nvml v0.13.4-1`; the frontend adds no dependencies.
+
+```sh
+go test -race ./internal/monitoring ./internal/app ./internal/http ./internal/config
+CGO_ENABLED=0 go test ./internal/monitoring
+CGO_ENABLED=0 go build -o /tmp/porty-nocgo ./cmd/porty
+(cd web && bun run test && bun run typecheck && bun run build)
+go build -o /tmp/porty-e2e ./cmd/porty
+(cd web && PORTY_E2E_BINARY=/tmp/porty-e2e bun run test:e2e -- dashboard.spec.ts --output=/tmp/porty-dashboard-validation/browser)
+PORTY_LIVE_DOCKER_CHECK=1 ./deploy/package_test.sh
+```
+
+The OCI check creates and removes only its own container and anonymous data
+volume. It verifies non-root startup, private data modes, dynamic libc,
+startup without NVML and unavailable host metrics when mounts are omitted.
+The pinned Go 1.27.1 Bookworm builder and Debian Bookworm runtime digests were
+resolved from Docker Hub on 2026-10-09. NVIDIA's binding emits upstream
+deprecated-declaration warnings; these do not require NVIDIA libraries at link
+or startup time.
+
+On a disposable local Linux builder with permission to create temporary
+mounts, also run `./deploy/monitoring_test.sh --image porty:verify --nested-mounts`.
+It creates a small tmpfs under a temporary directory, checks that both parent
+and nested mounts reject writes from the container, then unmounts/removes its
+own fixture. It does not mount host root, change host permissions or touch
+workloads. Remote Docker daemons cannot see the local fixture path.
+
+GPU fixture tests cover supported field decoding and error states. Record
+actual driver/kernel/device results separately; no GPU hardware matrix is
+implied by the unit suite. See the operator guide for optional permissions.

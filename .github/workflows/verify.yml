@@ -40,6 +40,8 @@ jobs:
       - run: bun run build
         working-directory: web
       - run: go test -race ./...
+      - run: CGO_ENABLED=0 go test ./internal/monitoring
+      - run: CGO_ENABLED=0 go build -trimpath -o /tmp/porty-nocgo ./cmd/porty
       - run: go vet ./...
       - run: go build -trimpath -o /tmp/porty-e2e ./cmd/porty
       - run: bunx playwright install --with-deps chromium
@@ -47,4 +49,4 @@ jobs:
       - run: PORTY_E2E_BINARY=/tmp/porty-e2e bun run test:e2e
         working-directory: web
       - run: ./deploy/package_test.sh
-      - run: docker build --tag porty:verify .
+      - run: PORTY_LIVE_DOCKER_CHECK=1 ./deploy/package_test.sh

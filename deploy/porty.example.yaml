@@ -6,3 +6,9 @@ server:
 data_dir: "/var/lib/porty"
 log_format: "json"
 max_editable_file_bytes: 1048576
+
+monitoring:
+  mode: "native" # OCI image overrides this to host via PORTY_MONITORING_MODE.
+  host_proc: "/host/proc"
+  host_sys: "/host/sys"
+  host_root: "/host/root"
