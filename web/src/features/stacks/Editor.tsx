@@ -1,133 +1,46 @@
-import { useEffect, useState } from "preact/hooks";
-import { message } from "../../lib/http";
-import {
-  stackPath,
-  listFiles,
-  getStackFile,
-  getDiff,
-  saveStackFile,
-  deleteStackFile,
-  moveStackFile,
-  createStackFile,
-  commitStack,
-} from "./api";
-import { type Stack, type FileEntry, type FileContent } from "./types";
+import { useMemo } from "preact/hooks";
+import type { Stack } from "./types";
+import type { StackEditor } from "./useStackEditor";
 import { CodeEditor } from "./CodeEditor";
 import { Icon } from "../../components/Icon";
 import { Empty, Notice } from "../../components/Feedback";
 
-export function Editor({
-  stack,
-  dirty,
-  setDirty,
-  refresh,
-}: {
-  stack: Stack;
-  dirty: boolean;
-  setDirty: (dirty: boolean) => void;
-  refresh: () => void;
-}) {
-  const root = stackPath(stack.id);
-  const [tree, setTree] = useState<FileEntry[]>([]);
-  const [file, setFile] = useState<FileContent>();
-  const [content, setContent] = useState("");
-  const [diff, setDiff] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("");
-  const [notice, setNotice] = useState("");
-  async function reloadDiff() {
-    setDiff(await getDiff(stack.id));
-  }
+export function Editor({ stack, model }: { stack: Stack; model: StackEditor }) {
+  const {
+    tree,
+    file,
+    content,
+    diff,
+    dirty,
+    busy,
+    error,
+    notice,
+    commitMessage,
+    setContent,
+    setCommitMessage,
+    save,
+  } = model;
+  // Preserve the buffer across tab visits without recreating CodeMirror on every keystroke.
+  const initial = useMemo(() => content, [model.editorKey]);
   async function open(path: string) {
-    if (dirty && !confirm("Discard unsaved changes?")) return;
-    setBusy(true);
-    setError("");
-    try {
-      const next = await getStackFile(stack.id, path);
-      setFile(next);
-      setContent(next.content);
-      setDirty(false);
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setBusy(false);
+    if (dirty) {
+      if (!confirm("Discard unsaved changes?")) return;
+      model.discard();
     }
-  }
-  async function reloadTree() {
-    setTree((await listFiles(stack.id)) || []);
-  }
-  useEffect(() => {
-    let active = true;
-    Promise.all([
-      listFiles(stack.id),
-      getStackFile(stack.id, "docker-compose.yml"),
-      getDiff(stack.id),
-    ])
-      .then(([entries, file, difference]) => {
-        if (!active) return;
-        setTree(entries || []);
-        setFile(file);
-        setContent(file.content);
-        setDiff(difference);
-        setDirty(false);
-      })
-      .catch((error) => active && setError(message(error)));
-    return () => {
-      active = false;
-    };
-  }, [root]);
-  async function save() {
-    if (!file) return;
-    setBusy(true);
-    setError("");
-    const snapshot = content;
-    try {
-      const result = await saveStackFile(
-        stack.id,
-        file.path,
-        snapshot,
-        file.hash,
-      );
-      setFile({ ...file, content: snapshot, hash: result.hash });
-      setDirty(false);
-      await reloadDiff();
-      refresh();
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setBusy(false);
-    }
+    await model.open(path);
   }
   async function mutateFile(kind: "create" | "directory" | "move" | "delete") {
-    if (dirty && !confirm("Discard unsaved changes?")) return;
     const path =
       kind === "delete"
         ? file?.path
         : prompt(kind === "move" ? "New relative path" : "Relative path");
     if (!path) return;
     if (kind === "delete" && !confirm(`Delete ${path}?`)) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (kind === "delete") await deleteStackFile(stack.id, path);
-      else if (kind === "move") await moveStackFile(stack.id, file?.path, path);
-      else await createStackFile(stack.id, path, kind === "directory");
-      setDirty(false);
-      await reloadTree();
-      await reloadDiff();
-      refresh();
-      if (kind === "delete") setFile(undefined);
-      else if (kind !== "directory") {
-        const next = await getStackFile(stack.id, path);
-        setFile(next);
-        setContent(next.content);
-      }
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setBusy(false);
+    if (dirty) {
+      if (!confirm("Discard unsaved changes?")) return;
+      model.discard();
     }
+    await model.mutateFile(kind, path);
   }
   return (
     <>
@@ -139,6 +52,11 @@ export function Editor({
               Reload file
             </button>
           )}
+        </Notice>
+      )}
+      {notice && (
+        <Notice tone="neutral" role="status">
+          {notice}
         </Notice>
       )}
       <div class="editor-layout">
@@ -192,7 +110,7 @@ export function Editor({
             </span>
             <button
               class="small primary"
-              disabled={!dirty || busy}
+              disabled={!file || !dirty || busy}
               onClick={save}
             >
               Save file
@@ -200,13 +118,10 @@ export function Editor({
           </div>
           {file ? (
             <CodeEditor
-              key={`${file.path}:${file.hash}`}
-              initial={file.content}
+              key={model.editorKey}
+              initial={initial}
               readOnly={busy}
-              onChange={(value) => {
-                setContent(value);
-                setDirty(value !== file.content);
-              }}
+              onChange={setContent}
             />
           ) : (
             <Empty>Select an editable file.</Empty>
@@ -256,22 +171,9 @@ export function Editor({
           </div>
           <form
             class="commit-form"
-            onSubmit={async (event) => {
+            onSubmit={(event) => {
               event.preventDefault();
-              setBusy(true);
-              setError("");
-              setNotice("");
-              try {
-                await commitStack(stack.id, commitMessage);
-                setCommitMessage("");
-                setNotice(`Committed ${stack.directoryName}`);
-                await reloadDiff();
-                refresh();
-              } catch (error) {
-                setError(message(error));
-              } finally {
-                setBusy(false);
-              }
+              void model.commit();
             }}
           >
             <label htmlFor="commit-message">Commit changes to repository</label>
@@ -288,7 +190,7 @@ export function Editor({
               required
             />
             <div class="commit-footer">
-              <span role="status">{notice}</span>
+              <span>Save writes files. Commit records their Git history.</span>
               <button
                 disabled={busy || dirty || !commitMessage.trim() || !diff}
               >

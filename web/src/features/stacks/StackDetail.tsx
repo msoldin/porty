@@ -20,6 +20,7 @@ import {
   stackRuntimePresentation,
 } from "./statusPresentation";
 import { Editor } from "./Editor";
+import { useStackEditor } from "./useStackEditor";
 import { StackSettings } from "./StackSettings";
 import { useStackLogs } from "./useStackLogs";
 import { useStackState } from "./useStackState";
@@ -48,6 +49,12 @@ export function StackDetail({
   onAction: (operation: Operation) => void;
 }) {
   const [tab, setTab] = useState("Overview");
+  const editor = useStackEditor({
+    stackId: stack.id,
+    enabled: tab === "Editor",
+    onDirtyChange: setDirty,
+    onSaved: refresh,
+  });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -217,8 +224,6 @@ export function StackDetail({
               role="tab"
               aria-selected={tab === name}
               onClick={() => {
-                if (dirty && !confirm("Discard unsaved changes?")) return;
-                setDirty(false);
                 setTab(name);
                 setError("");
               }}
@@ -236,14 +241,7 @@ export function StackDetail({
           openOperation={openOperation}
         />
       )}
-      {tab === "Editor" && (
-        <Editor
-          stack={stack}
-          dirty={dirty}
-          setDirty={setDirty}
-          refresh={refresh}
-        />
-      )}
+      {tab === "Editor" && <Editor stack={stack} model={editor} />}
       {tab === "Settings" && (
         <StackSettings
           stack={stack}
