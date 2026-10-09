@@ -216,12 +216,17 @@ func (s *Service) acceptBatchLocked(id string, batch Batch, err error, at time.T
 	}
 	if err != nil {
 		batch = old.batch
+		reason := sourceReason(err)
 		for key, reading := range batch.Readings {
 			reading.State = StateStale
-			reading.Reason = "read_failed"
+			reading.Reason = reason
+			if reason != "read_failed" {
+				reading.State = StateUnavailable
+				reading.Value = nil
+			}
 			batch.Readings[key] = reading
 		}
-		batch.Coverage = []Coverage{{Source: id, Partial: true, Reason: "read_failed"}}
+		batch.Coverage = []Coverage{{Source: id, Partial: true, Reason: reason}}
 	}
 	batch = normalizeBatch(batch)
 	encoded, _ := json.Marshal(batch)

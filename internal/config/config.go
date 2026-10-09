@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -22,14 +23,23 @@ type Server struct {
 }
 
 type Config struct {
-	Server               Server `yaml:"server"`
-	DataDir              string `yaml:"data_dir"`
-	LogFormat            string `yaml:"log_format"`
-	MaxEditableFileBytes int64  `yaml:"max_editable_file_bytes"`
+	Monitoring           Monitoring `yaml:"monitoring"`
+	Server               Server     `yaml:"server"`
+	DataDir              string     `yaml:"data_dir"`
+	LogFormat            string     `yaml:"log_format"`
+	MaxEditableFileBytes int64      `yaml:"max_editable_file_bytes"`
+}
+
+type Monitoring struct {
+	Mode     string `yaml:"mode"`
+	HostProc string `yaml:"host_proc"`
+	HostSys  string `yaml:"host_sys"`
+	HostRoot string `yaml:"host_root"`
 }
 
 func Default() Config {
 	return Config{
+		Monitoring:           Monitoring{Mode: "native", HostProc: "/host/proc", HostSys: "/host/sys", HostRoot: "/host/root"},
 		Server:               Server{Listen: "127.0.0.1:8080"},
 		DataDir:              "/var/lib/porty",
 		LogFormat:            "text",
@@ -72,6 +82,10 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (Config, error) 
 	applyEnv("PORTY_TLS_CERT", &cfg.Server.TLSCert)
 	applyEnv("PORTY_TLS_KEY", &cfg.Server.TLSKey)
 	applyEnv("PORTY_PUBLIC_URL", &cfg.Server.PublicURL)
+	applyEnv("PORTY_MONITORING_MODE", &cfg.Monitoring.Mode)
+	applyEnv("PORTY_MONITORING_HOST_PROC", &cfg.Monitoring.HostProc)
+	applyEnv("PORTY_MONITORING_HOST_SYS", &cfg.Monitoring.HostSys)
+	applyEnv("PORTY_MONITORING_HOST_ROOT", &cfg.Monitoring.HostRoot)
 	if value, ok := lookupEnv("PORTY_MAX_EDITABLE_FILE_BYTES"); ok {
 		parsed, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -104,6 +118,14 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (Config, error) 
 }
 
 func (c Config) Validate() error {
+	if c.Monitoring.Mode != "native" && c.Monitoring.Mode != "host" && c.Monitoring.Mode != "disabled" {
+		return errors.New("monitoring.mode must be native, host or disabled")
+	}
+	for _, path := range []string{c.Monitoring.HostProc, c.Monitoring.HostSys, c.Monitoring.HostRoot} {
+		if !filepath.IsAbs(path) {
+			return errors.New("monitoring host paths must be absolute")
+		}
+	}
 	if c.Server.Listen == "" {
 		return errors.New("server.listen is required")
 	}
