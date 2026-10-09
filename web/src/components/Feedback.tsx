@@ -16,9 +16,17 @@ export function Badge({
     </span>
   );
 }
-export function Notice({ children }: { children: ComponentChildren }) {
+export function Notice({
+  children,
+  tone = "warning",
+  role = "alert",
+}: {
+  children: ComponentChildren;
+  tone?: string;
+  role?: "alert" | "status";
+}) {
   return (
-    <div class="notice" role="alert">
+    <div class={`notice ${tone}`} role={role}>
       {children}
     </div>
   );

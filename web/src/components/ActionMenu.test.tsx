@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/preact";
 import { expect, it, vi } from "vitest";
 import { ActionMenu } from "./ActionMenu";
 
-it("opens by keyboard, navigates enabled actions, and returns focus on Escape", () => {
+it("makes unavailable action reasons reachable by keyboard and returns focus on Escape", () => {
   const onSelect = vi.fn();
   render(
     <ActionMenu
@@ -25,6 +25,11 @@ it("opens by keyboard, navigates enabled actions, and returns focus on Escape", 
   fireEvent.keyDown(trigger, { key: "Enter" });
   expect(trigger).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByRole("menuitem", { name: "Deploy" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+  expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveFocus();
+  expect(
+    screen.getByRole("menuitem", { name: "Restart" }),
+  ).toHaveAccessibleDescription("Requires running stacks");
   fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
   expect(screen.getByRole("menuitem", { name: "Stop" })).toHaveFocus();
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
@@ -54,6 +59,7 @@ it("explains disabled items and activates only enabled actions", () => {
   const stop = screen.getByRole("menuitem", { name: "Stop" });
   expect(stop).toHaveAttribute("aria-disabled", "true");
   expect(stop).toHaveAttribute("title", "No running selection");
+  expect(stop).toHaveAccessibleDescription("No running selection");
   fireEvent.click(stop);
   expect(onSelect).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("menuitem", { name: "Deploy" }));

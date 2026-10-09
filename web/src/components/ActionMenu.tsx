@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { Icon } from "./Icon";
+import "./dialog.css";
 
 export type ActionMenuItem = {
   id: string;
@@ -13,12 +14,15 @@ export function ActionMenu({
   items,
   onSelect,
   disabled = false,
+  disabledReason = "Wait for the current action to finish.",
 }: {
   label: string;
   items: ActionMenuItem[];
   onSelect: (id: string) => void;
   disabled?: boolean;
+  disabledReason?: string;
 }) {
+  const descriptionId = useId();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -27,9 +31,7 @@ export function ActionMenu({
   useEffect(() => {
     if (!open) return;
     menuRef.current
-      ?.querySelector<HTMLButtonElement>(
-        '[role="menuitem"][aria-disabled="false"]',
-      )
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
       ?.focus();
     function closeOutside(event: PointerEvent) {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
@@ -41,7 +43,7 @@ export function ActionMenu({
   function moveFocus(key: string) {
     const enabled = Array.from(
       menuRef.current?.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"][aria-disabled="false"]',
+        '[role="menuitem"]',
       ) || [],
     );
     if (!enabled.length) return;
@@ -63,10 +65,13 @@ export function ActionMenu({
         type="button"
         class="action-menu-trigger"
         ref={triggerRef}
-        disabled={disabled}
+        aria-disabled={disabled}
+        aria-describedby={disabled ? `${descriptionId}-trigger` : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!disabled) setOpen(!open);
+        }}
         onKeyDown={(event) => {
           if (
             event.key === "ArrowDown" ||
@@ -74,7 +79,7 @@ export function ActionMenu({
             event.key === " "
           ) {
             event.preventDefault();
-            setOpen(true);
+            if (!disabled) setOpen(true);
           }
           if (event.key === "Escape") setOpen(false);
         }}
@@ -82,6 +87,9 @@ export function ActionMenu({
         {label}
         <Icon name="Chevron" />
       </button>
+      {disabled && (
+        <small id={`${descriptionId}-trigger`}>{disabledReason}</small>
+      )}
       {open && (
         <div
           class="action-menu-popover"
@@ -95,6 +103,8 @@ export function ActionMenu({
               event.preventDefault();
               setOpen(false);
               triggerRef.current?.focus();
+            } else if (event.key === "Tab") {
+              setOpen(false);
             }
           }}
         >
@@ -104,6 +114,12 @@ export function ActionMenu({
               type="button"
               role="menuitem"
               aria-disabled={item.disabled ? "true" : "false"}
+              aria-label={item.label}
+              aria-describedby={
+                item.disabled && item.reason
+                  ? `${descriptionId}-${item.id}`
+                  : undefined
+              }
               title={item.disabled ? item.reason : undefined}
               tabIndex={-1}
               onClick={() => {
@@ -114,6 +130,9 @@ export function ActionMenu({
               }}
             >
               {item.label}
+              {item.disabled && item.reason && (
+                <small id={`${descriptionId}-${item.id}`}>{item.reason}</small>
+              )}
             </button>
           ))}
         </div>

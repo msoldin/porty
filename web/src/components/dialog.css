@@ -1,0 +1,59 @@
+.app-dialog {
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  margin: auto;
+  padding: 1.5rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px #0005;
+  overflow-wrap: anywhere;
+}
+.app-dialog::backdrop {
+  background: #09142199;
+}
+.app-dialog h2 {
+  margin: 0 0 1rem;
+  font-size: 1.3rem;
+}
+.dialog-description {
+  line-height: 1.6;
+}
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.dialog-actions button {
+  min-height: 44px;
+}
+.action-menu-popover button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  white-space: normal;
+}
+.action-menu-popover small {
+  font-size: 0.75rem;
+  font-weight: normal;
+  line-height: 1.4;
+}
+.action-menu-popover {
+  max-width: calc(100vw - 2rem);
+}
+.notice.danger {
+  border-color: var(--danger);
+}
+@media (max-width: 400px) {
+  .app-dialog {
+    padding: 1rem;
+  }
+  .dialog-actions > button {
+    flex: 1;
+  }
+}
