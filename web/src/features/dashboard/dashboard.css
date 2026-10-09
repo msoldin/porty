@@ -413,17 +413,21 @@
   margin: 10px 2px 0;
   color: var(--muted);
 }
-.monitoring-coverage {
-  margin-top: 24px;
-  color: var(--muted);
+.metric-availability {
+  margin: 14px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--blue);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text);
+  line-height: 1.5;
+}
+.metric-availability p {
+  margin: 0;
   font-size: 12px;
-  overflow-wrap: anywhere;
 }
-.monitoring-coverage summary {
-  cursor: pointer;
-}
-.monitoring-coverage ul {
-  padding-left: 20px;
+.metric-availability p + p {
+  margin-top: 8px;
 }
 .monitoring-error,
 .selection-notice {

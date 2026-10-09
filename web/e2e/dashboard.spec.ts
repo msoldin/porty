@@ -503,6 +503,51 @@ test("remembers separate disk gauges and shared network choices from customizati
   await expect(dialog).toHaveCount(0);
 });
 
+test("explains unavailable temperature inside its details without a technical message list", async ({
+  page,
+}, info) => {
+  const snapshot = metrics();
+  snapshot.inventory!.devices = snapshot.inventory!.devices.filter(
+    (device) => device.id !== "temp",
+  );
+  snapshot.coverage = [
+    { source: "sensors", partial: true, omitted: 0, reason: "no_device" },
+  ];
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  await register(page);
+  await expect(page.getByText("Metric availability and coverage")).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("No device detected")).toHaveCount(0);
+  const temperature = page.getByRole("article", { name: "Temperature" });
+  await expect(
+    temperature.getByText("Unavailable", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("unavailable-dashboard.png"),
+    fullPage: true,
+  });
+  await temperature
+    .getByRole("button", { name: "Temperature details" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Temperature details" });
+  await expect(
+    dialog.getByText("No temperature sensors are exposed to this environment."),
+  ).toBeVisible();
+  await expect(dialog).toBeInViewport();
+  await page.screenshot({
+    path: info.outputPath("temperature-explanation.png"),
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    temperature.getByRole("button", { name: "Temperature details" }),
+  ).toBeFocused();
+});
+
 test("clears metrics on logout and after session expiry", async ({ page }) => {
   await page.route("**/api/v1/monitoring*", (r) =>
     r.fulfill({ json: metrics() }),

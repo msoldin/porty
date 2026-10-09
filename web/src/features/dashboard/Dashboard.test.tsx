@@ -116,6 +116,74 @@ beforeEach(() => {
   vi.mocked(useMonitoring).mockReturnValue(fixture());
 });
 afterEach(() => vi.restoreAllMocks());
+it("keeps general monitoring problems in customization without exposing internal source names", () => {
+  const value = fixture();
+  value.state.coverage = [
+    {
+      source: "internal-collector-123",
+      reason: "read_failed",
+      partial: true,
+      omitted: 0,
+    },
+  ];
+  vi.mocked(useMonitoring).mockReturnValue(value);
+  render(<Dashboard onUnauthorized={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
+  const dialog = within(screen.getByRole("dialog"));
+  expect(
+    dialog.getByText(
+      "Porty could not read this metric. It will try again automatically.",
+    ),
+  ).toBeVisible();
+  expect(dialog.queryByText(/internal-collector/)).not.toBeInTheDocument();
+});
+it("explains missing temperature sensors in the tile details without a technical coverage list", () => {
+  const value = fixture();
+  value.state.inventory.devices = value.state.inventory.devices.filter(
+    (device) => device.id !== "temp",
+  );
+  value.state.coverage = [
+    { source: "sensors", reason: "no_device", partial: true, omitted: 0 },
+  ];
+  vi.mocked(useMonitoring).mockReturnValue(value);
+  render(<Dashboard onUnauthorized={() => {}} />);
+  expect(
+    screen.queryByText("Metric availability and coverage"),
+  ).not.toBeInTheDocument();
+  const temperature = within(
+    screen.getByRole("article", { name: "Temperature" }),
+  );
+  expect(temperature.getByText("Unavailable")).toBeVisible();
+  fireEvent.click(
+    temperature.getByRole("button", { name: "Temperature details" }),
+  );
+  const dialog = within(
+    screen.getByRole("dialog", { name: "Temperature details" }),
+  );
+  expect(
+    dialog.getByText("No temperature sensors are exposed to this environment."),
+  ).toBeVisible();
+  expect(dialog.queryByText("sensors:")).not.toBeInTheDocument();
+  expect(
+    dialog.queryByRole("group", { name: "Temperature history" }),
+  ).not.toBeInTheDocument();
+});
+it("keeps incomplete disk activity explanations with disk activity details", () => {
+  const value = fixture();
+  value.state.coverage = [
+    { source: "disks", reason: "partial_coverage", partial: true, omitted: 2 },
+  ];
+  vi.mocked(useMonitoring).mockReturnValue(value);
+  render(<Dashboard onUnauthorized={() => {}} />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Disk activity details" }),
+  );
+  expect(
+    within(screen.getByRole("dialog")).getByText(
+      "Some disks aren’t included in these readings. At least 2 devices aren’t shown.",
+    ),
+  ).toBeVisible();
+});
 it("keeps customization in one dialog and gives each selected disk its own gauge tile", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
   expect(screen.queryByRole("combobox")).not.toBeInTheDocument();

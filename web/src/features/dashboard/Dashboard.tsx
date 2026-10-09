@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
 import { useMonitoring } from "./useMonitoring";
+import { MetricAvailability } from "./MetricAvailability";
 import { MetricCard } from "./MetricCard";
 import { MetricChart } from "./MetricChart";
 import { ReadingStatus } from "./ReadingStatus";
@@ -11,7 +12,6 @@ import {
   chartSeries,
   currentReading,
   formatMetric,
-  reasonLabel,
   selectDevice,
   uptime,
 } from "./metricPresentation";
@@ -178,6 +178,19 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
   const detailProps = { state, now: serverNow, stale };
   const metricTime = uptime(state?.host.bootTime, serverNow);
   const disabled = state?.coverage.some((item) => item.reason === "disabled");
+  const tileSources = new Set([
+    "cpu",
+    "memory",
+    "network",
+    "disks",
+    "sensors",
+    "gpu",
+    "nvidia",
+    ...devices.map((device) => device.id),
+  ]);
+  const generalSources = (state?.coverage ?? [])
+    .filter((item) => !tileSources.has(item.source))
+    .map((item) => item.source);
   return (
     <section class="host-dashboard">
       <div class="page-heading host-dashboard-heading">
@@ -252,6 +265,10 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             onChange={(id) => choose("gpu", id)}
           />
           <DiskPicker selection={disks} />
+          <MetricAvailability
+            coverage={state?.coverage}
+            sources={generalSources}
+          />
         </div>
         <div class="dialog-actions">
           <button type="button" onClick={() => setCustomizing(false)}>
@@ -273,6 +290,13 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
             <MetricCard
               key={label}
               label={label}
+              availability={
+                <MetricAvailability
+                  coverage={state?.coverage}
+                  sources={["network", network?.id]}
+                  reading={read(network, metric)}
+                />
+              }
               value={value(network, metric, "bytes_per_second")}
               source={network?.name ?? "Host interface"}
               state={status(network, metric)}
@@ -303,8 +327,21 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           source={temperature?.name ?? "CPU temperature"}
           state={status(temperature, "temperature")}
           lastSuccessAt={read(temperature, "temperature")?.lastSuccessAt}
-          chart={chart(temperature, "temperature", "Temperature", "celsius")}
-          note={reasonLabel(read(temperature, "temperature")?.reason)}
+          chart={
+            temperature &&
+            chart(temperature, "temperature", "Temperature", "celsius")
+          }
+          availability={
+            <MetricAvailability
+              coverage={state?.coverage}
+              sources={
+                temperature?.kind === "gpu"
+                  ? [temperature.id]
+                  : ["sensors", temperature?.id]
+              }
+              reading={read(temperature, "temperature")}
+            />
+          }
           details={
             <>
               {sensors.map((device) => (
@@ -321,6 +358,13 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         />
         <MetricCard
           label="Disk I/O"
+          availability={
+            <MetricAvailability
+              coverage={state?.coverage}
+              sources={["disks", disk?.id]}
+              reading={read(disk, "disk_read_rate")}
+            />
+          }
           value={
             <>
               {value(disk, "disk_read_rate", "bytes_per_second")}
@@ -401,6 +445,13 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         )}
         <MetricCard
           label="RAM usage"
+          availability={
+            <MetricAvailability
+              coverage={state?.coverage}
+              sources={["memory", ram?.id]}
+              reading={read(ram, "memory_percent")}
+            />
+          }
           gauge={{ value: read(ram, "memory_percent")?.value }}
           value={value(ram, "memory_percent", "percent")}
           source={
@@ -411,7 +462,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           state={status(ram, "memory_percent")}
           lastSuccessAt={read(ram, "memory_percent")?.lastSuccessAt}
           detailLabel="Memory details"
-          chart={chart(ram, "memory_percent", "RAM", "percent")}
+          chart={ram && chart(ram, "memory_percent", "RAM", "percent")}
           details={
             ram ? (
               <div>
@@ -447,13 +498,20 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         />
         <MetricCard
           label="CPU usage"
+          availability={
+            <MetricAvailability
+              coverage={state?.coverage}
+              sources={["cpu", cpu?.id]}
+              reading={read(cpu, "cpu_busy")}
+            />
+          }
           gauge={{ value: read(cpu, "cpu_busy")?.value }}
           value={value(cpu, "cpu_busy", "percent")}
           source={cpu?.name ?? "All CPUs"}
           state={status(cpu, "cpu_busy")}
           lastSuccessAt={read(cpu, "cpu_busy")?.lastSuccessAt}
           detailLabel="CPU details"
-          chart={chart(cpu, "cpu_busy", "CPU", "percent")}
+          chart={cpu && chart(cpu, "cpu_busy", "CPU", "percent")}
           details={
             <div class="metric-core-list">
               {devices
@@ -472,17 +530,24 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         />
         <MetricCard
           label="GPU usage"
+          availability={
+            <MetricAvailability
+              coverage={state?.coverage}
+              sources={["gpu", "nvidia", ...gpus.map((device) => device.id)]}
+              reading={read(gpu, "gpu_busy")}
+            />
+          }
           gauge={{ value: read(gpu, "gpu_busy")?.value }}
           value={value(gpu, "gpu_busy", "percent")}
           source={gpu?.name ?? "No GPU reading available"}
           state={status(gpu, "gpu_busy")}
           lastSuccessAt={read(gpu, "gpu_busy")?.lastSuccessAt}
           detailLabel="GPU details"
-          chart={chart(gpu, "gpu_busy", "GPU", "percent")}
+          chart={gpu && chart(gpu, "gpu_busy", "GPU", "percent")}
           note={
             gpu?.utilizationBasis === "busiest_engine"
               ? "Busiest measured engine"
-              : reasonLabel(read(gpu, "gpu_busy")?.reason)
+              : undefined
           }
           details={
             <>
@@ -541,19 +606,6 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         <span>Charts: last 5 minutes · focus or tap to inspect</span>
         <span>Now</span>
       </div>
-      {!!state?.coverage.length && (
-        <details class="monitoring-coverage">
-          <summary>Metric availability and coverage</summary>
-          <ul>
-            {state.coverage.map((item, index) => (
-              <li key={item.source + index}>
-                <strong>{item.source}</strong>: {reasonLabel(item.reason)}
-                {item.omitted > 0 && " · " + item.omitted + " or more omitted"}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
     </section>
   );
 }

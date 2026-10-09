@@ -1,3 +1,4 @@
+import { MetricAvailability } from "./MetricAvailability";
 import { MetricCard } from "./MetricCard";
 import { currentReading, formatMetric } from "./metricPresentation";
 import type { Device, MetricKind, MonitoringState } from "./types";
@@ -28,6 +29,13 @@ export function DiskFullnessCard({
   return (
     <MetricCard
       label={device.name + " · Disk fullness"}
+      availability={
+        <MetricAvailability
+          coverage={state?.coverage}
+          sources={["filesystems", device.id]}
+          reading={percent}
+        />
+      }
       value={formatMetric(percent?.value, "percent")}
       gauge={{
         value: percent?.value,

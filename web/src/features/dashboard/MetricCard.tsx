@@ -17,6 +17,7 @@ export function MetricCard({
   detailLabel = label + " details",
   note,
   gauge,
+  availability,
 }: {
   label: string;
   value?: ComponentChildren;
@@ -28,6 +29,7 @@ export function MetricCard({
   details?: ComponentChildren;
   detailLabel?: string;
   note?: string;
+  availability?: ComponentChildren;
   gauge?: { value?: number | null; capacity?: boolean; label?: string };
 }) {
   const id = useId();
@@ -78,6 +80,7 @@ export function MetricCard({
           {source && <p>{source}</p>}
           <ReadingStatus state={state} lastSuccessAt={lastSuccessAt} />
           {note && <p class="muted">{note}</p>}
+          {availability}
           {chart && <div class="metric-detail-history">{chart}</div>}
           {details}
         </div>

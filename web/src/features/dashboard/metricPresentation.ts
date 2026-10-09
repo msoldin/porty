@@ -92,21 +92,31 @@ export function chartSeries(
 export function reasonLabel(reason?: string): string {
   const labels: Record<string, string> = {
     collecting: "Waiting for the next sample",
-    unsupported: "Not supported by this source",
-    build_unsupported: "Unavailable in this build",
-    no_device: "No device detected",
-    permission_denied: "Access denied",
-    source_missing: "Source unavailable",
-    read_failed: "Unable to read this source",
-    invalid_data: "Invalid source data",
-    collection_delayed: "Waiting for a fresh reading",
-    counter_reset: "Counter reset; collecting",
-    limit_exceeded: "Device limit reached",
-    disabled: "Monitoring disabled",
-    partial_coverage: "Partial coverage",
-    host_mount_unavailable: "Host filesystem is not mounted here",
+    unsupported: "This environment does not provide this reading.",
+    build_unsupported:
+      "This Porty build does not include support for these readings.",
+    no_device: "No compatible device is exposed to this environment.",
+    permission_denied: "Porty does not have permission to read this metric.",
+    source_missing: "This reading is not available in the current environment.",
+    read_failed:
+      "Porty could not read this metric. It will try again automatically.",
+    invalid_data:
+      "The device returned an invalid reading. Porty will try again automatically.",
+    collection_delayed:
+      "Updates are delayed. The last successful reading is shown.",
+    counter_reset:
+      "Waiting for a new sample after the device restarted or its counter reset.",
+    limit_exceeded:
+      "Some devices are not shown because the monitoring limit has been reached.",
+    disabled: "Host monitoring is turned off.",
+    partial_coverage: "Some readings are not available.",
+    host_mount_unavailable:
+      "This disk is not accessible from the environment running Porty.",
   };
-  return reason ? (labels[reason] ?? "Source unavailable") : "";
+  return reason
+    ? (labels[reason] ??
+        "This reading is not available in the current environment.")
+    : "";
 }
 export function uptime(
   bootTime: string | undefined,
