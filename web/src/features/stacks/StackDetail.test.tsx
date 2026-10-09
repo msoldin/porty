@@ -16,6 +16,14 @@ import {
 import { useStackLogs } from "./useStackLogs";
 import type { Stack } from "./types";
 import type { Operation } from "../operations/types";
+import {
+  getDeploymentReview,
+  deployReviewedStack,
+} from "./deploymentReviewApi";
+vi.mock("./deploymentReviewApi", () => ({
+  getDeploymentReview: vi.fn(),
+  deployReviewedStack: vi.fn(),
+}));
 
 vi.mock("./useStackLogs", () => ({ useStackLogs: vi.fn() }));
 vi.mock("./api", () => ({
@@ -59,6 +67,22 @@ function showStack(
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
+});
+
+it("moves keyboard focus between tabs and labels the active panel", async () => {
+  vi.mocked(useStackLogs).mockReturnValue({
+    output: "",
+    status: "connected",
+    error: "",
+    gap: false,
+  });
+  showStack();
+  const logs = screen.getByRole("tab", { name: "Logs" });
+  fireEvent.click(logs);
+  logs.focus();
+  fireEvent.keyDown(logs, { key: "ArrowRight" });
+  expect(screen.getByRole("tab", { name: "History" })).toHaveFocus();
+  expect(screen.getByRole("tabpanel", { name: "History" })).toBeInTheDocument();
 });
 
 it("keeps whole-stack Actions separate from selected Services actions", async () => {
@@ -105,7 +129,9 @@ it("keeps whole-stack Actions separate from selected Services actions", async ()
   expect(screen.getByRole("heading", { name: "Services" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Validate" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Actions" }));
-  expect(screen.getByRole("menuitem", { name: "Deploy" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Deploy stack…" }),
+  ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Restart" })).toHaveAttribute(
     "aria-disabled",
     "false",
@@ -134,6 +160,46 @@ it("keeps whole-stack Actions separate from selected Services actions", async ()
   expect(onAction).toHaveBeenCalledWith(
     expect.objectContaining({ id: "op-b" }),
   );
+});
+
+it("reviews saved changes before accepting deployment and names the stack", async () => {
+  vi.mocked(getStackState).mockResolvedValue({
+    runtime: "running",
+    freshness: "changes_pending",
+    hasDeployed: true,
+  });
+  vi.mocked(getDeploymentReview).mockResolvedValue({
+    stackId: "one",
+    sourceRevision: "reviewed",
+    uncommittedChanges: true,
+  });
+  vi.mocked(deployReviewedStack).mockResolvedValue({
+    id: "accepted",
+    scopeId: "one",
+    status: "queued",
+  } as Operation);
+  const accepted = vi.fn();
+  showStack(stack, { onAction: accepted });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Deploy changes…" }),
+  );
+  await screen.findByRole("dialog", { name: "Deploy demo?" });
+  expect(deployReviewedStack).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Deploy stack", exact: true }),
+    ).toBeEnabled(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Deploy stack", exact: true }),
+  );
+  await waitFor(() =>
+    expect(accepted).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "accepted", status: "queued" }),
+    ),
+  );
+  expect(deployReviewedStack).toHaveBeenCalledWith("one", "reviewed");
+  expect(runStackAction).not.toHaveBeenCalled();
 });
 
 it("blocks selected container actions with unsaved editor changes", async () => {

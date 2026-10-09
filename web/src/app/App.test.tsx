@@ -443,7 +443,7 @@ describe("Porty administration interface", () => {
       await screen.findByRole("heading", { name: "paperless" }),
     ).toBeInTheDocument();
     fireEvent.click(
-      within(screen.getByRole("main")).getByRole("link", { name: "Overview" }),
+      within(screen.getByRole("main")).getByRole("link", { name: "Stacks" }),
     );
     expect(
       await screen.findByRole("heading", { name: "Stacks", level: 1 }),
@@ -506,7 +506,7 @@ describe("Porty administration interface", () => {
     await edit(editor);
     vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.click(
-      within(screen.getByRole("main")).getByRole("link", { name: "Overview" }),
+      within(screen.getByRole("main")).getByRole("link", { name: "Stacks" }),
     );
     expect(
       screen.getByRole("textbox", { name: "File contents" }),

@@ -1,0 +1,59 @@
+.stack-top {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.stack-top .page-heading {
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.stack-top h1 {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.state-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  padding: 1rem 0;
+}
+.state-strip > div {
+  min-width: 9rem;
+}
+.stack-detail > .tabs {
+  background: var(--surface);
+  padding-inline: 1.5rem;
+  overflow-x: auto;
+}
+.stack-detail [role="tabpanel"] {
+  min-width: 0;
+}
+.stack-detail .action-group {
+  flex-wrap: wrap;
+}
+.stack-detail .action-menu > small {
+  display: block;
+  max-width: 15rem;
+  color: var(--muted);
+}
+@media (max-width: 767px) {
+  .stack-top .page-heading .action-group {
+    width: 100%;
+  }
+  .stack-top .action-group > .primary {
+    flex: 1;
+  }
+  .state-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .state-strip > div {
+    min-width: 0;
+  }
+  .stack-detail > .tabs {
+    padding-inline: 1rem;
+  }
+  .stack-detail .action-group button {
+    min-height: 44px;
+  }
+}

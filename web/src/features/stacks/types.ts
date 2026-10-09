@@ -54,6 +54,7 @@ export type FileContent = {
 
 export type Deployment = {
   id: string;
+  operationId?: string;
   status: string;
   gitCommit?: string;
   dirty: boolean;

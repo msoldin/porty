@@ -21,6 +21,10 @@ import {
 } from "./statusPresentation";
 import { Editor } from "./Editor";
 import { useStackEditor } from "./useStackEditor";
+import { useDeploymentReview } from "./useDeploymentReview";
+import { DeploymentReviewDialog } from "./DeploymentReviewDialog";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import "./stackDetail.css";
 import { StackSettings } from "./StackSettings";
 import { useStackLogs } from "./useStackLogs";
 import { useStackState } from "./useStackState";
@@ -56,6 +60,13 @@ export function StackDetail({
     onSaved: refresh,
   });
   const [error, setError] = useState("");
+  const [pendingAction, setPendingAction] = useState<string>();
+  const review = useDeploymentReview({
+    stack,
+    operations,
+    editor,
+    onAccepted: onAction,
+  });
   const [busy, setBusy] = useState(false);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const stackLogs = useStackLogs(stack.id, tab === "Logs");
@@ -86,29 +97,42 @@ export function StackDetail({
       ? "deploying"
       : state?.freshness;
   useEffect(() => {
+    let current = true;
     if (tab === "History" || tab === "Overview")
       listDeployments(stack.id)
-        .then((value) => setDeployments(value || []))
-        .catch((error) => setError(message(error)));
+        .then((value) => {
+          if (current) setDeployments(value || []);
+        })
+        .catch((error) => {
+          if (current) setError(message(error));
+        });
+    return () => {
+      current = false;
+    };
   }, [stack.id, tab, operations]);
   async function action(kind: string) {
+    if (
+      busy ||
+      active ||
+      stack.archivedAt ||
+      (["stop", "restart"].includes(kind) && !showRuntimeActions)
+    ) {
+      setError(
+        "Stack availability changed. Check its current state before trying again.",
+      );
+      return;
+    }
     if (dirty) {
       setError(
         "Save or discard your editor changes before running a stack action.",
       );
       return;
     }
-    if (
-      ["stop", "recreate"].includes(kind) &&
-      !confirm(
-        `${kind === "stop" ? "Stop" : "Recreate"} ${stack.directoryName}?`,
-      )
-    )
-      return;
     setBusy(true);
     setError("");
     try {
       onAction(await runStackAction(stack.id, kind));
+      setPendingAction(undefined);
     } catch (error) {
       setError(message(error));
     } finally {
@@ -141,18 +165,33 @@ export function StackDetail({
       <div class="stack-top">
         <a
           href="#/"
-          aria-label="Overview"
+          aria-label="Stacks"
           onClick={(event) => {
             event.preventDefault();
             navigate("/");
           }}
         >
-          Overview
+          Stacks
         </a>
         <span class="muted"> / {stack.directoryName}</span>
         <div class="page-heading">
           <h1>{stack.directoryName}</h1>
           <div class="action-group">
+            <button
+              class="primary"
+              disabled={
+                busy ||
+                !!active ||
+                !!stack.archivedAt ||
+                editor.busy ||
+                review.phase !== "idle"
+              }
+              onClick={() => void review.request()}
+            >
+              {freshness === "changes_pending"
+                ? "Deploy changes…"
+                : "Deploy stack…"}
+            </button>
             <button
               class="accent"
               disabled={busy || !!active || !!stack.archivedAt || dirty}
@@ -164,13 +203,12 @@ export function StackDetail({
             <ActionMenu
               label="Actions"
               disabled={busy || !!active || !!stack.archivedAt}
+              disabledReason={
+                stack.archivedAt
+                  ? "Archived stacks cannot run actions."
+                  : "Wait for the current operation to finish."
+              }
               items={[
-                {
-                  id: "deploy",
-                  label: "Deploy",
-                  disabled: dirty,
-                  reason: "Save or discard editor changes",
-                },
                 {
                   id: "restart",
                   label: "Restart",
@@ -184,7 +222,10 @@ export function StackDetail({
                   reason: "Requires a running, previously deployed stack",
                 },
               ]}
-              onSelect={(kind) => void action(kind)}
+              onSelect={(kind) => {
+                setError("");
+                setPendingAction(kind);
+              }}
             />
           </div>
         </div>
@@ -199,11 +240,11 @@ export function StackDetail({
             <Badge tone={isModified(stack, repo) ? "warning" : "neutral"}>
               {repo
                 ? isModified(stack, repo)
-                  ? "Modified"
-                  : "Clean"
+                  ? "Uncommitted files"
+                  : "Committed files"
                 : "Unavailable"}
             </Badge>
-            <small>Working tree</small>
+            <small>Git state · saving does not commit</small>
           </div>
           <div>
             <Badge tone={remoteTone(repo)}>{remoteState(repo)}</Badge>
@@ -213,7 +254,7 @@ export function StackDetail({
             <Badge tone={deploymentTone(freshness)}>
               {deploymentLabel(freshness)}
             </Badge>
-            <small>Deployment freshness</small>
+            <small>Saved configuration versus deployment</small>
           </div>
         </div>
       </div>
@@ -221,8 +262,36 @@ export function StackDetail({
         {["Overview", "Editor", "Logs", "History", "Alerts", "Settings"].map(
           (name) => (
             <button
+              id={`stack-tab-${name}`}
               role="tab"
+              tabIndex={tab === name ? 0 : -1}
+              aria-controls={`stack-panel-${name}`}
               aria-selected={tab === name}
+              onKeyDown={(event) => {
+                const names = [
+                  "Overview",
+                  "Editor",
+                  "Logs",
+                  "History",
+                  "Alerts",
+                  "Settings",
+                ];
+                const index = names.indexOf(name);
+                const next =
+                  event.key === "ArrowRight"
+                    ? (index + 1) % names.length
+                    : event.key === "ArrowLeft"
+                      ? (index + names.length - 1) % names.length
+                      : event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? names.length - 1
+                          : -1;
+                if (next < 0) return;
+                event.preventDefault();
+                setTab(names[next]);
+                document.getElementById(`stack-tab-${names[next]}`)?.focus();
+              }}
               onClick={() => {
                 setTab(name);
                 setError("");
@@ -234,119 +303,161 @@ export function StackDetail({
         )}
       </div>
       {error && <Notice>{error}</Notice>}
-      {tab === "Alerts" && openOperation && (
-        <Alerts
-          stackId={stack.id}
-          navigate={navigate}
-          openOperation={openOperation}
-        />
-      )}
-      {tab === "Editor" && <Editor stack={stack} model={editor} />}
-      {tab === "Settings" && (
-        <StackSettings
-          stack={stack}
-          onChanged={refresh}
-          onAlerts={() => setTab("Alerts")}
-          openOperation={openOperation}
-        />
-      )}
-      {tab === "Overview" && (
-        <div class="detail-content">
-          <ServicesTable
+      <DeploymentReviewDialog name={stack.directoryName} model={review} />
+      <ConfirmDialog
+        open={!!pendingAction}
+        title={`${pendingAction === "stop" ? "Stop" : "Restart"} ${stack.directoryName}?`}
+        description={`This affects every service in ${stack.directoryName}. ${pendingAction === "stop" ? "Services will be unavailable until started again. Data volumes are retained." : "Services will briefly be unavailable while they restart."}`}
+        confirmLabel={pendingAction === "stop" ? "Stop stack" : "Restart stack"}
+        destructive={pendingAction === "stop"}
+        busy={busy}
+        error={error}
+        onCancel={() => {
+          setPendingAction(undefined);
+          setError("");
+        }}
+        onConfirm={() => {
+          if (pendingAction) void action(pendingAction);
+        }}
+      />
+      <div
+        role="tabpanel"
+        id={`stack-panel-${tab}`}
+        aria-labelledby={`stack-tab-${tab}`}
+        tabIndex={0}
+      >
+        {tab === "Alerts" && openOperation && (
+          <Alerts
             stackId={stack.id}
             navigate={navigate}
-            containers={containerState.containers}
-            error={containerState.error}
-            busy={busy || !!active}
-            archived={!!stack.archivedAt}
-            dirty={dirty}
-            onBatchAction={containerAction}
+            openOperation={openOperation}
           />
-          <h2>Last deployment</h2>
-          {deployments.length ? (
-            <p>
-              <Badge
-                tone={
-                  deployments[0].status === "succeeded" ? "success" : "danger"
-                }
-              >
-                {deployments[0].status}
-              </Badge>{" "}
-              {new Date(deployments[0].startedAt).toLocaleString()} ·{" "}
-              {deployments[0].gitCommit?.slice(0, 7) || "No commit"}
-            </p>
-          ) : (
-            <Empty>No deployments recorded.</Empty>
-          )}
-          <h2>Compose project</h2>
-          <code>{stack.composeProjectName}</code>
-        </div>
-      )}
-      {tab === "Logs" && (
-        <div class="detail-content">
-          <h2>Container logs</h2>
-          <p class="muted">Latest 500 lines. Updates automatically.</p>
-          {stackLogs.status === "loading" && !stackLogs.error && (
-            <p role="status">Loading logs…</p>
-          )}
-          {stackLogs.status === "reconnecting" && (
-            <p role="status">Reconnecting to logs…</p>
-          )}
-          {stackLogs.status === "disconnected" && (
-            <p role="status">Log connection unavailable. Retrying…</p>
-          )}
-          {stackLogs.error && <Notice>{stackLogs.error}</Notice>}
-          <pre class="output">
-            {stackLogs.output ||
-              (stackLogs.status === "connected"
-                ? "Waiting for container output…"
-                : "")}
-          </pre>
-          {stackLogs.gap && (
-            <Notice>Some log output was missed. Refreshing logs…</Notice>
-          )}
-        </div>
-      )}
-      {tab === "History" && (
-        <div class="detail-content">
-          <h2>Deployment history</h2>
-          <div class="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Started</th>
-                  <th>Result</th>
-                  <th>Commit</th>
-                  <th>Working tree</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deployments.map((deployment) => (
-                  <tr key={deployment.id}>
-                    <td>{new Date(deployment.startedAt).toLocaleString()}</td>
-                    <td>
-                      <Badge
-                        tone={
-                          deployment.status === "succeeded"
-                            ? "success"
-                            : "danger"
-                        }
-                      >
-                        {deployment.status}
-                      </Badge>
-                    </td>
-                    <td>
-                      <code>{deployment.gitCommit?.slice(0, 7) || "—"}</code>
-                    </td>
-                    <td>{deployment.dirty ? "Modified" : "Clean"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        )}
+        {tab === "Editor" && <Editor stack={stack} model={editor} />}
+        {tab === "Settings" && (
+          <StackSettings
+            stack={stack}
+            onChanged={refresh}
+            onAlerts={() => setTab("Alerts")}
+            openOperation={openOperation}
+          />
+        )}
+        {tab === "Overview" && (
+          <div class="detail-content">
+            <ServicesTable
+              stackId={stack.id}
+              navigate={navigate}
+              containers={containerState.containers}
+              error={containerState.error}
+              busy={busy || !!active}
+              archived={!!stack.archivedAt}
+              dirty={dirty}
+              onBatchAction={containerAction}
+            />
+            <h2>Last deployment</h2>
+            {deployments.length ? (
+              <p>
+                <Badge
+                  tone={
+                    deployments[0].status === "succeeded" ? "success" : "danger"
+                  }
+                >
+                  {deployments[0].status}
+                </Badge>{" "}
+                {new Date(deployments[0].startedAt).toLocaleString()} ·{" "}
+                {deployments[0].gitCommit?.slice(0, 7) || "No commit"}
+                {deployments[0].operationId && openOperation && (
+                  <button
+                    class="text-button"
+                    onClick={() => openOperation(deployments[0].operationId!)}
+                  >
+                    View operation
+                  </button>
+                )}
+              </p>
+            ) : (
+              <Empty>No deployments recorded.</Empty>
+            )}
+            <h2>Compose project</h2>
+            <code>{stack.composeProjectName}</code>
           </div>
-          {!deployments.length && <Empty>No deployments recorded.</Empty>}
-        </div>
-      )}
+        )}
+        {tab === "Logs" && (
+          <div class="detail-content">
+            <h2>Container logs</h2>
+            <p class="muted">Latest 500 lines. Updates automatically.</p>
+            {stackLogs.status === "loading" && !stackLogs.error && (
+              <p role="status">Loading logs…</p>
+            )}
+            {stackLogs.status === "reconnecting" && (
+              <p role="status">Reconnecting to logs…</p>
+            )}
+            {stackLogs.status === "disconnected" && (
+              <p role="status">Log connection unavailable. Retrying…</p>
+            )}
+            {stackLogs.error && <Notice>{stackLogs.error}</Notice>}
+            <pre class="output">
+              {stackLogs.output ||
+                (stackLogs.status === "connected"
+                  ? "Waiting for container output…"
+                  : "")}
+            </pre>
+            {stackLogs.gap && (
+              <Notice>Some log output was missed. Refreshing logs…</Notice>
+            )}
+          </div>
+        )}
+        {tab === "History" && (
+          <div class="detail-content">
+            <h2>Deployment history</h2>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Started</th>
+                    <th>Result</th>
+                    <th>Commit</th>
+                    <th>Working tree</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deployments.map((deployment) => (
+                    <tr key={deployment.id}>
+                      <td>{new Date(deployment.startedAt).toLocaleString()}</td>
+                      <td>
+                        <Badge
+                          tone={
+                            deployment.status === "succeeded"
+                              ? "success"
+                              : "danger"
+                          }
+                        >
+                          {deployment.status}
+                        </Badge>
+                        {deployment.operationId && openOperation && (
+                          <button
+                            class="text-button"
+                            onClick={() =>
+                              openOperation(deployment.operationId!)
+                            }
+                          >
+                            View operation
+                          </button>
+                        )}
+                      </td>
+                      <td>
+                        <code>{deployment.gitCommit?.slice(0, 7) || "—"}</code>
+                      </td>
+                      <td>{deployment.dirty ? "Modified" : "Clean"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!deployments.length && <Empty>No deployments recorded.</Empty>}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
