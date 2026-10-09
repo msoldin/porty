@@ -334,11 +334,13 @@ test("recovers from stale samples without inventing zeros", async ({
   const cpu = page.getByRole("article", { name: "CPU usage" });
   await expect(cpu.getByText("25%", { exact: true })).toBeVisible();
   mode = "stale";
-  await expect(cpu.getByText("Stale", { exact: true })).toBeVisible();
+  await expect(cpu.getByText("Updates delayed", { exact: true })).toBeVisible();
   await expect(cpu.getByText("25%", { exact: true })).toBeVisible();
   mode = "recovered";
   await expect(cpu.getByText("42%", { exact: true })).toBeVisible();
-  await expect(cpu.getByText("Stale", { exact: true })).toHaveCount(0);
+  await expect(cpu.getByText("Updates delayed", { exact: true })).toHaveCount(
+    0,
+  );
 });
 test("keeps disk details readable and reveals technical information on demand", async ({
   page,
@@ -370,7 +372,9 @@ test("keeps disk details readable and reveals technical information on demand", 
   await expect(summary).toContainText("Used680 GB");
   await expect(summary).toContainText("Free300 GB");
   await expect(summary).toContainText("Total1 TB");
-  await expect(dialog.getByText(mount, { exact: true })).toBeHidden();
+  await expect(
+    dialog.getByRole("textbox", { name: "Mount path 2" }),
+  ).toBeHidden();
   await expect(dialog.getByText("9p", { exact: true })).toBeHidden();
   await page.screenshot({
     path: info.outputPath("storage-summary.png"),
@@ -381,8 +385,19 @@ test("keeps disk details readable and reveals technical information on demand", 
   });
   await disclosure.focus();
   await disclosure.press("Enter");
-  await expect(dialog.getByText(mount, { exact: true })).toBeVisible();
-  await expect(dialog.getByText(mount, { exact: true })).toHaveCount(1);
+  await expect(
+    dialog.getByRole("textbox", { name: "Mount path 2" }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("textbox", { name: "Mount path 2" }),
+  ).toHaveCount(1);
+  await expect(
+    dialog.getByRole("textbox", { name: "Mount path 2" }),
+  ).toHaveValue(mount);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await dialog.getByRole("button", { name: "Copy mount path 2" }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Path copied.");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(mount);
   await expect(dialog.getByText("20 GB", { exact: true })).toBeVisible();
   expect(
     await dialog.evaluate(
@@ -394,9 +409,99 @@ test("keeps disk details readable and reveals technical information on demand", 
     fullPage: true,
   });
   await disclosure.click();
-  await expect(dialog.getByText(mount, { exact: true })).toBeHidden();
+  await expect(
+    dialog.getByRole("textbox", { name: "Mount path 2" }),
+  ).toBeHidden();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+});
+
+test("keeps every metric dialog readable and quiet across themes", async ({
+  page,
+}, info) => {
+  const snapshot = metrics();
+  for (let index = 0; index < 32; index++) {
+    const id = "core-" + index;
+    snapshot.inventory!.devices.push({
+      id,
+      kind: "cpu",
+      name: "CPU core " + index,
+    });
+    snapshot.inventory!.series.push({
+      id: id + ".cpu_busy",
+      deviceId: id,
+      metric: "cpu_busy",
+      unit: "percent",
+    });
+    snapshot.current.readings[id + ".cpu_busy"] = {
+      value: index,
+      state: "available",
+      sampledAt: snapshot.serverTime,
+    };
+  }
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  await register(page);
+  if (info.project.use.hasTouch)
+    await page.setViewportSize({ width: 320, height: 844 });
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(
+      (theme) => (document.documentElement.dataset.theme = theme),
+      theme,
+    );
+    for (const [index, name] of [
+      "Download details",
+      "Upload details",
+      "Temperature details",
+      "Disk activity details",
+      "/ filesystem details",
+      "Memory details",
+      "CPU details",
+      "GPU details",
+    ].entries()) {
+      const trigger = page.getByRole("button", { name, exact: true });
+      await trigger.click();
+      const dialog = page.getByRole("dialog");
+      await expect(
+        dialog.getByRole("button", { name: "Close details", exact: true }),
+      ).toBeFocused();
+      await expect(dialog.locator(".chart-inspection")).toHaveCount(0);
+      expect(
+        await dialog.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      ).toBe(true);
+      await dialog.screenshot({
+        path: info.outputPath(`${theme}-dialog-${index}.png`),
+      });
+      const extra = dialog.locator(".metric-extra-details > summary");
+      if (await extra.count()) {
+        await extra.click();
+        if (name === "CPU details") {
+          await expect(
+            dialog.getByText("CPU core 31", { exact: true }),
+          ).toBeVisible();
+          await dialog.evaluate(
+            (element) => (element.scrollTop = element.scrollHeight),
+          );
+          await expect(
+            dialog.getByRole("button", { name: "Close", exact: true }),
+          ).toBeInViewport();
+        }
+        expect(
+          await dialog.evaluate(
+            (element) => element.scrollWidth <= element.clientWidth,
+          ),
+        ).toBe(true);
+      }
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(trigger).toBeFocused();
+    }
+  }
+  expect(errors).toEqual([]);
 });
 
 test("opens an expanded monitoring graph with axes and interactive history", async ({

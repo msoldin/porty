@@ -1,6 +1,6 @@
 import { cloneElement, type ComponentChildren, type VNode } from "preact";
 import type { MetricChartProps } from "./MetricChart";
-import { useId, useState } from "preact/hooks";
+import { useId, useRef, useState } from "preact/hooks";
 import { Dialog } from "../../components/Dialog";
 import type { State } from "./types";
 import { ReadingStatus } from "./ReadingStatus";
@@ -27,6 +27,7 @@ export function MetricCard({
   chart,
   children,
   details,
+  detailsLabel,
   detailLabel = label + " details",
   note,
   gauge,
@@ -40,12 +41,14 @@ export function MetricCard({
   chart?: VNode<MetricChartProps> | false;
   children?: ComponentChildren;
   details?: ComponentChildren;
+  detailsLabel?: string;
   detailLabel?: string;
   note?: string;
   availability?: ComponentChildren;
   gauge?: { value?: number | null; capacity?: boolean; label?: string };
 }) {
   const id = useId();
+  const closeButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   return (
     <article
@@ -89,7 +92,21 @@ export function MetricCard({
         {children}
         {!gauge && chart}
       </div>
-      <Dialog open={open} title={detailLabel} onClose={() => setOpen(false)}>
+      <Dialog
+        open={open}
+        title={detailLabel}
+        onClose={() => setOpen(false)}
+        initialFocusRef={closeButton}
+      >
+        <button
+          ref={closeButton}
+          type="button"
+          class="metric-dialog-close"
+          aria-label="Close details"
+          onClick={() => setOpen(false)}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
         <div class="host-metric-details">
           <div class="metric-detail-summary">
             <div>
@@ -115,11 +132,23 @@ export function MetricCard({
               </div>
               {cloneElement(chart, { detailed: true })}
               <p class="metric-history-hint">
-                Hover or tap to inspect · Use arrow keys when focused
+                <span class="chart-hint-pointer">
+                  Hover to inspect · Use arrow keys when focused
+                </span>
+                <span class="chart-hint-touch">
+                  Tap the chart to inspect a reading.
+                </span>
               </p>
             </section>
           )}
-          {details}
+          {detailsLabel ? (
+            <details class="metric-extra-details">
+              <summary>{detailsLabel}</summary>
+              {details}
+            </details>
+          ) : (
+            details
+          )}
         </div>
         <div class="dialog-actions">
           <button type="button" onClick={() => setOpen(false)}>

@@ -249,6 +249,9 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
         onClose={() => setCustomizing(false)}
       >
         <div class="dashboard-customization">
+          <p class="muted">
+            Choose the devices and disks shown on your dashboard.
+          </p>
           <DeviceSelector
             label="Network interface"
             devices={interfaces}
@@ -307,6 +310,9 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
               state={status(network, metric)}
               lastSuccessAt={read(network, metric)?.lastSuccessAt}
               chart={chart(network, metric, label, "bytes_per_second")}
+              detailsLabel={
+                interfaces.length ? "Network interfaces" : undefined
+              }
               details={
                 <>
                   {interfaces.map((device) => (
@@ -347,6 +353,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
               reading={read(temperature, "temperature")}
             />
           }
+          detailsLabel={sensors.length ? "Temperature sensors" : undefined}
           details={
             <>
               {sensors.map((device) => (
@@ -383,6 +390,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           state={status(disk, "disk_read_rate")}
           lastSuccessAt={read(disk, "disk_read_rate")?.lastSuccessAt}
           detailLabel="Disk activity details"
+          detailsLabel={"Disk activity breakdown"}
           chart={
             <MetricChart
               series={[
@@ -466,6 +474,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           state={status(ram, "memory_percent")}
           lastSuccessAt={read(ram, "memory_percent")?.lastSuccessAt}
           detailLabel="Memory details"
+          detailsLabel={ram ? "Memory breakdown" : undefined}
           chart={ram && chart(ram, "memory_percent", "RAM", "percent")}
           details={
             ram ? (
@@ -515,6 +524,7 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           state={status(cpu, "cpu_busy")}
           lastSuccessAt={read(cpu, "cpu_busy")?.lastSuccessAt}
           detailLabel="CPU details"
+          detailsLabel={cpu ? "CPU cores" : undefined}
           chart={cpu && chart(cpu, "cpu_busy", "CPU", "percent")}
           details={
             <div class="metric-core-list">
@@ -547,14 +557,15 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
           state={status(gpu, "gpu_busy")}
           lastSuccessAt={read(gpu, "gpu_busy")?.lastSuccessAt}
           detailLabel="GPU details"
+          detailsLabel={gpu ? "GPU breakdown" : undefined}
           chart={gpu && chart(gpu, "gpu_busy", "GPU", "percent")}
-          note={
-            gpu?.utilizationBasis === "busiest_engine"
-              ? "Busiest measured engine"
-              : undefined
-          }
           details={
             <>
+              {gpu?.utilizationBasis === "busiest_engine" && (
+                <p class="muted">
+                  Usage reflects the busiest measured part of this GPU.
+                </p>
+              )}
               {gpus.map((device) => (
                 <DetailReading
                   key={device.id}

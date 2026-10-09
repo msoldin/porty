@@ -1,4 +1,5 @@
 import { MetricAvailability } from "./MetricAvailability";
+import { DiskMountPath } from "./DiskMountPath";
 import { MetricCard } from "./MetricCard";
 import { MetricChart } from "./MetricChart";
 import {
@@ -83,11 +84,13 @@ export function DiskFullnessCard({
               {device.driver && (
                 <div>
                   <dt>Filesystem type</dt>
-                  <dd>{device.driver}</dd>
+                  <dd>
+                    <span class="filesystem-type">{device.driver}</span>
+                  </dd>
                 </div>
               )}
               <div>
-                <dt>Mount paths</dt>
+                <dt>Locations</dt>
                 <dd>
                   {[
                     ...new Set(
@@ -95,8 +98,8 @@ export function DiskFullnessCard({
                         ? device.mountPaths
                         : [device.name],
                     ),
-                  ].map((path) => (
-                    <code key={path}>{path}</code>
+                  ].map((path, index) => (
+                    <DiskMountPath key={path} path={path} index={index + 1} />
                   ))}
                 </dd>
               </div>

@@ -197,3 +197,22 @@ it("shows clear storage totals and keeps technical disk information collapsed", 
   expect(card.queryByText(/Capacity guide/)).not.toBeInTheDocument();
   expect(card.queryByText("/data")).not.toBeInTheDocument();
 });
+
+it("offers compact selectable mount paths with copy controls", () => {
+  const state = fixture();
+  const disk = state.inventory.devices.find((device) => device.id === "root")!;
+  disk.mountPaths = ["/", "/mnt/wsl/" + "long-path-".repeat(20)];
+  render(<DiskView state={state} loading={false} stale={false} />);
+  fireEvent.click(screen.getByRole("button", { name: "/ filesystem details" }));
+  const dialog = within(screen.getByRole("dialog"));
+  dialog.getByText("Technical details").parentElement!.setAttribute("open", "");
+  expect(dialog.getByRole("textbox", { name: "Mount path 2" })).toHaveValue(
+    disk.mountPaths[1],
+  );
+  expect(dialog.getByRole("textbox", { name: "Mount path 2" })).toHaveAttribute(
+    "readonly",
+  );
+  expect(
+    dialog.getByRole("button", { name: "Copy mount path 2" }),
+  ).toBeVisible();
+});

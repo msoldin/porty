@@ -379,16 +379,6 @@
 .disk-technical-details dd {
   margin: 5px 0 0;
 }
-.disk-technical-details code {
-  display: block;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  font-size: 11px;
-  line-height: 1.6;
-}
-.disk-technical-details code + code {
-  margin-top: 6px;
-}
 .metric-detail-row > span:first-child {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -709,5 +699,121 @@
   .host-dashboard * {
     transition: none !important;
     animation: none !important;
+  }
+}
+
+/* Keep detail dialogs calm initially, with controls reachable during scrolling. */
+.app-dialog:has(.host-metric-details) > h2 {
+  padding-right: 44px;
+}
+.app-dialog .metric-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.app-dialog:has(.host-metric-details) > .dialog-actions {
+  position: sticky;
+  bottom: -1.5rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+  margin-bottom: -1.5rem;
+  z-index: 4;
+}
+.metric-extra-details,
+.disk-technical-details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 16px;
+  padding: 0 12px;
+  background: var(--surface-raised);
+}
+.metric-extra-details > summary {
+  cursor: pointer;
+  padding: 14px 0;
+  min-height: 44px;
+  color: var(--text);
+  font-size: 12px;
+}
+.metric-extra-details[open],
+.disk-technical-details[open] {
+  padding-bottom: 12px;
+}
+.metric-extra-details > summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.filesystem-type {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: monospace;
+}
+.disk-mount-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin: 10px 0;
+}
+.disk-mount-path > label {
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.disk-mount-path input[readonly] {
+  min-width: 0;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 8px;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 400;
+  background: var(--surface);
+  color: var(--text);
+}
+.disk-mount-path > button {
+  min-height: 44px;
+  min-width: 60px;
+  padding: 8px;
+  font-size: 11px;
+}
+.disk-copy-result {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+}
+.metric-detail-summary {
+  flex-wrap: wrap;
+}
+@media (max-width: 400px) {
+  .app-dialog:has(.host-metric-details) > .dialog-actions {
+    bottom: -1rem;
+    margin-bottom: -1rem;
+  }
+}
+
+.chart-hint-touch {
+  display: none;
+}
+@media (pointer: coarse) {
+  .chart-hint-pointer {
+    display: none;
+  }
+  .chart-hint-touch {
+    display: inline;
   }
 }

@@ -13,9 +13,9 @@ export function ReadingStatus({
     <span class={"host-metric-state is-" + state}>
       <span>
         {state === "stale"
-          ? "Stale"
+          ? "Updates delayed"
           : state === "collecting"
-            ? "Collecting"
+            ? "Waiting for data"
             : "Unavailable"}
       </span>
       {state === "stale" && at && Number.isFinite(at.getTime()) && (

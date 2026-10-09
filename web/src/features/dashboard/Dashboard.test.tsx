@@ -346,7 +346,7 @@ it("marks unavailable and stale values instead of zero", () => {
   render(<Dashboard onUnauthorized={() => {}} />);
   expect(
     within(screen.getByRole("article", { name: "CPU usage" })).getByText(
-      "Stale",
+      "Updates delayed",
     ),
   ).toBeVisible();
   expect(

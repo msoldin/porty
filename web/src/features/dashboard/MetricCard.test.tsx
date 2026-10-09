@@ -52,3 +52,27 @@ it("keeps a zero reading visible in details", () => {
   fireEvent.click(screen.getByRole("button", { name: "Download details" }));
   expect(screen.getByRole("dialog")).toHaveTextContent("0 B/s");
 });
+
+it("opens quietly with optional readings collapsed and a focused close control", () => {
+  render(
+    <MetricCard
+      label="CPU"
+      value="25%"
+      state="available"
+      detailsLabel="CPU cores"
+      details={<p>Core 0: 25%</p>}
+      chart={
+        <MetricChart
+          unit="percent"
+          series={[{ label: "CPU", points: [{ time: 300000, value: 25 }] }]}
+        />
+      }
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "CPU details" }));
+  const dialog = within(screen.getByRole("dialog"));
+  expect(dialog.getByRole("button", { name: "Close details" })).toHaveFocus();
+  expect(dialog.queryByRole("status")).not.toBeInTheDocument();
+  expect(dialog.getByText("CPU cores")).toBeVisible();
+  expect(dialog.getByText("Core 0: 25%")).not.toBeVisible();
+});
