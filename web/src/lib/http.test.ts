@@ -7,6 +7,71 @@ afterEach(() => {
   setCSRF("");
 });
 
+it("does not replay a cancelled read after shared session refresh", async () => {
+  document.cookie = "porty_csrf=csrf; Path=/";
+  let release!: (response: Response) => void;
+  const gate = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const fetcher = vi.fn(async (url: string) =>
+    url.endsWith("/refresh") ? gate : Response.json({}, { status: 401 }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const controller = new AbortController();
+  const pending = api(
+    "/monitoring",
+    "GET",
+    undefined,
+    {},
+    controller.signal,
+  ).catch((error) => error);
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  controller.abort();
+  // The caller must settle before the shared refresh is released.
+  const timeout = Symbol("timeout");
+  const result = await Promise.race([
+    pending,
+    new Promise((resolve) => setTimeout(() => resolve(timeout), 20)),
+  ]);
+  release(Response.json({ csrfToken: "new" }));
+  await pending;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(result).toMatchObject({ name: "AbortError" });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("keeps other callers refreshing when one read aborts", async () => {
+  document.cookie = "porty_csrf=csrf; Path=/";
+  let release!: (response: Response) => void;
+  const gate = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const counts = new Map<string, number>();
+  const fetcher = vi.fn(async (url: string) => {
+    if (url.endsWith("/refresh")) return gate;
+    const count = (counts.get(url) ?? 0) + 1;
+    counts.set(url, count);
+    return Response.json({}, { status: count === 1 ? 401 : 200 });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const controller = new AbortController();
+  const cancelled = api(
+    "/monitoring",
+    "GET",
+    undefined,
+    {},
+    controller.signal,
+  ).catch((error) => error);
+  const other = api("/stacks");
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+  controller.abort();
+  release(Response.json({ csrfToken: "new" }));
+  expect(await cancelled).toMatchObject({ name: "AbortError" });
+  await expect(other).resolves.toEqual({});
+  expect(counts.get("/api/v1/monitoring")).toBe(1);
+  expect(counts.get("/api/v1/stacks")).toBe(2);
+});
+
 it("refreshes a reloaded session using the CSRF cookie", async () => {
   document.cookie = "porty_csrf=cookie-csrf; Path=/";
   let sessions = 0;

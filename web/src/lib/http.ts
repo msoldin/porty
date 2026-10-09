@@ -54,9 +54,12 @@ async function apiResponse(
   method = "GET",
   body?: unknown,
   headers: Record<string, string> = {},
+  signal?: AbortSignal,
 ): Promise<Response> {
   async function request(): Promise<Response> {
+    signal?.throwIfAborted();
     return fetch(`/api/v1${path}`, {
+      ...(signal ? { signal } : {}),
       method,
       credentials: "same-origin",
       headers: {
@@ -77,7 +80,9 @@ async function apiResponse(
     !(path === "/session" && method === "POST") &&
     !path.startsWith("/setup/")
   ) {
-    if (authGeneration === sentGeneration) await refreshSession();
+    signal?.throwIfAborted();
+    if (authGeneration === sentGeneration)
+      await waitForRefresh(refreshSession(), signal);
     response = await request();
   }
   if (!response.ok) {
@@ -96,14 +101,42 @@ export async function api<T>(
   method = "GET",
   body?: unknown,
   headers: Record<string, string> = {},
+  signal?: AbortSignal,
 ): Promise<T> {
-  const response = await apiResponse(path, method, body, headers);
+  const response = await apiResponse(path, method, body, headers, signal);
+  signal?.throwIfAborted();
   return response.status === 204 ? (undefined as T) : response.json();
 }
 
 export async function apiText(path: string): Promise<string> {
   const response = await apiResponse(path);
   return response.text();
+}
+
+// Cancelling one request must not cancel another caller's shared auth refresh.
+function waitForRefresh(
+  refresh: Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!signal) return refresh;
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const aborted = () => {
+      signal.removeEventListener("abort", aborted);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", aborted, { once: true });
+    refresh.then(
+      () => {
+        signal.removeEventListener("abort", aborted);
+        resolve();
+      },
+      (error) => {
+        signal.removeEventListener("abort", aborted);
+        reject(error);
+      },
+    );
+  });
 }
 
 export function message(error: unknown): string {
