@@ -329,6 +329,7 @@ it("submits full container IDs once per owning stack", async () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Select " + name }));
   }
   fireEvent.click(screen.getByRole("button", { name: "Restart selected" }));
+  fireEvent.click(screen.getByRole("button", { name: "Restart containers" }));
   await waitFor(() => expect(runContainerBatchAction).toHaveBeenCalledTimes(2));
   expect(runContainerBatchAction).toHaveBeenCalledWith(
     "one",
@@ -424,9 +425,11 @@ it("confirms stop and retains only selections from failed stack requests", async
     screen.getByRole("checkbox", { name: "Select beta worker-1" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Stop selected" }));
-  expect(confirm).toHaveBeenCalledWith(
-    "Stop 2 selected containers across 2 stacks?",
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Stop containers" }));
+  expect(
+    screen.getByRole("dialog", { name: "Stop 2 selected containers?" }),
+  ).toHaveTextContent("alpha / web-1");
+  expect(screen.getByRole("dialog")).toHaveTextContent("beta / worker-1");
   await waitFor(() => expect(onOperationsAccepted).toHaveBeenCalledTimes(1));
   expect(
     screen.getByRole("checkbox", { name: "Select alpha web-1" }),

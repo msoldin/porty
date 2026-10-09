@@ -23,6 +23,10 @@ export function filterStacks(
           .toLowerCase()
           .includes(filters.search.toLowerCase()) &&
         (filters.runtime === "all" ||
+          (filters.runtime === "attention" &&
+            ["unhealthy", "partial", "stopped"].includes(
+              state?.runtime || "",
+            )) ||
           (state?.runtime || "unknown") === filters.runtime) &&
         (filters.deployment === "all" ||
           (state?.freshness || "unknown") === filters.deployment) &&

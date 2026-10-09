@@ -1,6 +1,20 @@
-import { fireEvent, render, screen, within } from "@testing-library/preact";
-import { expect, it, vi } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+  waitFor,
+} from "@testing-library/preact";
+import { beforeEach, expect, it, vi } from "vitest";
 import { ServicesTable } from "./ServicesTable";
+import { runContainerBatchAction } from "./api";
+vi.mock("./api", () => ({ runContainerBatchAction: vi.fn() }));
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(runContainerBatchAction).mockImplementation(
+    async (id) => ({ id: "op", scopeId: id, status: "queued" }) as never,
+  );
+});
 import type { Container } from "./types";
 
 const containers: Container[] = [
@@ -50,6 +64,7 @@ const props = {
   archived: false,
   dirty: false,
   stackId: "stack/one",
+  stackName: "monitoring",
   navigate: vi.fn(),
 };
 
@@ -60,7 +75,7 @@ it("opens one replica from its service link without selecting it", () => {
       {...props}
       navigate={navigate}
       containers={containers}
-      onBatchAction={vi.fn()}
+      onOperationsAccepted={vi.fn()}
     />,
   );
   const link = screen.getByRole("link", { name: "Open web-2" });
@@ -82,7 +97,7 @@ it("shows exact Services columns and keeps replicas and runtime metadata distinc
     <ServicesTable
       {...props}
       containers={containers}
-      onBatchAction={vi.fn()}
+      onOperationsAccepted={vi.fn()}
     />,
   );
   expect(
@@ -106,18 +121,27 @@ it("shows exact Services columns and keeps replicas and runtime metadata distinc
   expect(worker.getAllByText("—")).toHaveLength(2);
 });
 
-it("sends only selected full IDs and prevents actions for mixed states", () => {
+it("sends only selected full IDs and prevents actions for mixed states", async () => {
   const onBatchAction = vi.fn();
   render(
     <ServicesTable
       {...props}
       containers={containers}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   fireEvent.click(screen.getByRole("checkbox", { name: "Select web-2" }));
   fireEvent.click(screen.getByRole("button", { name: "Restart selected" }));
-  expect(onBatchAction).toHaveBeenCalledWith(["full-id-b"], "restart");
+  fireEvent.click(screen.getByRole("button", { name: "Restart containers" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  expect(runContainerBatchAction).toHaveBeenCalledWith(
+    "stack/one",
+    ["full-id-b"],
+    "restart",
+  );
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select web-2" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Select worker-1" }));
   expect(screen.getByRole("button", { name: "Start selected" })).toBeDisabled();
   expect(
@@ -126,30 +150,42 @@ it("sends only selected full IDs and prevents actions for mixed states", () => {
   expect(screen.getByRole("button", { name: "Stop selected" })).toBeDisabled();
 });
 
-it("starts a stopped selection and restarts two compatible replicas", () => {
+it("starts a stopped selection and restarts two compatible replicas", async () => {
   const onBatchAction = vi.fn();
   const view = render(
     <ServicesTable
       {...props}
       containers={containers}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   fireEvent.click(screen.getByRole("checkbox", { name: "Select worker-1" }));
   fireEvent.click(screen.getByRole("button", { name: "Start selected" }));
-  expect(onBatchAction).toHaveBeenCalledWith(["full-id-c"], "start");
+  fireEvent.click(screen.getByRole("button", { name: "Start containers" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  expect(runContainerBatchAction).toHaveBeenCalledWith(
+    "stack/one",
+    ["full-id-c"],
+    "start",
+  );
   view.rerender(
     <ServicesTable
       {...props}
       containers={containers}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Select web-1" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Select web-2" }));
   fireEvent.click(screen.getByRole("button", { name: "Restart selected" }));
-  expect(onBatchAction).toHaveBeenCalledWith(
+  fireEvent.click(screen.getByRole("button", { name: "Restart containers" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  expect(runContainerBatchAction).toHaveBeenCalledWith(
+    "stack/one",
     ["full-id-a", "full-id-b"],
     "restart",
   );
@@ -160,7 +196,7 @@ it("searches service metadata, clears selection on search, and prunes disappeare
     <ServicesTable
       {...props}
       containers={containers}
-      onBatchAction={vi.fn()}
+      onOperationsAccepted={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("checkbox", { name: "Select web-2" }));
@@ -183,7 +219,7 @@ it("searches service metadata, clears selection on search, and prunes disappeare
     <ServicesTable
       {...props}
       containers={[containers[0], containers[2]]}
-      onBatchAction={vi.fn()}
+      onOperationsAccepted={vi.fn()}
     />,
   );
   expect(screen.queryByText("1 container selected")).toBeNull();
@@ -195,7 +231,7 @@ it("blocks dirty, archived, busy, and unknown selections and shows loading or er
     <ServicesTable
       {...props}
       containers={[{ ...containers[0], state: "paused" }]}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   fireEvent.click(screen.getByRole("checkbox", { name: "Select web-1" }));
@@ -207,7 +243,7 @@ it("blocks dirty, archived, busy, and unknown selections and shows loading or er
       {...props}
       dirty
       containers={[containers[0]]}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   expect(
@@ -218,7 +254,7 @@ it("blocks dirty, archived, busy, and unknown selections and shows loading or er
       {...props}
       archived
       containers={[containers[0]]}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   expect(
@@ -229,7 +265,7 @@ it("blocks dirty, archived, busy, and unknown selections and shows loading or er
       {...props}
       busy
       containers={[containers[0]]}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   expect(
@@ -239,7 +275,7 @@ it("blocks dirty, archived, busy, and unknown selections and shows loading or er
     <ServicesTable
       {...props}
       containers={undefined}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   expect(screen.getByRole("status")).toHaveTextContent("Loading containers");
@@ -248,7 +284,7 @@ it("blocks dirty, archived, busy, and unknown selections and shows loading or er
       {...props}
       containers={containers}
       error="Docker unavailable"
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   expect(screen.getByRole("alert")).toHaveTextContent("Docker unavailable");
@@ -258,7 +294,7 @@ it("blocks dirty, archived, busy, and unknown selections and shows loading or er
 
 it("shows an empty deployment prompt and caps select-all at twenty services", () => {
   const view = render(
-    <ServicesTable {...props} containers={[]} onBatchAction={vi.fn()} />,
+    <ServicesTable {...props} containers={[]} onOperationsAccepted={vi.fn()} />,
   );
   expect(screen.getByText(/Deploy this stack/i)).toBeInTheDocument();
   const many = Array.from({ length: 21 }, (_, index) => ({
@@ -267,7 +303,11 @@ it("shows an empty deployment prompt and caps select-all at twenty services", ()
     name: "web-" + index,
   }));
   view.rerender(
-    <ServicesTable {...props} containers={many} onBatchAction={vi.fn()} />,
+    <ServicesTable
+      {...props}
+      containers={many}
+      onOperationsAccepted={vi.fn()}
+    />,
   );
   const selectAll = screen.getByRole("checkbox", {
     name: "Select all visible services",
@@ -276,20 +316,24 @@ it("shows an empty deployment prompt and caps select-all at twenty services", ()
   expect(selectAll).toHaveAttribute("title", "Select at most 20 services");
 });
 
-it("confirms Stop with the selected container count", () => {
+it("confirms Stop with the selected container count", async () => {
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   const onBatchAction = vi.fn();
   render(
     <ServicesTable
       {...props}
       containers={containers}
-      onBatchAction={onBatchAction}
+      onOperationsAccepted={onBatchAction}
     />,
   );
   fireEvent.click(screen.getByRole("checkbox", { name: "Select web-1" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Select web-2" }));
   fireEvent.click(screen.getByRole("button", { name: "Stop selected" }));
-  expect(confirm).toHaveBeenCalledWith("Stop 2 selected containers?");
+  expect(
+    screen.getByRole("dialog", { name: "Stop 2 selected containers?" }),
+  ).toHaveTextContent("monitoring / web-1");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(runContainerBatchAction).not.toHaveBeenCalled();
   expect(onBatchAction).not.toHaveBeenCalled();
   confirm.mockRestore();
 });

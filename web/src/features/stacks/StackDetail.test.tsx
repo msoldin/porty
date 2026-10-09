@@ -149,6 +149,7 @@ it("keeps whole-stack Actions separate from selected Services actions", async ()
     expect(screen.queryByRole("button", { name })).toBeNull();
   fireEvent.click(screen.getByRole("checkbox", { name: "Select app-2" }));
   fireEvent.click(screen.getByRole("button", { name: "Restart selected" }));
+  fireEvent.click(screen.getByRole("button", { name: "Restart containers" }));
   await waitFor(() =>
     expect(runContainerBatchAction).toHaveBeenCalledWith(
       "one",

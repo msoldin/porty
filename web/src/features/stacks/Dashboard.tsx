@@ -1,21 +1,23 @@
 import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
-import { createStack, runStackAction } from "./api";
+import { createStack } from "./api";
 import type { Stack, StackState } from "./types";
 import type { Repository } from "../repository/types";
 import type { Operation } from "../operations/types";
 import { Icon } from "../../components/Icon";
 import { Badge, Empty, Notice } from "../../components/Feedback";
 import { ActionMenu } from "../../components/ActionMenu";
-import { isModified, remoteState } from "./stackStatus";
+import { isModified } from "./stackStatus";
 import {
   deploymentLabel,
   deploymentTone,
-  remoteTone,
   stackRuntimePresentation,
 } from "./statusPresentation";
 import { useStackInventoryState } from "./useStackInventoryState";
 import { filterStacks, inventorySummary } from "./stackInventory";
+import { StackBatchDialog } from "./StackBatchDialog";
+import { useStackBatchActions } from "./useStackBatchActions";
+import "./stackInventory.css";
 import { OverviewServices } from "./OverviewServices";
 
 function deploymentTime(
@@ -70,9 +72,7 @@ export function Dashboard({
   const [sort, setSort] = useState("asc");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  const [feedback, setFeedback] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [creatingBusy, setBusy] = useState(false);
   const [runtimeFilter, setRuntimeFilter] = useState("all");
   const [deploymentFilter, setDeploymentFilter] = useState("all");
   const observation = useStackInventoryState(
@@ -80,6 +80,15 @@ export function Dashboard({
     operations.map((op) => `${op.id}:${op.status}`).join("|"),
   );
   const { states } = observation;
+  const batch = useStackBatchActions({
+    stacks,
+    states,
+    operations,
+    onAccepted: onOperationsAccepted,
+  });
+  const { selectedIds: selected, setSelectedIds: setSelected } = batch;
+  const busy = creatingBusy || batch.pending;
+  const feedback = batch.outcomes.join(" · ");
   const summary = inventorySummary(stacks, states);
   useEffect(() => {
     const known = new Set(
@@ -123,47 +132,52 @@ export function Dashboard({
       return state?.runtime === "running" && state.hasDeployed;
     });
 
-  async function runSelected(kind: string) {
-    if (kind === "deploy" ? !canDeploy : !canRun) return;
-    if (
-      kind === "stop" &&
-      !confirm("Stop " + selectedStacks.length + " selected stacks?")
-    )
-      return;
-    setBusy(true);
-    setError("");
-    setFeedback("");
-    const results = await Promise.allSettled(
-      selectedStacks.map((stack) => runStackAction(stack.id, kind)),
-    );
-    const accepted: Operation[] = [];
-    const outcomes = results.map((result, index) => {
-      const name = selectedStacks[index].directoryName;
-      if (result.status === "fulfilled") {
-        accepted.push(result.value);
-        return name + ": accepted";
-      }
-      return name + ": " + message(result.reason);
-    });
-    if (accepted.length) onOperationsAccepted(accepted);
-    setFeedback(outcomes.join(" · "));
-    setSelected(new Set());
-    setBusy(false);
-  }
-
   return (
     <section class="dashboard">
+      <StackBatchDialog model={batch} />
       <div class="page-heading">
         <h1>Stacks</h1>
       </div>
       <div class="inventory-summary" role="status" aria-label="Stack summary">
-        <span>
+        <button
+          class="text-button"
+          onClick={() => {
+            setSearch("");
+            setRuntimeFilter("all");
+            setDeploymentFilter("all");
+            setFilter("all");
+            setArchiveFilter("active");
+            setSelected(new Set());
+          }}
+        >
           <strong>{summary.total}</strong> active stacks
-        </span>
-        <span>
+        </button>
+        <button
+          class="text-button"
+          onClick={() => {
+            setSearch("");
+            setRuntimeFilter("attention");
+            setDeploymentFilter("all");
+            setFilter("all");
+            setArchiveFilter("active");
+            setSelected(new Set());
+          }}
+        >
           <strong>{summary.attention} needs attention</strong>
-        </span>
-        <span>{summary.changes} with undeployed changes</span>
+        </button>
+        <button
+          class="text-button"
+          onClick={() => {
+            setSearch("");
+            setRuntimeFilter("all");
+            setDeploymentFilter("changes_pending");
+            setFilter("all");
+            setArchiveFilter("active");
+            setSelected(new Set());
+          }}
+        >
+          {summary.changes} with undeployed changes
+        </button>
         {observation.loading ? (
           <span>Checking status…</span>
         ) : (
@@ -204,7 +218,7 @@ export function Dashboard({
                 reason: "Select running, previously deployed stacks",
               },
             ]}
-            onSelect={(kind) => void runSelected(kind)}
+            onSelect={(kind) => void batch.request(kind)}
           />
         </div>
       </div>
@@ -286,6 +300,7 @@ export function Dashboard({
           }}
         >
           <option value="all">All runtimes</option>
+          <option value="attention">Needs attention</option>
           {[
             "running",
             "sleeping",
@@ -397,7 +412,6 @@ export function Dashboard({
               </th>
               <th>Name</th>
               <th>Runtime</th>
-              <th>Remote</th>
               <th>Deployment</th>
               <th>Last deployment</th>
             </tr>
@@ -512,9 +526,6 @@ function StackRow({
         <Badge tone={runtime.tone} dot>
           {runtime.label}
         </Badge>
-      </td>
-      <td>
-        <Badge tone={remoteTone(repo)}>{remoteState(repo)}</Badge>
       </td>
       <td>
         <Badge tone={deploymentTone(freshness)}>

@@ -41,6 +41,17 @@ it("keeps runtime, deployment and Git filters independent and includes archived 
   ).toEqual(["running"]);
 });
 it("counts unknown state separately and never treats sleeping as a failure", () => {
+  expect(
+    filterStacks(stacks, states, null, { ...filters, runtime: "attention" }),
+  ).toEqual([]);
+  expect(
+    filterStacks(
+      stacks,
+      { ...states, running: { ...states.running!, runtime: "unhealthy" } },
+      null,
+      { ...filters, runtime: "attention" },
+    ).map((stack) => stack.id),
+  ).toEqual(["running"]);
   expect(inventorySummary(stacks, states)).toEqual({
     attention: 0,
     unknown: 1,

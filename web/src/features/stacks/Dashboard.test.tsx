@@ -9,6 +9,21 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Dashboard } from "./Dashboard";
 import { getStackState, listStackContainers, runStackAction } from "./api";
+import {
+  getDeploymentReview,
+  deployReviewedStack,
+} from "./deploymentReviewApi";
+vi.mock("./deploymentReviewApi", () => ({
+  getDeploymentReview: vi.fn(),
+  deployReviewedStack: vi.fn(),
+}));
+beforeEach(() => {
+  vi.mocked(getDeploymentReview).mockImplementation(async (id) => ({
+    stackId: id,
+    sourceRevision: id,
+    uncommittedChanges: false,
+  }));
+});
 import type { Stack } from "./types";
 
 vi.mock("./api", () => ({
@@ -85,7 +100,7 @@ it("shows the six Stacks columns, readable states, and recorded deployment time"
     within(screen.getByRole("region", { name: "Stacks table" }))
       .getAllByRole("columnheader")
       .map((header) => header.textContent?.trim()),
-  ).toEqual(["", "Name", "Runtime", "Remote", "Deployment", "Last deployment"]);
+  ).toEqual(["", "Name", "Runtime", "Deployment", "Last deployment"]);
   expect(screen.queryByText("Containers")).toBeNull();
   expect(screen.queryByText("Working tree")).toBeNull();
   const alpha = within(
@@ -93,7 +108,6 @@ it("shows the six Stacks columns, readable states, and recorded deployment time"
   );
   expect(await alpha.findByText("Running")).toBeInTheDocument();
   expect(alpha.getByText("Current")).toBeInTheDocument();
-  expect(alpha.getByText("Unknown")).toBeInTheDocument();
   expect(alpha.getByText(/2026/)).toBeInTheDocument();
   expect(alpha.getByText(/2026/).closest("time")).toHaveAttribute(
     "datetime",
@@ -148,9 +162,9 @@ it("submits selected stacks separately and registers every accepted operation", 
     freshness: "current",
     hasDeployed: true,
   });
-  vi.mocked(runStackAction).mockImplementation(async (id, kind) => ({
+  vi.mocked(deployReviewedStack).mockImplementation(async (id, kind) => ({
     id: `op-${id}`,
-    kind,
+    kind: "deploy",
     scopeType: "stack",
     scopeId: id,
     status: "queued",
@@ -162,7 +176,11 @@ it("submits selected stacks separately and registers every accepted operation", 
   fireEvent.click(screen.getByRole("checkbox", { name: "Select beta" }));
   fireEvent.click(screen.getByRole("button", { name: "Actions" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Deploy" }));
-  await waitFor(() => expect(runStackAction).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Deploy stacks" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Deploy stacks" }));
+  await waitFor(() => expect(deployReviewedStack).toHaveBeenCalledTimes(2));
   expect(accepted).toHaveBeenCalledWith([
     expect.objectContaining({ scopeId: "one" }),
     expect.objectContaining({ scopeId: "two" }),
@@ -209,11 +227,11 @@ it("reports partial acceptance by stack name without opening an operation", asyn
     freshness: "current",
     hasDeployed: true,
   });
-  vi.mocked(runStackAction).mockImplementation(async (id, kind) => {
+  vi.mocked(deployReviewedStack).mockImplementation(async (id, kind) => {
     if (id === "two") throw new Error("conflict");
     return {
       id: "op-one",
-      kind,
+      kind: "deploy",
       scopeType: "stack",
       scopeId: id,
       status: "queued",
@@ -227,6 +245,10 @@ it("reports partial acceptance by stack name without opening an operation", asyn
   );
   fireEvent.click(screen.getByRole("button", { name: "Actions" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Deploy" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Deploy stacks" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Deploy stacks" }));
   await waitFor(() =>
     expect(accepted).toHaveBeenCalledWith([
       expect.objectContaining({ scopeId: "one" }),
@@ -261,7 +283,7 @@ it("keeps the last deployment when Docker state becomes unavailable", async () =
   const alpha = within(
     screen.getByRole("link", { name: "alpha" }).closest("tr")!,
   );
-  expect(alpha.getAllByText("Unknown")).toHaveLength(2);
+  expect(alpha.getByText("Unknown")).toBeInTheDocument();
   expect(alpha.getByText(/2026/).closest("time")).toHaveAttribute(
     "datetime",
     "2026-09-20T10:00:00Z",
@@ -297,7 +319,7 @@ it("shows archived stacks but never submits them for stack actions", async () =>
     freshness: "current",
     hasDeployed: true,
   });
-  vi.mocked(runStackAction).mockResolvedValue({
+  vi.mocked(deployReviewedStack).mockResolvedValue({
     id: "op-one",
     kind: "deploy",
     scopeType: "stack",
@@ -333,8 +355,12 @@ it("shows archived stacks but never submits them for stack actions", async () =>
   fireEvent.click(screen.getByRole("checkbox", { name: "Select alpha" }));
   fireEvent.click(screen.getByRole("button", { name: "Actions" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Deploy" }));
-  await waitFor(() => expect(runStackAction).toHaveBeenCalledTimes(1));
-  expect(runStackAction).toHaveBeenCalledWith("one", "deploy");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Deploy stacks" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Deploy stacks" }));
+  await waitFor(() => expect(deployReviewedStack).toHaveBeenCalledTimes(1));
+  expect(deployReviewedStack).toHaveBeenCalledWith("one", "one");
 });
 
 it("updates each stack row after an external Docker state change", async () => {

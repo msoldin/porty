@@ -1,11 +1,11 @@
 import { useEffect, useState } from "preact/hooks";
 import { Badge, Empty, Notice } from "../../components/Feedback";
 import { Icon } from "../../components/Icon";
-import { message } from "../../lib/http";
 import type { Operation } from "../operations/types";
 import { ServiceCells } from "./ServiceCells";
 import { containerRoute } from "./containerRoute";
-import { runContainerBatchAction } from "./api";
+import { useContainerBatchActions } from "./useContainerBatchActions";
+import { ContainerBatchDialog } from "./ContainerBatchDialog";
 import { useOverviewContainers } from "./useOverviewContainers";
 import type { OverviewContainer } from "./overviewContainers";
 import type { ContainerAction, Stack } from "./types";
@@ -27,8 +27,6 @@ export function OverviewServices({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState("");
   const stackById = new Map(stacks.map((stack) => [stack.id, stack]));
   const refreshKey = operations
     .filter(
@@ -92,6 +90,28 @@ export function OverviewServices({
       .filter((operation) => ["queued", "running"].includes(operation.status))
       .map((operation) => operation.scopeId),
   );
+  const batch = useContainerBatchActions({
+    targets: selectedRows.map((row) => ({
+      ...row,
+      stackName: stackById.get(row.stackId)!.directoryName,
+      archived: !!stackById.get(row.stackId)!.archivedAt,
+      busy: activeStackIds.has(row.stackId),
+    })),
+    onAccepted: (accepted) => {
+      onOperationsAccepted(accepted);
+      const completed = new Set(accepted.map((op) => op.scopeId));
+      setSelected(
+        (current) =>
+          new Set(
+            [...current].filter(
+              (key) => !completed.has((JSON.parse(key) as [string, string])[0]),
+            ),
+          ),
+      );
+    },
+  });
+  const busy = batch.pending;
+  const feedback = batch.outcomes.join(" · ");
   const available =
     !busy &&
     selectedRows.length > 0 &&
@@ -112,53 +132,9 @@ export function OverviewServices({
     ({ container }) => container.state === "running",
   ).length;
 
-  async function run(action: ContainerAction) {
-    if (action === "start" ? !canStart : !canRun) return;
-    const groups = new Map<string, string[]>();
-    for (const row of selectedRows) {
-      const ids = groups.get(row.stackId) || [];
-      ids.push(row.container.id);
-      groups.set(row.stackId, ids);
-    }
-    if (
-      action === "stop" &&
-      !confirm(
-        `Stop ${selectedRows.length} selected containers across ${groups.size} ${groups.size === 1 ? "stack" : "stacks"}?`,
-      )
-    )
-      return;
-    setBusy(true);
-    setFeedback("");
-    const entries = [...groups];
-    const results = await Promise.allSettled(
-      entries.map(([id, ids]) => runContainerBatchAction(id, ids, action)),
-    );
-    const accepted: Operation[] = [];
-    const completed = new Set<string>();
-    const outcomes = results.map((result, index) => {
-      const [id] = entries[index];
-      const name = stackById.get(id)?.directoryName || id;
-      if (result.status === "rejected")
-        return `${name}: ${message(result.reason)}`;
-      accepted.push(result.value);
-      completed.add(id);
-      return `${name}: accepted`;
-    });
-    if (accepted.length) onOperationsAccepted(accepted);
-    setSelected(
-      (current) =>
-        new Set(
-          [...current].filter(
-            (key) => !completed.has((JSON.parse(key) as [string, string])[0]),
-          ),
-        ),
-    );
-    setFeedback(outcomes.join(" · "));
-    setBusy(false);
-  }
-
   return (
     <section class="overview-services">
+      <ContainerBatchDialog model={batch} />
       <div class="services-heading">
         <div>
           <h2>Services</h2>
@@ -231,7 +207,7 @@ export function OverviewServices({
               class="small"
               aria-label="Start selected"
               disabled={!canStart}
-              onClick={() => void run("start")}
+              onClick={() => batch.request("start")}
             >
               Start
             </button>
@@ -240,7 +216,7 @@ export function OverviewServices({
               class="small"
               aria-label="Restart selected"
               disabled={!canRun}
-              onClick={() => void run("restart")}
+              onClick={() => batch.request("restart")}
             >
               Restart
             </button>
@@ -249,7 +225,7 @@ export function OverviewServices({
               class="small"
               aria-label="Stop selected"
               disabled={!canRun}
-              onClick={() => void run("stop")}
+              onClick={() => batch.request("stop")}
             >
               Stop
             </button>

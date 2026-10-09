@@ -3,7 +3,10 @@ import { Empty, Notice } from "../../components/Feedback";
 import { Icon } from "../../components/Icon";
 import { ServiceCells } from "./ServiceCells";
 import { containerRoute } from "./containerRoute";
-import type { Container, ContainerAction } from "./types";
+import { useContainerBatchActions } from "./useContainerBatchActions";
+import { ContainerBatchDialog } from "./ContainerBatchDialog";
+import type { Operation } from "../operations/types";
+import type { Container } from "./types";
 
 export function ServicesTable({
   containers,
@@ -11,7 +14,8 @@ export function ServicesTable({
   busy,
   archived,
   dirty,
-  onBatchAction,
+  onOperationsAccepted,
+  stackName,
   stackId,
   navigate,
 }: {
@@ -20,7 +24,8 @@ export function ServicesTable({
   busy: boolean;
   archived: boolean;
   dirty: boolean;
-  onBatchAction: (ids: string[], action: ContainerAction) => void;
+  onOperationsAccepted: (operations: Operation[]) => void;
+  stackName: string;
   stackId: string;
   navigate: (path: string) => void;
 }) {
@@ -34,12 +39,8 @@ export function ServicesTable({
       return new Set([...current].filter((id) => known.has(id)));
     });
   }, [containers]);
-  if (error) return <Notice>{error}</Notice>;
-  if (!containers) return <p role="status">Loading containers…</p>;
-  if (!containers.length)
-    return <Empty>No containers yet. Deploy this stack to create them.</Empty>;
   const query = search.toLowerCase();
-  const visible = containers.filter((container) =>
+  const visible = (containers || []).filter((container) =>
     [
       container.service,
       container.name,
@@ -53,10 +54,24 @@ export function ServicesTable({
   const allVisibleSelected =
     visible.length > 0 &&
     visible.every((container) => selected.has(container.id));
+  const batch = useContainerBatchActions({
+    targets: selectedRows.map((container) => ({
+      stackId,
+      stackName,
+      container,
+      archived,
+      busy: busy || dirty || !!error,
+    })),
+    onAccepted: (accepted) => {
+      onOperationsAccepted(accepted);
+      setSelected(new Set());
+    },
+  });
   const available =
     selectedRows.length > 0 &&
     selectedRows.length <= 20 &&
     !busy &&
+    !batch.pending &&
     !archived &&
     !dirty;
   const canStart =
@@ -67,21 +82,17 @@ export function ServicesTable({
   const canRun =
     available &&
     selectedRows.every((container) => container.state === "running");
-  function run(action: ContainerAction) {
-    if (action === "start" ? !canStart : !canRun) return;
-    if (
-      action === "stop" &&
-      !confirm("Stop " + selectedRows.length + " selected containers?")
-    )
-      return;
-    onBatchAction(
-      selectedRows.map((container) => container.id),
-      action,
-    );
-  }
+  if (error) return <Notice>{error}</Notice>;
+  if (!containers) return <p role="status">Loading containers…</p>;
+  if (!containers.length)
+    return <Empty>No containers yet. Deploy this stack to create them.</Empty>;
 
   return (
     <div class="services">
+      <ContainerBatchDialog model={batch} />
+      {batch.outcomes.length > 0 && (
+        <Notice role="status">{batch.outcomes.join(" · ")}</Notice>
+      )}
       <div class="services-heading">
         <div>
           <h2>Services</h2>
@@ -112,7 +123,7 @@ export function ServicesTable({
               class="small"
               aria-label="Start selected"
               disabled={!canStart}
-              onClick={() => run("start")}
+              onClick={() => batch.request("start")}
             >
               Start
             </button>
@@ -121,7 +132,7 @@ export function ServicesTable({
               class="small"
               aria-label="Restart selected"
               disabled={!canRun}
-              onClick={() => run("restart")}
+              onClick={() => batch.request("restart")}
             >
               Restart
             </button>
@@ -130,7 +141,7 @@ export function ServicesTable({
               class="small"
               aria-label="Stop selected"
               disabled={!canRun}
-              onClick={() => run("stop")}
+              onClick={() => batch.request("stop")}
             >
               Stop
             </button>

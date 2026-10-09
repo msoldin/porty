@@ -1,11 +1,7 @@
 import { Alerts } from "../alerts/Alerts";
 import { useEffect, useState } from "preact/hooks";
 import { message } from "../../lib/http";
-import {
-  listDeployments,
-  runContainerBatchAction,
-  runStackAction,
-} from "./api";
+import { listDeployments, runStackAction } from "./api";
 import { type Stack, type Deployment, type ContainerAction } from "./types";
 import { type Repository } from "../repository/types";
 import { type Operation } from "../operations/types";
@@ -139,27 +135,7 @@ export function StackDetail({
       setBusy(false);
     }
   }
-  async function containerAction(
-    containerIds: string[],
-    kind: ContainerAction,
-  ) {
-    if (busy || active || stack.archivedAt) return;
-    if (dirty) {
-      setError(
-        "Save or discard your editor changes before running a stack action.",
-      );
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      onAction(await runContainerBatchAction(stack.id, containerIds, kind));
-    } catch (cause) {
-      setError(message(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
+
   return (
     <section class="stack-detail">
       <div class="stack-top">
@@ -352,7 +328,10 @@ export function StackDetail({
               busy={busy || !!active}
               archived={!!stack.archivedAt}
               dirty={dirty}
-              onBatchAction={containerAction}
+              stackName={stack.directoryName}
+              onOperationsAccepted={(operations) => {
+                operations.forEach((operation) => onAction(operation));
+              }}
             />
             <h2>Last deployment</h2>
             {deployments.length ? (

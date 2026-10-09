@@ -8,6 +8,8 @@ import { containerStatePresentation } from "./statusPresentation";
 import type { ContainerAction, Stack } from "./types";
 import { useStackContainers } from "./useStackContainers";
 import { useContainerLogs } from "./useContainerLogs";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import "./containerDetail.css";
 
 export function ContainerDetail({
   stack,
@@ -26,6 +28,8 @@ export function ContainerDetail({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pendingAction, setPendingAction] = useState<ContainerAction>();
+  const pendingTarget = useRef<{ id: string; stackId: string; name: string }>();
   const [tab, setTab] = useState<"Overview" | "Logs" | "Inspect">("Overview");
   const [inspect, setInspect] = useState({
     key: "",
@@ -91,14 +95,32 @@ export function ContainerDetail({
     !readError;
   const canStart = available && ["created", "exited"].includes(container.state);
   const canRun = available && container.state === "running";
+  function requestAction(kind: ContainerAction) {
+    if (!container) return;
+    pendingTarget.current = {
+      id: container.id,
+      stackId: stack.id,
+      name: container.name,
+    };
+    setPendingAction(kind);
+  }
 
   async function run(action: ContainerAction) {
-    if (!container || (action === "start" ? !canStart : !canRun)) return;
-    if (action === "stop" && !confirm(`Stop ${container.name}?`)) return;
+    if (
+      !container ||
+      (action === "start" ? !canStart : !canRun) ||
+      (action !== "start" &&
+        (pendingTarget.current?.id !== container.id ||
+          pendingTarget.current?.stackId !== stack.id))
+    ) {
+      setError("Container availability changed. Cancel and review again.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       onAction(await runContainerAction(stack.id, container.id, action));
+      setPendingAction(undefined);
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -157,7 +179,7 @@ export function ContainerDetail({
             navigate("/");
           }}
         >
-          Overview
+          Stacks
         </a>
         <span aria-hidden="true">/</span>
         <a
@@ -200,19 +222,37 @@ export function ContainerDetail({
               <button disabled={!canStart} onClick={() => void run("start")}>
                 Start
               </button>
-              <button disabled={!canRun} onClick={() => void run("restart")}>
+              <button
+                disabled={!canRun}
+                onClick={() => requestAction("restart")}
+              >
                 Restart
               </button>
               <button
                 class="danger"
                 disabled={!canRun}
-                onClick={() => void run("stop")}
+                onClick={() => requestAction("stop")}
               >
                 Stop
               </button>
             </div>
           </div>
-          {error && <Notice>{error}</Notice>}
+          {error && !pendingAction && <Notice>{error}</Notice>}
+          <ConfirmDialog
+            open={!!pendingAction}
+            title={`${pendingAction === "stop" ? "Stop" : "Restart"} ${container.name}?`}
+            description={`Only this container in ${stack.directoryName} will be affected. Its service may be unavailable. Data volumes are retained.`}
+            confirmLabel={
+              pendingAction === "stop" ? "Stop container" : "Restart container"
+            }
+            destructive={pendingAction === "stop"}
+            busy={busy}
+            error={error}
+            onCancel={() => setPendingAction(undefined)}
+            onConfirm={() => {
+              if (pendingAction) void run(pendingAction);
+            }}
+          />
           <div class="tabs" role="tablist" aria-label="Container sections">
             {(["Overview", "Logs", "Inspect"] as const).map((name) => (
               <button

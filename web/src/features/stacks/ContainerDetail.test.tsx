@@ -159,8 +159,11 @@ it("confirms Stop and shows a request error without opening an operation", async
   const onAction = vi.fn();
   show({ onAction });
   fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+  fireEvent.click(screen.getByRole("button", { name: "Stop container" }));
   expect(await screen.findByText("Docker unavailable")).toBeInTheDocument();
-  expect(window.confirm).toHaveBeenCalledWith("Stop web-2?");
+  expect(
+    screen.getByRole("dialog", { name: "Stop web-2?" }),
+  ).toBeInTheDocument();
   expect(onAction).not.toHaveBeenCalled();
 });
 

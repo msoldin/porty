@@ -420,7 +420,7 @@ describe("Porty administration interface", () => {
     render(<App />);
     const link = await screen.findByRole("link", { name: "paperless" });
     const row = within(link.closest("tr")!);
-    expect(row.getByText("Ahead 1")).toBeInTheDocument();
+    expect(row.getByText("Uncommitted files")).toBeInTheDocument();
     expect(row.getByText("Unknown")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Filter stacks" }), {
       target: { value: "modified" },

@@ -1,0 +1,80 @@
+.dashboard .table-scroll,
+.overview-services .table-scroll,
+.services .table-scroll {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.dashboard .page-heading {
+  margin-bottom: 0.5rem;
+}
+.dashboard .services-heading {
+  margin-top: 1rem;
+}
+.dashboard .filters {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.dashboard .filters .search {
+  min-width: min(100%, 18rem);
+  flex: 1;
+}
+.dashboard .filters select {
+  max-width: 100%;
+}
+.stack-table th,
+.services-table th {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 600;
+}
+.stack-table tbody tr:hover,
+.services-table tbody tr:hover {
+  background: var(--surface-soft);
+}
+.stack-name-cell {
+  flex-wrap: wrap;
+}
+.stack-name-link {
+  overflow-wrap: anywhere;
+}
+.badge.success {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.badge.warning {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.badge.danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.badge.blue {
+  color: var(--blue);
+  background: var(--accent-soft);
+}
+.badge.neutral {
+  color: var(--muted);
+  background: var(--surface-raised);
+}
+.overview-services {
+  margin-top: 2.5rem;
+}
+@media (max-width: 767px) {
+  .dashboard .filters > * {
+    flex: 1 1 42%;
+  }
+  .dashboard .filters .search {
+    flex-basis: 100%;
+  }
+  .dashboard .table-scroll {
+    max-width: 100%;
+  }
+  .service-selection-actions {
+    flex-wrap: wrap;
+  }
+  .service-selection-actions button {
+    min-height: 44px;
+  }
+}
