@@ -118,6 +118,19 @@ implementation details.
 Security-sensitive changes must test relevant traversal, symlink, stale-write, redaction, origin, CSRF, authorization,
 and bounded-output behavior.
 
+## Documentation
+
+Every new feature or change must include corresponding documentation updates in the same change. Document user-visible
+behavior, setup, configuration, usage, limitations, and recovery in the user documentation under `docs/`; document
+internal-only changes in the relevant developer or security guide.
+
+Keep user documentation easy to find from the root `README.md`. Maintain the documentation index and relative links
+when adding or moving pages. Update existing guides rather than duplicating instructions; design specs and implementation
+plans do not replace user documentation.
+
+Before completing a change, verify documentation against the implemented behavior, check affected links and examples,
+and identify the documentation updates in the pull request.
+
 ## Commits & Pull Requests
 
 Use Conventional Commits such as `feat:`, `fix:`, and `chore:` with imperative summaries.

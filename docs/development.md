@@ -1,5 +1,26 @@
 # Porty development
 
+[Documentation home](README.md)
+
+## User documentation
+
+The root README links to `docs/README.md`, the user documentation entry point. Keep each procedure in one owning guide and link to it from related tasks. When UI labels or workflows change, update the instructions and affected screenshots in the same change. Keep existing guide URLs and heading anchors working.
+
+Screenshots in `docs/images/` were captured on 2026-10-10 from the working tree based on `94ca7b8`, including the local dashboard changes. They show the actual embedded UI: repository setup, Compose editing, deployment review, desktop/mobile stack overview, and dashboard. The Redis stack used disposable data; dashboard hardware names and history are synthetic fixtures. Do not substitute design mockups for UI screenshots or capture live credentials or private repositories.
+
+To refresh the images, build the current frontend and binary, start an isolated Porty instance with a new data directory, and follow [getting started](getting-started.md). Capture desktop screenshots at 1440 pixels wide (800 pixels high for the dashboard, 1000 for stack/setup pages) and mobile at 390 pixels wide. Use descriptive alt text and inspect images for clipping and sensitive information. The dashboard fixture pattern is in `web/e2e/dashboard.spec.ts`.
+
+Documentation verification on 2026-10-10 used Go 1.27.1, Bun 1.4.2, Playwright Chromium, and Docker Desktop 29.5.2 on Linux/WSL2 amd64:
+
+- Built the native binary and local OCI image from the current checkout.
+- Exercised registration, local repository creation, editing/saving, committing, deployment, health status, and cleanup against real disposable Redis containers through the native and OCI installations.
+- Checked native live logs, validation failure with invalid YAML, correction, and redeployment; browser runs reported no JavaScript runtime errors.
+- Confirmed the OCI account, repository, and a saved stack remain available after restarting its container with the same named volume.
+- Checked the mobile stack view for horizontal page overflow and visually inspected all six documentation images.
+- Validated local Markdown links/anchors, Prettier formatting, and the static packaging/service-unit checks.
+
+A fresh systemd host installation, production TLS proxy, SSH/HTTPS remote credentials, GPU access, and a new backup/restore drill were not exercised in this documentation pass. Existing feature-specific verification remains in the sections below. Preview the README and guides on GitHub when publishing; no remote publishing was performed by this pass.
+
 On-demand activation architecture, deployment requirements, reproducible Docker
 gates and measured limitations are documented in [On-demand groups](on-demand.md).
 `internal/traffic` owns temporary sleeping listeners; `internal/ondemand` owns
@@ -153,10 +174,10 @@ snapshot every ten seconds. Results include that observer and concurrent
 development/test activity; these are smoke measurements, not a benchmark SLA:
 
 | Open tabs | CPU (% of one core) | RSS range (MiB) | Open descriptors |
-| --- | ---: | ---: | ---: |
-| 0 | 1.19 | 69.0–103.3 | 22–23 |
-| 1 | 1.44 | 93.9–99.2 | 23–25 |
-| 3 | 2.10 | 90.3–98.0 | 23–25 |
+| --------- | ------------------: | --------------: | ---------------: |
+| 0         |                1.19 |      69.0–103.3 |            22–23 |
+| 1         |                1.44 |       93.9–99.2 |            23–25 |
+| 3         |                2.10 |       90.3–98.0 |            23–25 |
 
 History plateaued at 150 samples and approximately 3.07 MB for full responses
 on this host; sequence advanced at the same two-second cadence in every

@@ -1,18 +1,26 @@
 # Porty operator guide
 
+[Documentation home](README.md) · [First-stack walkthrough](getting-started.md) · [Configuration reference](configuration.md)
+
 Porty runs on one Linux server and manages the Docker daemon with the same effective authority as a Docker administrator. Keep it on a trusted network or place it behind an authenticated TLS reverse proxy.
 
 ## Host installation
 
-Install Docker Engine with the Compose plugin and Git. Build the frontend and binary as an unprivileged build user:
+Install [Docker Engine](https://docs.docker.com/engine/install/) on the Linux runtime host. Porty uses in-process Git and Compose SDKs; Git and the Docker Compose CLI plugin are not runtime dependencies. Docker socket access is required for workload management.
+
+On the build machine, install Git (to obtain the source), [Go **1.27.1**](https://go.dev/doc/install), [Bun **1.4.2**](https://bun.com/docs/installation), and a C compiler/libc development headers for the default CGO-enabled build. These versions match the current repository; check `go.mod` and `web/package.json` when building another revision. Clone the repository and build as an unprivileged user:
 
 ```sh
+git clone https://github.com/msoldin/porty.git
+cd porty
 (cd web && bun ci)
 (cd web && bun run build)
 GOTOOLCHAIN=local go build -trimpath -o porty ./cmd/porty
 ```
 
-Create the service account, install the binary and configuration, and enable the unit:
+Build the frontend first: the binary embeds `web/dist`. Build for the runtime host's architecture and a compatible libc. `CGO_ENABLED=0 go build -trimpath -o porty ./cmd/porty` is an alternative without NVIDIA monitoring support. The runtime host does not need Go or Bun.
+
+On a Linux host with systemd and the Docker `docker` group, create the service account, install the binary and configuration, and enable the unit. Run from the source directory with the built binary present. For an existing installation, use the upgrade procedure instead of recreating its account or configuration:
 
 ```sh
 sudo useradd --system --home-dir /var/lib/porty --shell /usr/sbin/nologin --groups docker porty
@@ -29,6 +37,8 @@ sudo systemctl enable --now porty
 
 The service creates `/var/lib/porty` with mode `0700`. Porty tightens its configured data directory to `0700` before opening the database and refuses to use the filesystem root. The service account needs membership in the Docker socket's group. This grants Docker-equivalent host privileges.
 
+Check startup with `sudo systemctl status porty --no-pager` and `curl --fail http://127.0.0.1:8080/readyz`. Open `http://127.0.0.1:8080` on the server or use the [SSH tunnel in getting started](getting-started.md#1-install-and-open-porty). Complete administrator and repository setup in the browser. Keep access private during initial registration.
+
 ## Browser authentication and TLS proxies
 
 Porty issues a signed access JWT in the `HttpOnly` `porty_session` cookie for 15 minutes. A separate `HttpOnly` `porty_refresh` cookie is scoped to `/api/v1/session`; each refresh rotates its random token while retaining the original seven-day login expiry. The readable `porty_csrf` cookie must match the request header for mutations and refresh. Keep the browser on one origin. Logout revokes the refresh family and clears the cookies, but an access JWT issued before logout can remain valid for at most 15 minutes.
@@ -37,7 +47,7 @@ When a TLS reverse proxy forwards HTTP to Porty's loopback listener, set `server
 
 ## Repository setup
 
-Repository setup is mandatory after administrator registration. Login resumes the setup screen until the repository is ready; stack, editor, deployment, and repository-operation APIs remain unavailable during that time. Porty always operates on `<data-dir>/repository` (`/var/lib/porty/repository` with the installation above). The browser cannot select another server path.
+Repository setup is mandatory for stack management after administrator registration. Login resumes the setup screen until the repository is ready; stack, editor, deployment, and repository-operation APIs remain unavailable during that time. The Dashboard is available after sign-in before repository setup completes. Porty always operates on `<data-dir>/repository` (`/var/lib/porty/repository` with the installation above). The browser cannot select another server path.
 
 The setup screen offers three modes:
 
@@ -47,16 +57,16 @@ The setup screen offers three modes:
 
 A local-only repository fully satisfies setup and supports stack files, status, history, and commits. **Settings → Repository remote** can later add, replace, update authentication for, or remove Porty's managed `origin`. Removing it preserves the ready lifecycle, local branch, commits, files, and stacks; fetch, pull, and push remain unavailable without a managed remote.
 
-Remote authentication is explicit: public/no authentication, HTTPS username plus secret, or fixed mounted SSH files. HTTPS secrets are write-only: the browser clears them after each attempt, APIs never return them, and Porty stores them only in its mode-restricted database for non-interactive askpass use.
+Remote authentication is explicit: public/no authentication, HTTPS username plus secret, or fixed mounted SSH files. HTTPS secrets are write-only: the browser clears them after each attempt, APIs never return them, and Porty stores them in its mode-restricted database for the Git SDK's HTTPS authentication. Use an account/token with only the repository permissions you need; pushing requires write access. Do not embed credentials in the remote URL.
 
 SSH mode reads only these server-managed files:
 
 - `<data-dir>/ssh/id`
 - `<data-dir>/ssh/known_hosts`
 
-Create them as regular files owned by the Porty service account. Set the private key to mode `0600` or stricter; `known_hosts` must not be group- or world-writable. Porty requires both files, strict host verification, batch mode, and the mounted identity. It does not use an SSH agent or user home configuration.
+Create them as regular files owned by the Porty service account in a private `ssh` directory. Set the private key to mode `0600` or stricter; `known_hosts` must not be group- or world-writable. Verify host keys through a trusted source before installing them. Porty requires both files and uses the mounted identity with strict host verification through the Git SDK. The private key must work without an interactive passphrase; Porty does not use an SSH agent or user home configuration.
 
-Only HTTPS and `ssh://` remotes are accepted by the Git adapter. Porty disables interactive prompts, global/system Git configuration, hooks, pagers, external diffs, filters, submodules, and credential helpers when it invokes Git.
+Only HTTPS and `ssh://` remotes are accepted by the Git adapter, for example `https://github.com/your-org/stacks.git` or `ssh://git@github.com/your-org/stacks.git`. SCP-style `git@github.com:your-org/stacks.git` URLs are unsupported. Porty does not launch Git, SSH commands, credential helpers, hooks, pagers, or filters. Adopted repositories with unsafe command-bearing Git configuration are rejected.
 
 During an upgrade, a registered installation with a safe existing repository at the fixed path is reconciled automatically. Porty imports its checked-out branch and repository-local author identity when present, applies the approved author defaults only when identity is absent, validates any existing configuration, and marks it ready. Unsafe, detached, or incomplete repositories remain in the setup lifecycle for operator action.
 
@@ -76,15 +86,18 @@ Stop Porty so the SQLite database and repository are captured at one point in ti
 
 ```sh
 sudo systemctl stop porty
-sudo tar --numeric-owner --xattrs --acls -C /var/lib -czf /srv/backup/porty-$(date +%Y%m%dT%H%M%S).tar.gz porty
+sudo install -d -o root -g root -m 0700 /srv/backup
+sudo sh -c 'umask 077; tar --numeric-owner --xattrs --acls -C /var/lib -czf "/srv/backup/porty-$(date +%Y%m%dT%H%M%S).tar.gz" porty'
 sudo systemctl start porty
 ```
 
 Store backups with mode `0600` and test restores on a separate host. To restore, stop Porty, move the current `/var/lib/porty` aside, extract the archive, verify ownership and mode `0700`, then start Porty. Do not merge database files or copy only `porty.db` while the service is running; SQLite may also have WAL state.
 
+This protects Porty's state and repository, including stored environment values and credentials. It does not back up application Docker volumes or external bind mounts. Back those up using application-appropriate procedures. For OCI installations, stop the Porty container and capture its complete data volume with the same consistency and permission requirements.
+
 ## Upgrade and rollback
 
-Build or download the new binary, run the release checks, take a backup, stop the service, atomically replace `/usr/local/bin/porty`, and start it. Check `readyz` and the journal:
+Build the new revision's frontend and binary, run the release checks, take a backup, stop the service, atomically replace `/usr/local/bin/porty`, and start it. Check `readyz` and the journal:
 
 ```sh
 curl --fail http://127.0.0.1:8080/readyz
@@ -93,18 +106,32 @@ sudo journalctl -u porty -n 100 --no-pager
 
 Migrations run at startup and are forward-only. Roll back by stopping Porty and restoring both the previous binary and the pre-upgrade data backup.
 
+For OCI installations, rebuild/tag the image from the selected source revision, back up the data volume, and recreate the Porty container with the same volume, socket access, configuration, and network settings. Retain the previous image and data backup together for rollback. This guide does not assume a published binary release or registry image.
+
 ## OCI image
 
-The image is a convenience deployment and is not a sandbox. Mount a mode-`0700` data directory and the Docker socket. Map the socket's numeric group into the container when required by the host:
+The image is a convenience deployment and is not a sandbox. On the local Linux Docker host, obtain the source and build the frontend as above. The Dockerfile builds the Go binary and embeds the already-built `web/dist`; it does not run Bun.
+
+Build a local image, then use a named volume for persistent Porty data and map the Docker socket's numeric group. This basic example disables optional host monitoring until its host mounts are configured:
 
 ```sh
 docker build -t porty:local .
-docker run --rm -p 127.0.0.1:8080:8080 \
-  -v /srv/porty:/var/lib/porty \
+docker run -d --name porty --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -v porty-data:/var/lib/porty \
   -v /var/run/docker.sock:/var/run/docker.sock \
   --group-add "$(stat -c %g /var/run/docker.sock)" \
+  -e PORTY_MONITORING_MODE=disabled \
   porty:local
+docker logs --tail 100 porty
+curl --fail http://127.0.0.1:8080/readyz
 ```
+
+For a new named volume, Docker initializes ownership from the image's data directory. If you choose a host bind mount instead, pre-create it with mode `0700` and ownership matching the image's `porty` user; do not assume the UID matches a host account. Preserve existing data and ownership during upgrades.
+
+For a configuration file, mount it read-only and pass `--config /path/in/container/config.yaml` after the image name. Replacement arguments replace the image's default command, so explicitly set `--listen 0.0.0.0:8080` for bridge networking; the host `-p` above limits exposure to loopback. See [configuration precedence](configuration.md#sources-and-precedence).
+
+Bind mounts in managed Compose stacks refer to paths on the Docker daemon's host. For relative bind paths, make the repository available at the same absolute path on the host and inside Porty, or use suitable named volumes/absolute host paths. Do not assume a path visible only inside the Porty container exists on the daemon host.
 
 Do not expose port 8080 beyond a trusted network without TLS and an appropriate network boundary.
 
@@ -179,15 +206,18 @@ come from host PID 1's network namespace, without joining that namespace.
 For a local Linux Docker Engine supporting recursive read-only binds (Linux
 5.12+), use the following monitoring mounts with your existing data/socket
 configuration. No host PID namespace, host networking or privileged mode is
-needed for basic metrics:
+needed for basic metrics. Recreate the existing Porty container with these options,
+retaining its data volume; do not run a second instance against the same data:
 
 ```sh
 docker run --rm --name porty -p 127.0.0.1:8080:8080 \
   --mount type=volume,src=porty-data,dst=/var/lib/porty \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --group-add "$(stat -c %g /var/run/docker.sock)" \
   --mount type=bind,src=/proc,dst=/host/proc,readonly,bind-recursive=readonly,bind-propagation=rprivate \
   --mount type=bind,src=/sys,dst=/host/sys,readonly,bind-recursive=readonly,bind-propagation=rprivate \
   --mount type=bind,src=/,dst=/host/root,readonly,bind-recursive=readonly,bind-propagation=rprivate \
-  porty:verify
+  porty:local
 ```
 
 The host-root bind exposes readable host files to Porty's service user. Omit

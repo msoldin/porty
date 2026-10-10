@@ -1,5 +1,7 @@
 # On-demand container groups
 
+[Documentation home](README.md)
+
 Configure **Stack → Settings → On-demand containers** after deploying the stack.
 Add a named group and select one to eight deployed services from the list.
 Each service must have one existing replica. The selector shows images and ports
@@ -27,14 +29,14 @@ the group's endpoints within a window starting at the first attempt. Incoming
 payload is discarded; packets and connections are not buffered or replayed.
 Clients must retry if their initial request arrives while the server is asleep.
 
-| Setting | Default | Range |
-| --- | --- | --- |
-| Wake attempts | 1 | 1–1,000 |
-| Wake window | 1 second | 10 ms–60 seconds |
-| Idle timeout | 10 minutes | 1 minute–24 hours |
-| Minimum runtime | 2 minutes | 0–60 minutes |
-| Startup timeout | 5 minutes | 30 seconds–15 minutes |
-| Stop grace | 2 minutes per service | 10 seconds–2 minutes |
+| Setting         | Default               | Range                 |
+| --------------- | --------------------- | --------------------- |
+| Wake attempts   | 1                     | 1–1,000               |
+| Wake window     | 1 second              | 10 ms–60 seconds      |
+| Idle timeout    | 10 minutes            | 1 minute–24 hours     |
+| Minimum runtime | 2 minutes             | 0–60 minutes          |
+| Startup timeout | 5 minutes             | 30 seconds–15 minutes |
+| Stop grace      | 2 minutes per service | 10 seconds–2 minutes  |
 
 Docker network byte counters are sampled every five seconds, with at most four
 concurrent observations. Any incoming or outgoing traffic on any interface of a
