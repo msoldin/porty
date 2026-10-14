@@ -2,7 +2,7 @@
 
 Date: 2026-10-14
 
-Status: Written specification approved by the user on 2026-10-14. Implementation plans are awaiting review.
+Status: Approved and implemented locally on 2026-10-14. [Implementation review and verification](../reviews/2026-10-14-docs-releases-review.md) recorded; integration and GitHub-hosted rollout remain pending.
 
 ## Intent and scope
 
