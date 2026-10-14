@@ -1,0 +1,28 @@
+:root {
+  --vp-c-brand-1: #3464b2;
+  --vp-c-brand-2: #4478c8;
+  --vp-c-brand-3: #3464b2;
+}
+.dark {
+  --vp-c-brand-1: #91b9fa;
+  --vp-c-brand-2: #78a7ee;
+}
+.porty-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  margin-right: 10px;
+}
+.development-notice {
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+.development-notice a {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+}

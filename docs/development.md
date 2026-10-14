@@ -208,3 +208,18 @@ browser and unit regressions passed. Other architectures and rootless Docker
 remain unverified. For partially accessible Intel engines, restart Porty after
 changing access to additional engines; fully denied PMU initialization retries
 every ten seconds.
+
+## Documentation website
+
+The guides are also built with VitePress 1.6.4. Use Node 24.16.0 and Bun 1.4.2. The docs package is separate from the embedded application.
+
+```sh
+(cd docs && bun ci && bun run test:unit && bun run build)
+(cd docs && bun run preview)
+```
+
+Open `http://127.0.0.1:4174/porty/`. For browser validation, install Chromium with `cd docs && bunx playwright install chromium`, then run `bun run test:site`. Screenshots and traces default to `/tmp/porty-docs-tests`; set `PORTY_DOCS_TEST_OUTPUT` to change it. Check both desktop and mobile navigation, search, direct links, and images before publishing.
+
+The site is labeled development documentation because it follows `main`. Releases link to their tagged guides on GitHub. Keep Markdown filenames and heading anchors stable. The site transforms home/repository links at render time so the same source remains readable on GitHub. Planning documents, mockups, and branding generation files are excluded from the artifact; adding a sidebar item alone does not publish a new source directory.
+
+Publishing uses `.github/workflows/docs.yml`. In repository Settings → Pages, select **GitHub Actions** as the source; restrict the `github-pages` environment to `main`. Pull requests build, check links, and run desktop/mobile browser tests without deployment permissions. Only successful pushes or manual runs on `main` deploy. Deployments are serialized, and a failed build leaves the previous site live. Browser evidence is attached to workflow runs.

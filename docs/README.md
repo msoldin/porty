@@ -2,6 +2,8 @@
 
 Porty brings Docker Compose, Git-backed configuration, and host monitoring into one interface for a single administrator on a Linux server.
 
+Website (available after the first Pages deployment): [Porty documentation](https://msoldin.github.io/porty/). The website follows `main`; [GitHub Releases](https://github.com/msoldin/porty/releases) link to guides for each released version.
+
 ## Start here
 
 1. [Explore the features and limits](features.md).
