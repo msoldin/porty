@@ -2,7 +2,7 @@
 
 Date: 2026-10-14
 
-Status: Design direction approved in conversation; written specification awaiting review.
+Status: Written specification approved by the user on 2026-10-14. Implementation plans are awaiting review.
 
 ## Intent and scope
 
@@ -62,7 +62,7 @@ Reuse the existing verification workflow through `workflow_call`, preserving nor
 
 Build the frontend from the tagged lockfile before building either the native executable or image. Do not trust the checked-in `web/dist` as release input. Build the native executable with CGO enabled in a pinned Debian Bookworm environment; document Linux amd64 and glibc 2.36 or newer as the native runtime baseline. Validate the executable in the matching minimal runtime, including startup without NVML. Keep the existing image's user, private data permissions, certificates, timezone data, and monitoring behavior.
 
-Use pinned GoReleaser OSS configuration in `.goreleaser.yaml` for the native build, archive, checksums, and draft GitHub Release. Keep OCI building/publishing in the established Docker build tooling, with version and revision labels and matching executable metadata. Supply necessary native build tools in the release builder; do not work around CGO by disabling it.
+Use pinned GoReleaser OSS configuration in `.goreleaser.yaml` for the native build, archive, and checksums, with publishing disabled. After artifact smoke tests, create and populate the draft GitHub Release through the Octokit client supplied by `actions/github-script`. This separation avoids GoReleaser Pro's before-publish hooks and allows retries without rebuilding published artifacts. Keep OCI building/publishing in the established Docker build tooling, with version and revision labels and matching executable metadata. Supply necessary native build tools in the release builder; do not work around CGO by disabling it.
 
 ### Release outputs
 
