@@ -1,0 +1,78 @@
+name: documentation
+on:
+  push:
+    branches: [main]
+    paths:
+      [
+        "docs/**",
+        "README.md",
+        "AGENTS.md",
+        "deploy/porty.example.yaml",
+        ".github/workflows/docs.yml",
+      ]
+  pull_request:
+    paths:
+      [
+        "docs/**",
+        "README.md",
+        "AGENTS.md",
+        "deploy/porty.example.yaml",
+        ".github/workflows/docs.yml",
+      ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24.16.0"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - run: bun ci
+        working-directory: docs
+      - run: bun run test:unit
+        working-directory: docs
+      - run: bun run build
+        working-directory: docs
+      - run: bunx playwright install --with-deps chromium
+        working-directory: docs
+      - run: bun run test:site
+        working-directory: docs
+        env:
+          PORTY_DOCS_TEST_OUTPUT: "${{ runner.temp }}/porty-docs-tests"
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
+        with:
+          lycheeVersion: v0.24.2
+          args: --offline --include-fragments README.md docs/*.md
+          fail: true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: documentation-browser-evidence
+          path: "${{ runner.temp }}/porty-docs-tests"
+          if-no-files-found: ignore
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: docs/.vitepress/dist
+  deploy:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: "${{ steps.deployment.outputs.page_url }}"
+    steps:
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        id: deployment
