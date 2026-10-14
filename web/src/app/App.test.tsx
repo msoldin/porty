@@ -415,6 +415,7 @@ describe("Porty administration interface", () => {
       authenticated = false;
       registered = isRegistered;
       repositoryReady = false;
+      location.hash = "#/settings";
       render(<App />);
 
       fireEvent.input(await screen.findByLabelText("Username"), {
@@ -423,11 +424,21 @@ describe("Porty administration interface", () => {
       fireEvent.input(screen.getByLabelText("Password"), {
         target: { value: "correct horse battery staple" },
       });
+      await waitFor(() =>
+        expect(location.hash).toBe(isRegistered ? "#/login" : "#/register"),
+      );
+      location.hash = "#/alerts";
+      fireEvent(window, new HashChangeEvent("hashchange"));
+      await waitFor(() =>
+        expect(location.hash).toBe(isRegistered ? "#/login" : "#/register"),
+      );
+      expect(requestsFor("/repository/setup/status")).toHaveLength(0);
       fireEvent.click(screen.getByRole("button", { name: submit }));
 
       expect(
         await screen.findByRole("button", { name: "Create local repository" }),
       ).toBeInTheDocument();
+      await waitFor(() => expect(location.hash).toBe("#/setup"));
       expect(requestsFor("/repository/setup/status")).toHaveLength(1);
       expect(requestsFor("/stacks")).toHaveLength(0);
       expect(sockets).toBe(0);
@@ -861,31 +872,39 @@ it("shows failed audit loading instead of an empty log", async () => {
   ).not.toBeInTheDocument();
 });
 
-it("opens host metrics before repository setup", async () => {
-  location.hash = "#/";
+it.each([
+  "/",
+  "/settings",
+  "/alerts",
+  "/stacks",
+  "/stacks/s1",
+  "/repository",
+  "/operations",
+  "/audit",
+  "/unknown",
+])("redirects %s to setup before allowing workspace access", async (route) => {
+  location.hash = `#${route}`;
   repositoryReady = false;
   render(<App />);
   expect(
-    await screen.findByRole("heading", { name: "Dashboard" }),
+    await screen.findByRole("heading", {
+      name: "Configure the stack repository",
+    }),
   ).toBeVisible();
-  expect(await screen.findByText("25%")).toBeVisible();
-  expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
-    "href",
-    "#/",
-  );
-  expect(screen.getByRole("link", { name: "Stacks" })).toHaveAttribute(
-    "href",
-    "#/stacks",
-  );
+  await waitFor(() => expect(location.hash).toBe("#/setup"));
+  expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   expect(requestsFor("/stacks")).toHaveLength(0);
-  fireEvent.click(screen.getByRole("link", { name: "Stacks" }));
+  expect(requestsFor("/monitoring")).toHaveLength(0);
+  expect(sockets).toBe(0);
+  location.hash = "#/settings";
+  fireEvent(window, new HashChangeEvent("hashchange"));
+  await waitFor(() => expect(location.hash).toBe("#/setup"));
   expect(
-    await screen.findByRole("button", { name: "Create local repository" }),
+    screen.getByRole("heading", { name: "Configure the stack repository" }),
   ).toBeVisible();
-  expect(screen.getAllByRole("main")).toHaveLength(1);
 });
 it.each(["pending", "failed"])(
-  "keeps Dashboard usable when repository status is %s",
+  "blocks all workspace access when repository status is %s",
   async (state) => {
     location.hash = "#/";
     repositorySetupResponse = () =>
@@ -899,24 +918,37 @@ it.each(["pending", "failed"])(
           );
     render(<App />);
     expect(
-      await screen.findByRole("heading", { name: "Dashboard" }),
-    ).toBeVisible();
-    expect(await screen.findByText("25%")).toBeVisible();
-    expect(screen.queryByText("Loading stacks…")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Repository unavailable"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("link", { name: "Settings" }));
-    expect(
-      await screen.findByRole("heading", { name: "Change password" }),
-    ).toBeVisible();
-    fireEvent.click(screen.getByRole("link", { name: "Stacks" }));
-    expect(
       await screen.findByText(
         state === "pending"
           ? "Loading repository setup…"
           : "Repository unavailable",
       ),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Dashboard" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(sockets).toBe(0);
+    if (state === "failed") {
+      repositoryReady = false;
+      repositorySetupResponse = undefined;
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(
+        await screen.findByRole("heading", {
+          name: "Configure the stack repository",
+        }),
+      ).toBeVisible();
+    }
+  },
+);
+it.each(["/register", "/login", "/setup"])(
+  "leaves %s when onboarding is already complete",
+  async (route) => {
+    location.hash = `#${route}`;
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", { name: "Stacks", level: 1 }),
+    ).toBeVisible();
+    await waitFor(() => expect(location.hash).toBe("#/stacks"));
   },
 );

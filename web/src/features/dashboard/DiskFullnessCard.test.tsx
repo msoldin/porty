@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/preact";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/preact";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Dashboard } from "./Dashboard";
 import { useMonitoring } from "./useMonitoring";
@@ -106,7 +112,7 @@ it("remembers multiple chosen disks without adding unselected filesystems", () =
   );
 });
 
-it("reports a missing selected disk without substituting a newly discovered disk", () => {
+it("removes obsolete disk selections while preserving the remaining selected disks", async () => {
   const state = fixture();
   const view = render(<DiskView state={state} loading={false} stale={false} />);
   fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
@@ -120,17 +126,22 @@ it("reports a missing selected disk without substituting a newly discovered disk
     },
   };
   view.rerender(<DiskView state={removed} loading={false} stale={false} />);
-  expect(screen.getByRole("status")).toHaveTextContent(
-    /selected disk.*unavailable/i,
+  await waitFor(() =>
+    expect(
+      screen.queryByText(/selected disk.*unavailable/i),
+    ).not.toBeInTheDocument(),
   );
   expect(screen.getAllByRole("meter", { name: /disk fullness$/ })).toHaveLength(
     1,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Customize dashboard" }));
-  const checkbox = screen.getByRole("checkbox", { name: "/data", exact: true });
-  expect(checkbox).toBeChecked();
-  fireEvent.click(checkbox);
-  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem("porty.dashboard.disks.v1")!)).toEqual(
+    [{ id: "root", name: "/" }],
+  );
+  view.unmount();
+  render(<DiskView state={removed} loading={false} stale={false} />);
+  expect(
+    screen.queryByText(/selected disk.*unavailable/i),
+  ).not.toBeInTheDocument();
 });
 
 it("keeps an intentionally empty selection after reopening the dashboard", () => {
@@ -216,3 +227,57 @@ it("offers compact selectable mount paths with copy controls", () => {
     dialog.getByRole("button", { name: "Copy mount path 2" }),
   ).toBeVisible();
 });
+
+it("uses the system disk when every saved disk has disappeared", async () => {
+  localStorage.setItem(
+    "porty.dashboard.disks.v1",
+    JSON.stringify([{ id: "removed", name: "/old" }]),
+  );
+  render(<DiskView state={fixture()} loading={false} stale={false} />);
+  expect(
+    await screen.findByRole("meter", { name: "/ disk fullness" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByText(/selected disk.*unavailable/i),
+  ).not.toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem("porty.dashboard.disks.v1")!)).toEqual(
+    [{ id: "root", name: "/" }],
+  );
+});
+it.each(["loading", "stale", "partial", "empty"])(
+  "preserves saved devices while the inventory is %s",
+  async (condition) => {
+    const disks = [{ id: "removed", name: "/old" }];
+    const choices = { network: "removed" };
+    localStorage.setItem("porty.dashboard.disks.v1", JSON.stringify(disks));
+    localStorage.setItem("porty.dashboard.v1", JSON.stringify(choices));
+    const state = fixture();
+    if (condition === "partial")
+      state.coverage = [
+        {
+          source: "filesystems",
+          partial: true,
+          omitted: 1,
+          reason: "read_failed",
+        },
+      ];
+    if (condition === "empty") state.inventory.devices = [];
+    const view = render(
+      <DiskView
+        state={state}
+        loading={condition === "loading"}
+        stale={condition === "stale"}
+      />,
+    );
+    expect(
+      JSON.parse(localStorage.getItem("porty.dashboard.disks.v1")!),
+    ).toEqual(disks);
+    expect(JSON.parse(localStorage.getItem("porty.dashboard.v1")!)).toEqual(
+      choices,
+    );
+    view.rerender(<DiskView state={fixture()} loading={false} stale={false} />);
+    expect(
+      await screen.findByRole("meter", { name: "/ disk fullness" }),
+    ).toBeVisible();
+  },
+);

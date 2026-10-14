@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/preact";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/preact";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Dashboard } from "./Dashboard";
 import { useMonitoring } from "./useMonitoring";
@@ -355,13 +361,68 @@ it("marks unavailable and stale values instead of zero", () => {
     ),
   ).toBeVisible();
 });
-it("announces fallback when a selected device disappears", () => {
+it.each([
+  ["network", "eth0"],
+  ["temperature", "temp"],
+  ["gpu", "gpu"],
+])(
+  "saves the available %s fallback and clears its warning across reloads",
+  async (kind, replacement) => {
+    localStorage.setItem(
+      "porty.dashboard.v1",
+      JSON.stringify({ network: "eth1", [kind]: "removed" }),
+    );
+    const view = render(<Dashboard onUnauthorized={() => {}} />);
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/no longer available/i),
+      ).not.toBeInTheDocument(),
+    );
+    expect(JSON.parse(localStorage.getItem("porty.dashboard.v1")!)).toEqual({
+      network: "eth1",
+      [kind]: replacement,
+    });
+    view.unmount();
+    render(<Dashboard onUnauthorized={() => {}} />);
+    expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument();
+  },
+);
+it("retains a missing device choice until a replacement becomes available", async () => {
   localStorage.setItem(
     "porty.dashboard.v1",
     JSON.stringify({ network: "removed" }),
   );
+  const value = fixture();
+  value.state.inventory.devices = value.state.inventory.devices.filter(
+    (device) => device.kind !== "interface",
+  );
+  vi.mocked(useMonitoring).mockReturnValue(value);
+  const view = render(<Dashboard onUnauthorized={() => {}} />);
+  expect(screen.getByText(/no longer available/i)).toBeVisible();
+  expect(JSON.parse(localStorage.getItem("porty.dashboard.v1")!)).toEqual({
+    network: "removed",
+  });
+  vi.mocked(useMonitoring).mockReturnValue(fixture());
+  view.rerender(<Dashboard onUnauthorized={() => {}} />);
+  await waitFor(() =>
+    expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument(),
+  );
+});
+it("clears a recovered device warning even when browser storage is denied", async () => {
+  localStorage.setItem(
+    "porty.dashboard.v1",
+    JSON.stringify({ network: "removed" }),
+  );
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw Error("Denied");
+  });
   render(<Dashboard onUnauthorized={() => {}} />);
-  expect(screen.getByRole("status")).toHaveTextContent(/no longer available/i);
+  await waitFor(() =>
+    expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument(),
+  );
+  expect(screen.getByRole("article", { name: "Download" })).toHaveTextContent(
+    "2 MB/s",
+  );
 });
 it("keeps selections functional when browser storage is denied", () => {
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
@@ -380,3 +441,36 @@ it("keeps selections functional when browser storage is denied", () => {
     "3 MB/s",
   );
 });
+
+it.each(["loading", "stale", "failed", "partial"])(
+  "waits for a healthy inventory before replacing a device during %s monitoring",
+  async (condition) => {
+    localStorage.setItem(
+      "porty.dashboard.v1",
+      JSON.stringify({ network: "removed" }),
+    );
+    const value = fixture();
+    value.loading = condition === "loading";
+    value.stale = condition === "stale";
+    value.error = condition === "failed" ? "Unavailable" : "";
+    if (condition === "partial")
+      value.state.coverage = [
+        { source: "network", partial: true, omitted: 1, reason: "read_failed" },
+      ];
+    vi.mocked(useMonitoring).mockReturnValue(value);
+    const view = render(<Dashboard onUnauthorized={() => {}} />);
+    expect(JSON.parse(localStorage.getItem("porty.dashboard.v1")!)).toEqual({
+      network: "removed",
+    });
+    vi.mocked(useMonitoring).mockReturnValue(fixture());
+    view.rerender(<Dashboard onUnauthorized={() => {}} />);
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/no longer available/i),
+      ).not.toBeInTheDocument(),
+    );
+    expect(JSON.parse(localStorage.getItem("porty.dashboard.v1")!)).toEqual({
+      network: "eth0",
+    });
+  },
+);

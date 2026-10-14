@@ -32,3 +32,17 @@ it("restores the visible hash while browser navigation awaits a decision", () =>
   window.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
 });
+
+it("replaces a guarded route without adding history or retaining stale edits", () => {
+  history.replaceState(null, "", "#/stacks/one");
+  const view = renderHook(() => useHashRoute());
+  act(() => view.result.current.setDirty(true));
+  act(() => view.result.current.navigate("/repository"));
+  const length = history.length;
+  act(() => view.result.current.navigate("/login", true));
+  expect(location.hash).toBe("#/login");
+  expect(view.result.current.route).toBe("/login");
+  expect(view.result.current.dirty).toBe(false);
+  expect(view.result.current.pendingRoute).toBeUndefined();
+  expect(history.length).toBe(length);
+});

@@ -7,8 +7,11 @@ import type { RepositorySetupStatus } from "../features/repository/types";
 import { Auth } from "../features/auth/Auth";
 import { Notice } from "../components/Feedback";
 import { Workspace } from "./Workspace";
+import { RepositorySetup } from "../features/repository/RepositorySetup";
+import { useHashRoute } from "./useHashRoute";
 
 export function App() {
+  const navigation = useHashRoute();
   const [session, setSession] = useState<Session | null>(null);
   const [registered, setRegistered] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -18,6 +21,21 @@ export function App() {
   const [repositoryError, setRepositoryError] = useState("");
   const [repositoryAttempt, setRepositoryAttempt] = useState(0);
   const [error, setError] = useState("");
+  let requiredRoute: string | undefined;
+  if (!loading && !error) {
+    if (!session) requiredRoute = registered ? "/login" : "/register";
+    else if (repositoryStatus && repositoryStatus.state !== "ready")
+      requiredRoute = "/setup";
+    else if (
+      repositoryStatus?.state === "ready" &&
+      ["/register", "/login", "/setup"].includes(navigation.route)
+    )
+      requiredRoute = "/stacks";
+  }
+  useEffect(() => {
+    if (requiredRoute && navigation.route !== requiredRoute)
+      navigation.navigate(requiredRoute, true);
+  }, [requiredRoute, navigation.route]);
   useEffect(() => {
     let active = true;
     async function load() {
@@ -91,15 +109,45 @@ export function App() {
         <button onClick={() => location.reload()}>Retry</button>
       </main>
     );
-  return session ? (
+  if (!session)
+    return (
+      <Auth
+        registered={registered}
+        onSession={(value) => {
+          setRegistered(true);
+          setSession(value);
+        }}
+      />
+    );
+  if (repositoryError)
+    return (
+      <main class="auth">
+        <Notice>{repositoryError}</Notice>
+        <button onClick={() => setRepositoryAttempt((value) => value + 1)}>
+          Retry
+        </button>
+      </main>
+    );
+  if (repositoryLoading || !repositoryStatus)
+    return (
+      <main class="auth" role="status">
+        Loading repository setup…
+      </main>
+    );
+  if (repositoryStatus.state !== "ready")
+    return (
+      <main>
+        <RepositorySetup
+          status={repositoryStatus}
+          onReady={setRepositoryStatus}
+        />
+      </main>
+    );
+  return (
     <Workspace
       session={session}
+      navigation={navigation}
       repositoryStatus={repositoryStatus}
-      repositoryLoading={
-        repositoryLoading || (!repositoryStatus && !repositoryError)
-      }
-      repositoryError={repositoryError}
-      retryRepository={() => setRepositoryAttempt((value) => value + 1)}
       onRepositoryChange={setRepositoryStatus}
       logout={() => {
         setCSRF("");
@@ -108,7 +156,5 @@ export function App() {
         setSession(null);
       }}
     />
-  ) : (
-    <Auth registered={registered} onSession={setSession} />
   );
 }

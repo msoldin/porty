@@ -35,17 +35,20 @@ export function useHashRoute() {
       window.removeEventListener("beforeunload", beforeUnload);
     };
   }, []);
-  function navigate(path: string) {
+  function navigate(path: string, replace = false) {
     if (path === routeRef.current) return;
-    if (dirtyRef.current) {
+    if (dirtyRef.current && !replace) {
       pending.current = path;
       setPendingRoute(path);
       return;
     }
+    if (replace) cancelNavigation();
+    dirtyRef.current = false;
     setDirty(false);
     setRoute(path);
     routeRef.current = path;
-    location.hash = path;
+    if (replace) history.replaceState(null, "", `#${path}`);
+    else location.hash = path;
   }
   function cancelNavigation() {
     pending.current = undefined;

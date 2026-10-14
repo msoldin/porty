@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { Device } from "./types";
 type DiskChoice = { id: string; name: string };
 const storageKey = "porty.dashboard.disks.v1";
@@ -24,7 +24,7 @@ function readSelection(): DiskChoice[] | undefined {
   }
 }
 
-export function useDiskSelection(devices: Device[]) {
+export function useDiskSelection(devices: Device[], inventoryReady: boolean) {
   const [selection, setSelection] = useState<DiskChoice[] | undefined>(
     readSelection,
   );
@@ -45,6 +45,15 @@ export function useDiskSelection(devices: Device[]) {
   const missing = choices.filter(
     (choice) => !filesystems.some((device) => device.id === choice.id),
   );
+  useEffect(() => {
+    if (!inventoryReady || !missing.length || !primary) return;
+    const retained = choices.filter((choice) =>
+      filesystems.some((device) => device.id === choice.id),
+    );
+    saveSelection(
+      retained.length ? retained : [{ id: primary.id, name: primary.name }],
+    );
+  }, [devices, inventoryReady, selection]);
   function choose(device: DiskChoice, checked: boolean) {
     const next = checked
       ? [
@@ -52,6 +61,9 @@ export function useDiskSelection(devices: Device[]) {
           { id: device.id, name: device.name },
         ]
       : choices.filter((choice) => choice.id !== device.id);
+    saveSelection(next);
+  }
+  function saveSelection(next: DiskChoice[]) {
     setSelection(next);
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));

@@ -118,7 +118,7 @@ async function navigate(page: Page, name: string) {
     await page.getByRole("button", { name: "Navigation", exact: true }).click();
   await nav.getByRole("link", { name, exact: true }).click();
 }
-async function register(page: Page) {
+async function register(page: Page, completeSetup = true) {
   await page.goto(baseURL);
   await expect(page).toHaveTitle("Porty");
   await page.getByLabel("Username").fill("admin");
@@ -126,9 +126,22 @@ async function register(page: Page) {
     .getByLabel("Password", { exact: true })
     .fill("correct horse battery staple");
   await page.getByRole("button", { name: "Create administrator" }).click();
+  await expect(page).toHaveURL(/#\/setup$/);
+  if (!completeSetup) return;
+  await page.getByRole("button", { name: "Create local repository" }).click();
+  await page
+    .getByRole("button", { name: "Create repository", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Stacks", exact: true }),
+  ).toBeVisible();
+  await navigate(page, "Dashboard");
   await expect(
     page.getByRole("heading", { name: "Dashboard", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByText("Connecting to host", { exact: true }),
+  ).toHaveCount(0);
 }
 function metrics() {
   const s = snapshotFixture();
@@ -246,17 +259,64 @@ function metrics() {
   s.current.sequence = "151";
   return s;
 }
-test("opens metrics before repository setup and keeps them usable during a repository outage", async ({
+test("requires authentication then repository setup before opening workspace pages", async ({
   page,
-}) => {
-  await register(page);
-  await expect(page.getByRole("heading", { name: "CPU usage" })).toBeVisible();
-  await navigate(page, "Stacks");
+}, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(baseURL + "/#/settings");
+  await expect(page).toHaveURL(/#\/register$/);
   await expect(
-    page.getByRole("heading", { name: "Configure the stack repository" }),
+    page.getByRole("button", { name: "Create administrator" }),
   ).toBeVisible();
-  await expect(page.getByRole("main")).toHaveCount(1);
+  await register(page, false);
+  for (const path of [
+    "/",
+    "/settings",
+    "/alerts",
+    "/stacks",
+    "/stacks/missing",
+    "/repository",
+    "/operations",
+    "/audit",
+    "/unknown",
+  ]) {
+    await page.goto(`${baseURL}/#${path}`);
+    await expect(page).toHaveURL(/#\/setup$/);
+    await expect(
+      page.getByRole("heading", { name: "Configure the stack repository" }),
+    ).toBeVisible();
+    await expect(page.getByRole("navigation")).toHaveCount(0);
+  }
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Create local repository" }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("repository-setup.png"),
+    fullPage: true,
+  });
+  await page.context().clearCookies();
+  await page.goto(baseURL + "/#/alerts");
+  await page.reload();
+  await expect(page).toHaveURL(/#\/login$/);
+  await page.getByLabel("Username").fill("admin");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("correct horse battery staple");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/#\/setup$/);
+  await page.getByRole("button", { name: "Create local repository" }).click();
+  await page
+    .getByRole("button", { name: "Create repository", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Stacks", exact: true }),
+  ).toBeVisible();
   await navigate(page, "Dashboard");
+  await expect(
+    page.getByRole("heading", { name: "Dashboard", exact: true }),
+  ).toBeVisible();
   await page.route("**/api/v1/repository/setup/status", (r) =>
     r.fulfill({
       status: 503,
@@ -264,26 +324,20 @@ test("opens metrics before repository setup and keeps them usable during a repos
     }),
   );
   await page.reload();
+  await expect(page.getByText("Repository unavailable")).toBeVisible();
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  await page.unroute("**/api/v1/repository/setup/status");
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Dashboard", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Repository unavailable")).toHaveCount(0);
-  await navigate(page, "Stacks");
-  await expect(page.getByText("Repository unavailable")).toBeVisible();
-  await navigate(page, "Settings");
-  await expect(
-    page.getByRole("heading", { name: "Change password" }),
-  ).toBeVisible();
+  expect(errors).toEqual([]);
 });
 test("navigates dashboard to stacks and a container and back", async ({
   page,
 }) => {
   await register(page);
   await navigate(page, "Stacks");
-  await page.getByRole("button", { name: "Create local repository" }).click();
-  await page
-    .getByRole("button", { name: "Create repository", exact: true })
-    .click();
   await page.route("**/api/v1/stacks/*/containers", (r) =>
     r.fulfill({
       json: [
@@ -890,6 +944,10 @@ test("clears metrics on logout and after session expiry", async ({ page }) => {
     .fill("correct horse battery staple");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(
+    page.getByRole("heading", { name: "Stacks", exact: true }),
+  ).toBeVisible();
+  await navigate(page, "Dashboard");
+  await expect(
     page.getByRole("heading", { name: "Dashboard", exact: true }),
   ).toBeVisible();
   await page.route("**/api/v1/monitoring*", (r) =>
@@ -902,4 +960,58 @@ test("clears metrics on logout and after session expiry", async ({ page }) => {
     page.getByRole("heading", { name: "Welcome back" }),
   ).toBeVisible();
   await expect(page.getByText("25%", { exact: true })).toHaveCount(0);
+});
+
+test("automatically repairs missing device choices and keeps warnings cleared after reload", async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("**/api/v1/monitoring*", (route) =>
+    route.fulfill({ json: metrics() }),
+  );
+  await register(page);
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "porty.dashboard.v1",
+      JSON.stringify({ network: "old-network" }),
+    );
+    localStorage.setItem(
+      "porty.dashboard.disks.v1",
+      JSON.stringify([{ id: "old-disk", name: "/old" }]),
+    );
+  });
+  await page.reload();
+  await expect(
+    page.getByRole("meter", { name: "/ disk fullness" }),
+  ).toBeVisible();
+  await expect(page.locator(".selection-notice")).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "Download" })).toContainText(
+    "enp3s0",
+  );
+  await expect(page.getByRole("article", { name: "Upload" })).toContainText(
+    "enp3s0",
+  );
+  await page.reload();
+  await expect(
+    page.getByRole("meter", { name: "/ disk fullness" }),
+  ).toBeVisible();
+  await expect(page.locator(".selection-notice")).toHaveCount(0);
+  await page.getByRole("button", { name: "Customize dashboard" }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Network interface" }),
+  ).toHaveValue("eth0");
+  await expect(
+    page.getByRole("checkbox", { name: "/", exact: true }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "/old", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.evaluate(() => (document.documentElement.dataset.theme = "dark"));
+  await page.screenshot({
+    path: info.outputPath("recovered-device-selections.png"),
+    fullPage: true,
+  });
+  expect(errors).toEqual([]);
 });

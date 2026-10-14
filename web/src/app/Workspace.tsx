@@ -2,7 +2,7 @@ import { Alerts } from "../features/alerts/Alerts";
 import { useAlerts } from "../features/alerts/useAlerts";
 import { getOperation } from "../features/operations/api";
 import { useRef, useState } from "preact/hooks";
-import { useHashRoute } from "./useHashRoute";
+import type { useHashRoute } from "./useHashRoute";
 import { parseStackRoute, requiresRepository } from "./routes";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { WorkspaceShell } from "./WorkspaceShell";
@@ -16,7 +16,6 @@ import type { Operation } from "../features/operations/types";
 import { signOut } from "../features/auth/api";
 import { StackInventory } from "../features/stacks/StackInventory";
 import { Dashboard } from "../features/dashboard/Dashboard";
-import { RepositorySetup } from "../features/repository/RepositorySetup";
 import { StackDetail } from "../features/stacks/StackDetail";
 import { ContainerDetail } from "../features/stacks/ContainerDetail";
 import { AccountSettings } from "../features/auth/AccountSettings";
@@ -26,18 +25,14 @@ import { Empty, Notice } from "../components/Feedback";
 
 export function Workspace({
   session,
+  navigation,
   repositoryStatus,
-  repositoryLoading,
-  repositoryError,
-  retryRepository,
   onRepositoryChange,
   logout,
 }: {
   session: Session;
-  repositoryStatus: RepositorySetupStatus | null;
-  repositoryLoading: boolean;
-  repositoryError: string;
-  retryRepository: () => void;
+  navigation: ReturnType<typeof useHashRoute>;
+  repositoryStatus: RepositorySetupStatus;
   onRepositoryChange: (status: RepositorySetupStatus) => void;
   logout: () => void;
 }) {
@@ -49,7 +44,7 @@ export function Workspace({
     pendingRoute,
     confirmNavigation,
     cancelNavigation,
-  } = useHashRoute();
+  } = navigation;
   const {
     stacks,
     repo,
@@ -197,18 +192,6 @@ export function Workspace({
             streamEnabled={repositoryStatus?.state === "ready"}
             navigate={navigate}
             openOperation={openOperation}
-          />
-        ) : repositoryError ? (
-          <Notice>
-            {repositoryError}{" "}
-            <button onClick={retryRepository}>Retry repository setup</button>
-          </Notice>
-        ) : repositoryLoading || !repositoryStatus ? (
-          <Empty>Loading repository setup…</Empty>
-        ) : repositoryStatus.state !== "ready" ? (
-          <RepositorySetup
-            status={repositoryStatus}
-            onReady={onRepositoryChange}
           />
         ) : loading ? (
           <Empty>Loading stacks…</Empty>

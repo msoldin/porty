@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { useMonitoring } from "./useMonitoring";
 import { MetricAvailability } from "./MetricAvailability";
 import { MetricCard } from "./MetricCard";
@@ -110,7 +110,18 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [choices, setChoices] = useState<Choices>(readChoices);
   const devices = state?.inventory.devices ?? [];
   const [customizing, setCustomizing] = useState(false);
-  const disks = useDiskSelection(devices);
+  const inventoryReady =
+    !loading && !error && !stale && !!state?.inventory.revision;
+  function canRecover(sources: string[]) {
+    return (
+      inventoryReady &&
+      !state?.coverage.some(
+        (item) =>
+          sources.includes(item.source) && (item.partial || item.reason),
+      )
+    );
+  }
+  const disks = useDiskSelection(devices, canRecover(["filesystems"]));
   const interfaces = devices.filter((device) => device.kind === "interface");
   const sensors = devices.filter((device) =>
     state?.inventory.series.some(
@@ -137,7 +148,9 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
     (device) => device.kind === "block" && device.default,
   );
   function choose(kind: keyof Choices, id: string) {
-    const next = { ...choices, [kind]: id || undefined };
+    saveChoices({ ...choices, [kind]: id || undefined });
+  }
+  function saveChoices(next: Choices) {
     setChoices(next);
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));
@@ -145,6 +158,36 @@ export function Dashboard({ onUnauthorized }: { onUnauthorized: () => void }) {
       /* In-memory selections remain usable. */
     }
   }
+  useEffect(() => {
+    const replacements = { network, temperature, gpu };
+    const sources = {
+      network: ["network"],
+      temperature: ["sensors", "gpu", "nvidia"],
+      gpu: ["gpu", "nvidia"],
+    };
+    const next = { ...choices };
+    let changed = false;
+    for (const kind of Object.keys(choices) as (keyof Choices)[]) {
+      const replacement = replacements[kind];
+      if (
+        choices[kind] &&
+        replacement &&
+        choices[kind] !== replacement.id &&
+        canRecover(sources[kind])
+      ) {
+        next[kind] = replacement.id;
+        changed = true;
+      }
+    }
+    if (changed) saveChoices(next);
+  }, [
+    choices,
+    inventoryReady,
+    state?.coverage,
+    network?.id,
+    temperature?.id,
+    gpu?.id,
+  ]);
   const removed = (Object.keys(choices) as (keyof Choices)[]).filter((kind) => {
     const list =
       kind === "network" ? interfaces : kind === "temperature" ? sensors : gpus;
