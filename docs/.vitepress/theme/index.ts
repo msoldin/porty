@@ -15,7 +15,13 @@ export default {
       "doc-before": () =>
         h("aside", { class: "development-notice" }, [
           edition.label + " ",
-          h("a", { href: edition.switchHref }, edition.switchLabel),
+          // Editions have separate routers and asset maps. An explicit target
+          // bypasses VitePress interception while keeping the same browser tab.
+          h(
+            "a",
+            { href: edition.switchHref, target: "_self" },
+            edition.switchLabel,
+          ),
         ]),
     });
   },

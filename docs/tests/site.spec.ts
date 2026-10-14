@@ -126,11 +126,30 @@ for (const edition of editions) {
         "href",
         `https://github.com/msoldin/porty/${edition.ref === "main" ? "edit" : "blob"}/${edition.ref}/docs/configuration.md`,
       );
-      await page.locator(".development-notice a").click();
+      // Exercise an interactive control so the client router is active before
+      // switching; a click on server-rendered HTML can hide router interception.
+      await page.getByRole("button", { name: "Search" }).first().click();
+      await expect(page.getByRole("searchbox")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".VPLocalSearchBox")).not.toBeVisible();
       const destination =
         edition.base === "/porty/" ? "/porty/next/" : "/porty/";
+      const [response] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.url() === `http://127.0.0.1:4174${destination}` &&
+            response.request().resourceType() === "document",
+          { timeout: 5000 },
+        ),
+        page.locator(".development-notice a").click(),
+      ]);
+      expect(response.status()).toBe(200);
       await expect(page).toHaveURL(`http://127.0.0.1:4174${destination}`);
       await expect(page.locator(".vp-doc h1")).toBeVisible();
+      await expect(page.locator(".development-notice a")).toHaveAttribute(
+        "href",
+        edition.base,
+      );
     });
   });
 }
