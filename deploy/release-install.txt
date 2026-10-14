@@ -1,0 +1,12 @@
+Porty for Linux amd64 (glibc 2.36 or newer)
+
+Verify checksums.txt with sha256sum -c before installing. Install porty as
+/usr/local/bin/porty; follow the operator guide for the service account,
+configuration, private data directory, Docker access, and systemd unit.
+
+Run porty --version to identify this build. Version-matched guides are linked
+from https://github.com/msoldin/porty/releases .
+
+Back up the complete stopped Porty data directory before an upgrade. Migrations
+are forward-only; rollback requires BOTH the previous executable and the
+pre-upgrade data backup. The example configuration is not a runtime secret.

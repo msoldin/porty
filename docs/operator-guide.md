@@ -8,6 +8,31 @@ Porty runs on one Linux server and manages the Docker daemon with the same effec
 
 Install [Docker Engine](https://docs.docker.com/engine/install/) on the Linux runtime host. Porty uses in-process Git and Compose SDKs; Git and the Docker Compose CLI plugin are not runtime dependencies. Docker socket access is required for workload management.
 
+### Release binary
+
+Published packages support **Linux amd64 with glibc 2.36 or newer** (Debian 12/Bookworm baseline). Alpine/musl and ARM are not supported by these archives. CGO is enabled, including optional NVIDIA monitoring; the executable starts without NVIDIA libraries. The host needs CA certificates for HTTPS connections.
+
+After `v0.1.0` is published, download the archive and checksums from the same [GitHub Release](https://github.com/msoldin/porty/releases). Select the version deliberately; the following example is pending the first rollout:
+
+```sh
+version=v0.1.0
+archive="porty_${version#v}_linux_amd64.tar.gz"
+base="https://github.com/msoldin/porty/releases/download/$version"
+mkdir "porty-$version"
+cd "porty-$version"
+curl --fail --location --output "$archive" "$base/$archive"
+curl --fail --location --output checksums.txt "$base/checksums.txt"
+sha256sum --check checksums.txt
+tar -xzf "$archive"
+./porty --version
+```
+
+The archive contains `porty`, `porty.example.yaml`, `porty.service`, and `INSTALL.txt`. The release also provides `release-manifest.json` recording the source SHA and artifact hashes. Checksums detect corruption; obtain them from the trusted release page along with the archive. Read the tagged documentation linked in the release notes.
+
+Continue with the service installation below. When installing from an extracted archive, replace `deploy/porty.example.yaml` with `porty.example.yaml` and `deploy/systemd/porty.service` with `porty.service` in those commands.
+
+### Build from source
+
 On the build machine, install Git (to obtain the source), [Go **1.27.1**](https://go.dev/doc/install), [Bun **1.4.2**](https://bun.com/docs/installation), and a C compiler/libc development headers for the default CGO-enabled build. These versions match the current repository; check `go.mod` and `web/package.json` when building another revision. Clone the repository and build as an unprivileged user:
 
 ```sh
@@ -97,7 +122,7 @@ This protects Porty's state and repository, including stored environment values 
 
 ## Upgrade and rollback
 
-Build the new revision's frontend and binary, run the release checks, take a backup, stop the service, atomically replace `/usr/local/bin/porty`, and start it. Check `readyz` and the journal:
+Read the new version's release notes and tagged guides. Download and verify its binary (or build and test the selected source revision), record `porty --version`, take a backup, stop the service, atomically replace `/usr/local/bin/porty`, and start it. Preserve the existing configuration. Check `readyz` and the journal:
 
 ```sh
 curl --fail http://127.0.0.1:8080/readyz
@@ -106,9 +131,11 @@ sudo journalctl -u porty -n 100 --no-pager
 
 Migrations run at startup and are forward-only. Roll back by stopping Porty and restoring both the previous binary and the pre-upgrade data backup.
 
-For OCI installations, rebuild/tag the image from the selected source revision, back up the data volume, and recreate the Porty container with the same volume, socket access, configuration, and network settings. Retain the previous image and data backup together for rollback. This guide does not assume a published binary release or registry image.
+For OCI installations, pull the selected release's exact image tag or digest (or build from that revision), back up the data volume, and recreate the Porty container with the same volume, socket access, configuration, and network settings. Retain the previous image and data backup together for rollback. Never start the old binary against a database already migrated by a newer version without restoring its matching backup.
 
 ## OCI image
+
+After the first release, use `ghcr.io/msoldin/porty:v0.1.0` in place of `porty:local` in the run command below and skip the local build. Pull with `docker pull ghcr.io/msoldin/porty:v0.1.0`. Release notes record the immutable digest; use `ghcr.io/msoldin/porty@sha256:<digest-from-release>` to pin it. There is no moving `latest` image tag. Published images target Linux amd64. Anonymous pulls require the maintainer to complete the [GHCR visibility step](releasing.md#first-release-rollout).
 
 The image is a convenience deployment and is not a sandbox. On the local Linux Docker host, obtain the source and build the frontend as above. The Dockerfile builds the Go binary and embeds the already-built `web/dist`; it does not run Bun.
 

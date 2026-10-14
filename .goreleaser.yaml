@@ -1,0 +1,32 @@
+version: 2
+project_name: porty
+builds:
+  - id: porty
+    main: ./cmd/porty
+    binary: porty
+    env: [CGO_ENABLED=1]
+    goos: [linux]
+    goarch: [amd64]
+    goamd64: [v1]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Env.PORTY_RELEASE_TAG }} -X main.commit={{ .Env.PORTY_RELEASE_COMMIT }} -X main.buildDate={{ .Env.PORTY_RELEASE_DATE }}
+archives:
+  - id: porty
+    formats: [tar.gz]
+    name_template: porty_{{ .Version }}_linux_amd64
+    files:
+      - src: deploy/porty.example.yaml
+        dst: porty.example.yaml
+      - src: deploy/systemd/porty.service
+        dst: porty.service
+      - src: deploy/release-install.txt
+        dst: INSTALL.txt
+checksum:
+  name_template: checksums.txt
+snapshot:
+  version_template: "{{ .Env.PORTY_RELEASE_VERSION }}"
+changelog:
+  disable: true
+release:
+  disable: true

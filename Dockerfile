@@ -4,10 +4,18 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
+ARG PORTY_VERSION=dev
+ARG PORTY_COMMIT=unknown
+ARG PORTY_BUILD_DATE=unknown
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o /out/porty ./cmd/porty
+    CGO_ENABLED=1 GOAMD64=v1 go build -trimpath -ldflags="-s -w -X main.version=${PORTY_VERSION} -X main.commit=${PORTY_COMMIT} -X main.buildDate=${PORTY_BUILD_DATE}" -o /out/porty ./cmd/porty
 
 FROM debian:bookworm-20261005-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+ARG PORTY_VERSION=dev
+ARG PORTY_COMMIT=unknown
+LABEL org.opencontainers.image.source="https://github.com/msoldin/porty" \
+      org.opencontainers.image.version="${PORTY_VERSION}" \
+      org.opencontainers.image.revision="${PORTY_COMMIT}"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tzdata libc6 \
     && rm -rf /var/lib/apt/lists/* \

@@ -223,3 +223,27 @@ Open `http://127.0.0.1:4174/porty/`. For browser validation, install Chromium wi
 The site is labeled development documentation because it follows `main`. Releases link to their tagged guides on GitHub. Keep Markdown filenames and heading anchors stable. The site transforms home/repository links at render time so the same source remains readable on GitHub. Planning documents, mockups, and branding generation files are excluded from the artifact; adding a sidebar item alone does not publish a new source directory.
 
 Publishing uses `.github/workflows/docs.yml`. In repository Settings → Pages, select **GitHub Actions** as the source; restrict the `github-pages` environment to `main`. Pull requests build, check links, and run desktop/mobile browser tests without deployment permissions. Only successful pushes or manual runs on `main` deploy. Deployments are serialized, and a failed build leaves the previous site live. Browser evidence is attached to workflow runs.
+
+## Versioned releases
+
+See [Releasing Porty](releasing.md) for version selection, tagging, permissions, and interrupted-run recovery. Pushing an accepted version tag runs the reusable verification workflow against the exact tag commit. Conventional Commits remain the commit convention; they do not bump versions or open release PRs.
+
+`porty --version` prints linker-injected version, full commit, and build date without loading configuration or opening state. Ordinary `go build` defaults to `dev`, `unknown`, and `unknown`. Release dates come from the selected commit timestamp in UTC.
+
+Use a separate checkout for local packaging. Docker, Node 24.16.0, Bun 1.4.2, Python 3.12+, and network access for pinned dependencies/base images are required:
+
+```sh
+node --test .github/scripts/*.test.cjs
+./deploy/build-release.sh snapshot
+./deploy/release_test.sh "$PWD/dist" porty:release-test
+./deploy/package_test.sh
+PORTY_LIVE_DOCKER_CHECK=1 ./deploy/package_test.sh
+```
+
+The snapshot command rebuilds tracked `web/dist`, creates ignored `dist/`, and loads local images. It permits local edits for development and never publishes; snapshot SHA metadata identifies the checkout base, so it is not a clean-source attestation. Release mode requires a clean checkout matching the validated tag before building, then allows only regenerated `web/dist` changes. Do not commit generated UI changes from this validation unless intended.
+
+GoReleaser OSS 2.18.3 runs with CGO in the pinned Bookworm Go builder. Its download is checksum-verified; `GOAMD64=v1` preserves the baseline CPU target. The archive and container must both start in the pinned runtime, serve the freshly built UI, and report identical metadata. The scripts also check archive contents/checksums, non-root execution, private data modes, glibc linkage, and startup without NVML. Docker cache volumes `porty-release-go-mod` and `porty-release-go-build` are reusable build caches. The saved image tar is CI-only; it is not attached to GitHub Releases.
+
+Local tests simulate GitHub/registry responses and interrupted publishing. They do not establish GitHub token permissions, package visibility, Pages settings, or hosted publication. Record the first hosted run separately. Existing live workload/hardware limitations documented above still apply.
+
+The registration/password-change browser journey expects the current sign-in redirect to Stacks and checks that the selected theme survives. This follows the route change introduced before release automation.

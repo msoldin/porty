@@ -1,4 +1,5 @@
 .worktrees/
+dist/
 .superpowers/
 web/node_modules/
 web/test-results/
