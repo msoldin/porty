@@ -201,6 +201,8 @@ async function recordImageDigest(args) {
     owner,
     repo,
     release_id: releaseId,
+    // Preserve the association: omitting tag_name can untag a draft on GitHub.
+    tag_name: manifest.tag,
     body: `${state.release.body}\n\nContainer: \`${manifest.image.split(":")[0]}@${imageDigest}\`\n\n<!-- porty-image:${imageDigest} -->`,
   });
 }
@@ -226,6 +228,7 @@ async function finalizeRelease(args) {
     owner,
     repo,
     release_id: releaseId,
+    tag_name: manifest.tag,
     draft: false,
     prerelease: parseReleaseTag(manifest.tag).prerelease,
     make_latest: String(shouldMakeLatest(manifest.tag, releases)),

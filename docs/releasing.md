@@ -55,6 +55,10 @@ Use **Re-run failed jobs** or **Re-run all jobs** on the original tag-triggered 
 
 An incomplete GitHub asset left by an interrupted server upload is treated as a conflict; it is not deleted automatically. Authentication, rate-limit, and registry errors stop publication rather than being interpreted as a missing image. The draft records the manifest hash when created, so even an empty draft is bound to its original tested build. Keep the source/build/digest markers in draft notes intact. Do not manually publish a partial draft.
 
+Release updates explicitly include `tag_name` when recording the image digest and publishing: omitting it can detach a draft from its version and leave it with an `untagged-…` name. If an older workflow stops with `Release identity conflict`, inspect the draft's tag association before retrying. A rerun uses the original tagged scripts, so a fix on `main` alone does not repair that run.
+
+For a detached draft, preserve the existing Git tag, assets, and image. Manual recovery is appropriate only after verification/build/image-pull steps succeeded, the tag still resolves to the manifest commit, uploaded asset digests match the original Actions bundle, and the recorded image digest matches the verified image. Then edit the existing draft, select the existing version tag, preserve its notes and assets, and publish it with the correct prerelease/latest settings. Run the documentation workflow on `main` afterward. If those checks cannot establish provenance, leave the version unpublished and use a new version containing the fix.
+
 Publication jobs are serialized across versions so stable-version selection cannot race within this workflow. GitHub can replace an older pending concurrency job with a newer one; rerun the canceled run when needed. Build jobs are serialized per tag. Avoid manual registry writes or other release automation that bypasses these controls; GHCR does not provide a transaction spanning the push and GitHub Release update.
 
 ## First release rollout

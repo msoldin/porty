@@ -69,6 +69,9 @@ function fixture() {
     updateRelease: async (args) => {
       write("update");
       const r = state.releases.find((r) => r.id === args.release_id);
+      // GitHub can detach a draft's tag when PATCH omits tag_name.
+      if (r.draft && !Object.hasOwn(args, "tag_name"))
+        r.tag_name = "untagged-fixture";
       Object.assign(r, args);
       return { data: r };
     },
@@ -87,6 +90,22 @@ function fixture() {
   };
   return { state, args, manifest };
 }
+test("preserves the version tag when recording the digest and publishing the draft", async () => {
+  const { state, args } = fixture();
+  const releaseId = await prepareDraft(args);
+  const assetIds = state.assets.map((asset) => asset.id);
+  await recordImageDigest({ ...args, releaseId, imageDigest: digest });
+  assert.equal(state.releases[0].tag_name, "v0.1.0");
+  assert.equal(state.releases[0].draft, true);
+  await finalizeRelease({ ...args, releaseId, imageDigest: digest });
+  assert.equal(state.releases[0].tag_name, "v0.1.0");
+  assert.equal(state.releases[0].draft, false);
+  assert.equal(state.releases[0].id, releaseId);
+  assert.deepEqual(
+    state.assets.map((asset) => asset.id),
+    assetIds,
+  );
+});
 test("uploads verified artifacts once and publishes only after recording the image digest", async () => {
   const { state, args, manifest } = fixture();
   const releaseId = await prepareDraft(args);
