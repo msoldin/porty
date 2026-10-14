@@ -8,8 +8,10 @@ This walkthrough installs Porty, creates a local configuration repository, and d
 
 Choose one path in the operator guide:
 
-- [Host installation](operator-guide.md#host-installation): build a binary and run it as a systemd service.
-- [OCI image](operator-guide.md#oci-image): build an image and run it with persistent storage and Docker socket access.
+- [Host installation](operator-guide.md#host-installation): download a versioned Linux amd64 binary or build from source, then run it as a systemd service.
+- [OCI image](operator-guide.md#oci-image): use an exact release tag or build an image, with persistent storage and Docker socket access.
+
+Release downloads and GHCR examples become available after the [first release rollout](releasing.md#first-release-rollout). Until then, use the source-build paths.
 
 Both paths serve the UI at `http://127.0.0.1:8080`. Open that address on the server. If your browser is on another machine, a private SSH tunnel lets you keep the default loopback listener:
 

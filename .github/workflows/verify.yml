@@ -2,7 +2,15 @@ name: verify
 
 on:
   push:
+    branches: ["**"]
   pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact source commit to verify
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -11,14 +19,20 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: 1.27.1
           cache: true
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.16.0
+      - run: node --test .github/scripts/*.test.cjs
       - name: Install sqlc v1.31.1
         run: |
           curl -fsSL https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz -o /tmp/sqlc.tar.gz

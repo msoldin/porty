@@ -6,6 +6,8 @@ Documentation website (available after the first Pages deployment): [msoldin.git
 
 **[Documentation](docs/README.md) · [Get started](docs/getting-started.md) · [Feature overview](docs/features.md)**
 
+[GitHub Releases](https://github.com/msoldin/porty/releases) provide versioned Linux amd64 downloads and container digests after the first rollout. Maintainers publish by pushing a version tag; see the [release guide](docs/releasing.md).
+
 ![Porty dashboard showing CPU, memory, temperature, network, and disk metrics](docs/images/dashboard.png)
 
 _The current Porty interface with demonstration metrics._

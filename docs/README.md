@@ -35,4 +35,6 @@ Website (available after the first Pages deployment): [Porty documentation](http
 
 See the [development guide](development.md) for builds and tests and [repository guidelines](../AGENTS.md) for contribution requirements. User documentation changes belong with the feature or behavior change they explain.
 
+Maintainers: [Releasing Porty](releasing.md) explains version tags, publishing, and recovery. The website tracks development on `main`; use the tagged guides in release notes for an installed version.
+
 [Back to the project README](../README.md)

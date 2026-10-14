@@ -60,6 +60,7 @@ export default defineConfig({
         items: [
           { text: "Security", link: "/security" },
           { text: "Development", link: "/development" },
+          { text: "Releasing", link: "/releasing" },
         ],
       },
     ],

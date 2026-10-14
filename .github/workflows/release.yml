@@ -1,0 +1,226 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      commit: ${{ steps.identity.outputs.commit }}
+      date: ${{ steps.identity.outputs.date }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.16.0
+      - id: identity
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        with:
+          script: |
+            const {resolveTag} = require('./.github/scripts/release-policy.cjs');
+            const identity = resolveTag(process.env.RELEASE_TAG);
+            for (const key of ['tag', 'commit', 'date']) core.setOutput(key, identity[key]);
+
+  verify:
+    needs: validate
+    uses: ./.github/workflows/verify.yml
+    with:
+      ref: ${{ needs.validate.outputs.commit }}
+
+  bundle:
+    needs: [validate, verify]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      action: ${{ steps.recovery.outputs.action }}
+    env:
+      PORTY_RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+      PORTY_RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+      PORTY_RELEASE_DATE: ${{ needs.validate.outputs.date }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.16.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - name: Find original build bundle
+        id: recovery
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const {inspectRelease} = require('./.github/scripts/publish-release.cjs');
+            const {recoveryAction} = require('./.github/scripts/release-bundle.cjs');
+            const state = await inspectRelease({github, ...context.repo, tag: process.env.PORTY_RELEASE_TAG, commit: process.env.PORTY_RELEASE_COMMIT});
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {...context.repo, run_id: context.runId, per_page: 100});
+            const saved = artifacts.find(a => a.name === `porty-release-${context.runId}` && !a.expired);
+            core.setOutput('action', recoveryAction(state.status, !!saved));
+      - if: steps.recovery.outputs.action == 'restore'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: porty-release-${{ github.run_id }}
+          path: dist
+      - name: Build and smoke-test native package and image
+        if: steps.recovery.outputs.action == 'build'
+        run: ./deploy/build-release.sh release
+      - name: Record original tested build
+        if: steps.recovery.outputs.action == 'build'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const {execFileSync} = require('node:child_process');
+            const {createBundle} = require('./.github/scripts/release-bundle.cjs');
+            const imageId = execFileSync('docker', ['image','inspect','--format','{{.Id}}','porty:release-test'], {encoding:'utf8'}).trim();
+            await createBundle('dist', {...context.repo, tag: process.env.PORTY_RELEASE_TAG, commit: process.env.PORTY_RELEASE_COMMIT,
+              date: process.env.PORTY_RELEASE_DATE, runId: String(context.runId), imageId});
+      - name: Preserve tested artifacts before publication
+        if: steps.recovery.outputs.action == 'build'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: porty-release-${{ github.run_id }}
+          path: |
+            dist/porty_*_linux_amd64.tar.gz
+            dist/checksums.txt
+            dist/release-manifest.json
+            dist/porty-image.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
+  publish:
+    needs: [validate, bundle]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+      actions: read
+    concurrency:
+      group: porty-release-publication
+      cancel-in-progress: false
+    env:
+      PORTY_RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+      PORTY_RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+      PORTY_RELEASE_DATE: ${{ needs.validate.outputs.date }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+          fetch-depth: 0
+      - name: Recheck tag identity before publication
+        run: |
+          node -e 'const p=require("./.github/scripts/release-policy.cjs").resolveTag(process.env.PORTY_RELEASE_TAG); if(p.commit!==process.env.PORTY_RELEASE_COMMIT || p.date!==process.env.PORTY_RELEASE_DATE) throw Error("Tag moved after verification")'
+      - if: needs.bundle.outputs.action != 'verify'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: porty-release-${{ github.run_id }}
+          path: dist
+      - name: Verify existing outputs and prepare draft
+        id: draft
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const release = require('./.github/scripts/publish-release.cjs');
+            const {loadBundle} = require('./.github/scripts/release-bundle.cjs');
+            const {registryDigest} = require('./.github/scripts/registry.cjs');
+            const args = {github, ...context.repo, tag: process.env.PORTY_RELEASE_TAG, commit: process.env.PORTY_RELEASE_COMMIT};
+            const state = await release.inspectRelease(args);
+            const observed = await registryDigest({...context.repo, tag: args.tag, actor: context.actor, token: process.env.GITHUB_TOKEN});
+            let manifest, releaseId;
+            if (state.status === 'published') {
+              ({manifest} = await release.verifyPublished(args));
+              releaseId = state.release.id;
+              if (release.imageAction(state.imageDigest, observed) !== 'reuse') throw Error('Published image missing');
+            } else {
+              const bundle = await loadBundle('dist', {...context.repo, tag: args.tag, commit: args.commit,
+                date: process.env.PORTY_RELEASE_DATE, runId: String(context.runId)});
+              manifest = bundle.manifest;
+              release.imageAction(state.imageDigest, observed);
+              const generated = await github.rest.repos.generateReleaseNotes({...context.repo, tag_name: args.tag, target_commitish: args.commit, configuration_file_path: '.github/release.yml'});
+              const guide = `https://github.com/${context.repo.owner}/${context.repo.repo}/blob/${args.tag}/docs`;
+              const notes = `${generated.data.body}\n\nLinux amd64 · glibc 2.36+ · CGO monitoring enabled.\n\n[Install and verify](${guide}/getting-started.md) · [Backup, upgrade and rollback](${guide}/operator-guide.md) · [Release guide](${guide}/releasing.md)\n\nImage: \`${manifest.image}\``;
+              releaseId = await release.prepareDraft({...args, ...bundle, notes});
+            }
+            for (const [key,value] of Object.entries({status:state.status, action:release.imageAction(state.imageDigest,observed), image:manifest.image,
+              imageId:manifest.imageId, digest:observed || '', releaseId})) core.setOutput(key,value);
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Push tested image and immediately record its digest
+        id: image
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          IMAGE_ACTION: ${{ steps.draft.outputs.action }}
+          IMAGE_REF: ${{ steps.draft.outputs.image }}
+          IMAGE_ID: ${{ steps.draft.outputs.imageId }}
+          IMAGE_DIGEST: ${{ steps.draft.outputs.digest }}
+          RELEASE_ID: ${{ steps.draft.outputs.releaseId }}
+        with:
+          script: |
+            const {execFileSync} = require('node:child_process');
+            const {registryDigest} = require('./.github/scripts/registry.cjs');
+            let digest = process.env.IMAGE_DIGEST;
+            if (process.env.IMAGE_ACTION === 'push') {
+              const {loadBundle} = require('./.github/scripts/release-bundle.cjs');
+              const {recordImageDigest} = require('./.github/scripts/publish-release.cjs');
+              const bundle = await loadBundle('dist', {...context.repo, tag: process.env.PORTY_RELEASE_TAG, commit: process.env.PORTY_RELEASE_COMMIT,
+                date: process.env.PORTY_RELEASE_DATE, runId: String(context.runId)});
+              execFileSync('docker', ['load','--input','dist/porty-image.tar'], {stdio:'inherit'});
+              const id = execFileSync('docker', ['image','inspect','--format','{{.Id}}','porty:release-test'], {encoding:'utf8'}).trim();
+              if (id !== bundle.manifest.imageId) throw Error('Saved image ID mismatch');
+              // Recheck immediately before pushing. An existing tag is never overwritten.
+              if (await registryDigest({...context.repo, tag: process.env.PORTY_RELEASE_TAG, actor: context.actor, token: process.env.GITHUB_TOKEN})) throw Error('Image appeared before push');
+              execFileSync('docker', ['tag',id,process.env.IMAGE_REF]);
+              execFileSync('docker', ['push',process.env.IMAGE_REF], {stdio:'inherit'});
+              digest = await registryDigest({...context.repo, tag: process.env.PORTY_RELEASE_TAG, actor: context.actor, token: process.env.GITHUB_TOKEN});
+              await recordImageDigest({github,...context.repo,...bundle,releaseId:Number(process.env.RELEASE_ID),imageDigest:digest});
+            }
+            core.setOutput('digest',digest);
+      - name: Pull and verify the published image by digest
+        env:
+          IMAGE_REF: ${{ steps.draft.outputs.image }}
+          IMAGE_ID: ${{ steps.draft.outputs.imageId }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          image="${IMAGE_REF%:*}@${IMAGE_DIGEST}"
+          docker pull --platform linux/amd64 "$image"
+          test "$(docker image inspect --format '{{.Id}}' "$image")" = "$IMAGE_ID"
+          expected="porty $PORTY_RELEASE_TAG (commit $PORTY_RELEASE_COMMIT, built $PORTY_RELEASE_DATE)"
+          test "$(docker run --rm --platform linux/amd64 "$image" --version)" = "$expected"
+      - name: Publish complete release
+        if: steps.draft.outputs.status != 'published'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          RELEASE_ID: ${{ steps.draft.outputs.releaseId }}
+        with:
+          script: |
+            const {loadBundle} = require('./.github/scripts/release-bundle.cjs');
+            const {finalizeRelease} = require('./.github/scripts/publish-release.cjs');
+            const bundle = await loadBundle('dist', {...context.repo, tag: process.env.PORTY_RELEASE_TAG, commit: process.env.PORTY_RELEASE_COMMIT,
+              date: process.env.PORTY_RELEASE_DATE, runId: String(context.runId)});
+            await finalizeRelease({github,...context.repo,...bundle,releaseId:Number(process.env.RELEASE_ID),imageDigest:process.env.IMAGE_DIGEST});

@@ -583,8 +583,10 @@ test("preserves theme through registration setup and password-change sign out", 
     .fill("updated horse battery staple");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Settings", level: 1 }),
+    page.getByRole("heading", { name: "Stacks", level: 1 }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/#\/stacks$/);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
 test("keeps runtime and deployment readable at 320px and opens container logs directly", async ({
