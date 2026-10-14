@@ -1,12 +1,22 @@
 import { defineConfig } from "vitepress";
 import { slug } from "github-slugger";
 import { rewriteDocLink } from "./links.mjs";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+const source = process.env.PORTY_DOCS_SOURCE || process.cwd();
+const ref = process.env.PORTY_DOCS_REF || "main";
+const development = ref === "main";
+const base = process.env.PORTY_DOCS_BASE || "/porty/";
+const stableTag = process.env.PORTY_DOCS_STABLE_TAG || "";
 
 export default defineConfig({
   title: "Porty",
   description:
     "Docker Compose, Git, and host monitoring for your Linux server.",
-  base: "/porty/",
+  base,
+  srcDir: source,
+  outDir: process.env.PORTY_DOCS_OUT || ".vitepress/dist",
   cleanUrls: false,
   rewrites: { "README.md": "index.md" },
   srcExclude: [
@@ -15,6 +25,7 @@ export default defineConfig({
     "branding/**",
     "tests/**",
     "node_modules/**",
+    "scripts/**",
   ],
   markdown: {
     anchor: { slugify: slug },
@@ -24,13 +35,28 @@ export default defineConfig({
           for (const token of block.children || []) {
             if (token.type !== "link_open") continue;
             const href = token.attrGet("href");
-            if (href) token.attrSet("href", rewriteDocLink(href));
+            if (href) token.attrSet("href", rewriteDocLink(href, ref));
           }
         }
       });
     },
   },
   themeConfig: {
+    edition: {
+      development,
+      label: development
+        ? base === "/porty/" && !stableTag
+          ? "No stable release yet — development documentation."
+          : "Development documentation — main branch."
+        : `Stable documentation — ${ref}.`,
+      switchHref: base === "/porty/" ? "/porty/next/" : "/porty/",
+      switchLabel:
+        base === "/porty/"
+          ? "View development docs"
+          : stableTag
+            ? `View stable docs (${stableTag})`
+            : "Documentation home",
+    },
     siteTitle: "Porty docs",
     nav: [
       { text: "GitHub", link: "https://github.com/msoldin/porty" },
@@ -63,10 +89,18 @@ export default defineConfig({
           { text: "Releasing", link: "/releasing" },
         ],
       },
-    ],
+    ].map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) =>
+          item.link === "/" ||
+          existsSync(resolve(source, `${item.link.slice(1)}.md`)),
+      ),
+    })),
     search: { provider: "local" },
     editLink: {
-      pattern: "https://github.com/msoldin/porty/edit/main/docs/:path",
+      pattern: `https://github.com/msoldin/porty/${development ? "edit" : "blob"}/${ref}/docs/:path`,
+      text: development ? "Edit this page" : `View source at ${ref}`,
     },
   },
 });

@@ -9,6 +9,8 @@ on:
         "AGENTS.md",
         "deploy/porty.example.yaml",
         ".github/workflows/docs.yml",
+        ".github/scripts/docs-policy*",
+        ".github/scripts/release-policy*",
       ]
   pull_request:
     paths:
@@ -18,15 +20,29 @@ on:
         "AGENTS.md",
         "deploy/porty.example.yaml",
         ".github/workflows/docs.yml",
+        ".github/scripts/docs-policy*",
+        ".github/scripts/release-policy*",
       ]
   workflow_dispatch:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
 permissions:
   contents: read
+# Serialize the complete build/deploy so an older build cannot replace a newer
+# release's site. PR checks have their own groups and never deploy.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.event.number) || 'pages' }}
+  cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ (github.event_name == 'workflow_run' || github.ref == 'refs/heads/main') && 'main' || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24.16.0"
@@ -37,8 +53,21 @@ jobs:
         working-directory: docs
       - run: bun run test:unit
         working-directory: docs
+      - run: bun run test:build
+        working-directory: docs
+      - run: node --test .github/scripts/docs-policy.test.cjs
+      - name: Select newest published stable documentation
+        id: stable
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const {selectStableTag} = require('./.github/scripts/docs-policy.cjs');
+            const releases = await github.paginate(github.rest.repos.listReleases, {...context.repo, per_page: 100});
+            core.setOutput('tag', selectStableTag(releases));
       - run: bun run build
         working-directory: docs
+        env:
+          PORTY_DOCS_STABLE_TAG: ${{ steps.stable.outputs.tag }}
       - run: bunx playwright install --with-deps chromium
         working-directory: docs
       - run: bun run test:site
@@ -60,15 +89,12 @@ jobs:
         with:
           path: docs/.vitepress/dist
   deploy:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run')
     needs: build
     runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     environment:
       name: github-pages
       url: "${{ steps.deployment.outputs.page_url }}"

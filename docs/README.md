@@ -2,7 +2,7 @@
 
 Porty brings Docker Compose, Git-backed configuration, and host monitoring into one interface for a single administrator on a Linux server.
 
-Website (available after the first Pages deployment): [Porty documentation](https://msoldin.github.io/porty/). The website follows `main`; [GitHub Releases](https://github.com/msoldin/porty/releases) link to guides for each released version.
+Website: [Porty documentation](https://msoldin.github.io/porty/) defaults to the latest stable release. [Development documentation](https://msoldin.github.io/porty/next/) follows `main`. Before the first stable release, the default site is labeled as development documentation. [GitHub Releases](https://github.com/msoldin/porty/releases) retain links to guides for each released version.
 
 ## Start here
 
@@ -35,6 +35,6 @@ Website (available after the first Pages deployment): [Porty documentation](http
 
 See the [development guide](development.md) for builds and tests and [repository guidelines](../AGENTS.md) for contribution requirements. User documentation changes belong with the feature or behavior change they explain.
 
-Maintainers: [Releasing Porty](releasing.md) explains version tags, publishing, and recovery. The website tracks development on `main`; use the tagged guides in release notes for an installed version.
+Maintainers: [Releasing Porty](releasing.md) explains version tags, publishing, and recovery. Use the tagged guides in release notes when running an older version.
 
 [Back to the project README](../README.md)

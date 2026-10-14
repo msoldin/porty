@@ -1,4 +1,4 @@
-export function rewriteDocLink(href) {
+export function rewriteDocLink(href, ref = "main") {
   const path = href.split(/[?#]/, 1)[0];
   if (path === "README.md" || path === "./README.md") {
     return `index.md${href.slice(path.length)}`;
@@ -8,7 +8,7 @@ export function rewriteDocLink(href) {
     path === "../AGENTS.md" ||
     path === "../deploy/porty.example.yaml"
   ) {
-    return `https://github.com/msoldin/porty/blob/main/${path.slice(3)}${href.slice(path.length)}`;
+    return `https://github.com/msoldin/porty/blob/${encodeURIComponent(ref)}/${path.slice(3)}${href.slice(path.length)}`;
   }
   return href;
 }

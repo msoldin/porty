@@ -4,6 +4,8 @@ Porty is a Docker Compose and Git manager for your Linux server. Manage stacks, 
 
 Documentation website (available after the first Pages deployment): [msoldin.github.io/porty](https://msoldin.github.io/porty/).
 
+The default website documents the latest stable release. [Development documentation](https://msoldin.github.io/porty/next/) follows `main`. Before the first stable release, both show clearly labeled development documentation.
+
 **[Documentation](docs/README.md) · [Get started](docs/getting-started.md) · [Feature overview](docs/features.md)**
 
 [GitHub Releases](https://github.com/msoldin/porty/releases) provide versioned Linux amd64 downloads and container digests after the first rollout. Maintainers publish by pushing a version tag; see the [release guide](docs/releasing.md).

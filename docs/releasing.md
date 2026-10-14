@@ -68,7 +68,9 @@ After implementation review and branch integration:
 5. Rerun the successful run and confirm release/asset IDs, bytes, image digest, and notes remain unchanged. Record Actions/release URLs and validation results.
 6. Enable immutable GitHub Releases after confirming the draft accepts all assets before publication. Then create `v0.1.0` on the reviewed commit and repeat download/pull checks. Keep the Git tag immutable regardless of the GitHub setting.
 
-GitHub Pages is independent of releases. Configure Pages to deploy from **GitHub Actions**, with the `github-pages` environment restricted to `main`. The website at [msoldin.github.io/porty](https://msoldin.github.io/porty/) shows development documentation; each release links to its own guides on GitHub. A failed Pages deployment does not change release artifacts.
+Configure Pages to deploy from **GitHub Actions**, with the `github-pages` environment restricted to `main`. After the `release` workflow succeeds, the separate documentation workflow rebuilds the site. [msoldin.github.io/porty](https://msoldin.github.io/porty/) serves the newest published stable release's guides; [the next edition](https://msoldin.github.io/porty/next/) follows `main`. Before the first stable release, both serve labeled development docs. Prereleases and older maintenance releases never replace a newer stable edition. Each release still links to its own guides on GitHub for older-version access.
+
+Verify both documentation routes after the first stable release. Pages failures do not change or roll back release artifacts; rerun the documentation workflow on `main` after fixing the cause. For releases published or removed manually outside the release workflow, trigger that documentation workflow manually to refresh the site.
 
 Before upgrading, [back up Porty and its repository](operator-guide.md#backup-and-restore) and separately back up managed application data. Migrations are forward-only: rollback restores the previous executable/image together with the matching pre-upgrade data backup.
 

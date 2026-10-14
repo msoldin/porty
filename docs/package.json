@@ -8,9 +8,10 @@
   },
   "scripts": {
     "dev": "vitepress dev --host 127.0.0.1",
-    "build": "vitepress build",
+    "build": "node scripts/build-site.mjs",
     "preview": "vitepress preview --host 127.0.0.1 --port 4174",
     "test:unit": "node --test .vitepress/*.test.mjs",
+    "test:build": "node --test scripts/*.test.mjs",
     "test:site": "playwright test"
   },
   "devDependencies": {
