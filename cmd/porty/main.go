@@ -18,6 +18,13 @@ import (
 )
 
 func main() {
+	if handled, err := printVersion(os.Args[1:], os.Stdout); handled {
+		if err != nil {
+			slog.Error("print version", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
 		if err := resetPassword(os.Args[2:], os.LookupEnv); err != nil {
 			slog.Error("reset password", "error", err)

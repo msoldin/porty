@@ -1,5 +1,7 @@
 # Configuration reference
 
+Run `porty --version` to print the application version, source commit, and build date. This command does not read configuration, open the database, create a data directory, or connect to Docker. Source builds without injected metadata report `dev` and `unknown`.
+
 [Documentation home](README.md)
 
 Porty reads configuration at startup. Restart it after changing its configuration file, process environment, or command-line flags. Stack settings edited in the browser are separate from this server configuration.
